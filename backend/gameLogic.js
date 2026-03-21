@@ -704,7 +704,58 @@ class MonopolyGame {
     } else {
       if (player.petCooldown > 0) return false;
     }
-    // Only the current player can use their pet, and only after rolling
+
+    const petType = player.pet;
+    const cooldown = PET_TYPES[petType].cooldown;
+    const isLimited = this.petMode === "limited";
+
+    // Energy pet: activate OFF-turn. Coin flip + move resolves at start of player's next turn.
+    if (petType === "energy") {
+      const cur = this.getCurrentPlayer();
+      // Energy pet can only be activated when it's NOT your turn
+      if (cur && cur.id === socketId) return false;
+      // Can't activate if already pending
+      if (player.pendingPet) return false;
+      if (this.auction || this.poker || this.vineSwing) return false;
+
+      if (isLimited) {
+        player.petUses = Math.max(0, (player.petUses || 0) - 1);
+      }
+      // Cooldown is set when coin flip resolves at start of next turn, not here
+      const costLabel = isLimited
+        ? `${player.petUses} use${player.petUses !== 1 ? "s" : ""} left`
+        : `${cooldown} roll cooldown`;
+      player.pendingPet = { type: "energy", cooldown };
+      this._log(
+        `\u{1F406} ${player.name}'s Energy Pet will activate on their turn! (${costLabel})`,
+      );
+      return true;
+    }
+
+    // Strong pet: activate OFF-turn. Move forward 1 resolves at start of player's next turn (no coin flip).
+    if (petType === "strong") {
+      const cur = this.getCurrentPlayer();
+      // Strong pet can only be activated when it's NOT your turn
+      if (cur && cur.id === socketId) return false;
+      // Can't activate if already pending
+      if (player.pendingPet) return false;
+      if (this.auction || this.poker || this.vineSwing) return false;
+
+      if (isLimited) {
+        player.petUses = Math.max(0, (player.petUses || 0) - 1);
+      }
+      // Cooldown is set when effect resolves at start of next turn, not here
+      const costLabel = isLimited
+        ? `${player.petUses} use${player.petUses !== 1 ? "s" : ""} left`
+        : `${cooldown} roll cooldown`;
+      player.pendingPet = { type: "strong", cooldown };
+      this._log(
+        `\u{1F981} ${player.name}'s Strong Pet will activate on their turn! (${costLabel})`,
+      );
+      return true;
+    }
+
+    // Devil: must be current player after rolling
     const cur = this.getCurrentPlayer();
     if (!cur || cur.id !== socketId || !this.diceRolled) return false;
     // Can't use pet during auction, poker, or vine swing
@@ -712,10 +763,6 @@ class MonopolyGame {
 
     // Cancel any pending auto-end timer since player is using their pet
     this._cancelAutoEnd();
-
-    const petType = player.pet;
-    const cooldown = PET_TYPES[petType].cooldown;
-    const isLimited = this.petMode === "limited";
 
     // Consume pet: decrement uses or set cooldown
     const _consumePet = () => {
@@ -729,26 +776,6 @@ class MonopolyGame {
       isLimited
         ? `${player.petUses} use${player.petUses !== 1 ? "s" : ""} left`
         : `${cooldown} roll cooldown`;
-
-    if (petType === "strong") {
-      _consumePet();
-      player.pendingPet = { type: "strong", cooldown };
-      this._log(
-        `\u{1F981} ${player.name}'s Strong Pet will activate next turn! (${_petCostLabel()})`,
-      );
-      this._autoEndAfterPet(player);
-      return true;
-    }
-
-    if (petType === "energy") {
-      _consumePet();
-      player.pendingPet = { type: "energy", cooldown };
-      this._log(
-        `\u{1F406} ${player.name}'s Energy Pet will activate next turn! (${_petCostLabel()})`,
-      );
-      this._autoEndAfterPet(player);
-      return true;
-    }
 
     if (petType === "devil") {
       // Must specify a target opponent
@@ -766,9 +793,10 @@ class MonopolyGame {
         targetId: target.id,
         targetName: target.name,
         cooldown,
+        waitForCasterTurn: true,
       });
       this._log(
-        `\u{1F984} ${player.name}'s Magic Pet targets ${target.name}! Will activate on their next turn! (${_petCostLabel()})`,
+        `\u{1F984} ${player.name}'s Magic Pet targets ${target.name}! Will activate after ${player.name}'s next turn! (${_petCostLabel()})`,
       );
       this._autoEndAfterPet(player);
       return true;
@@ -786,10 +814,19 @@ class MonopolyGame {
       return;
     }
 
-    // 1. Check magic pets targeting current player
+    // 1. Flip waitForCasterTurn flag when it's the caster's turn
+    if (this.pendingMagicPets && this.pendingMagicPets.length > 0) {
+      for (const mp of this.pendingMagicPets) {
+        if (mp.waitForCasterTurn && mp.userId === cur.id) {
+          mp.waitForCasterTurn = false;
+        }
+      }
+    }
+
+    // 2. Check magic pets targeting current player (only if past caster's turn)
     if (this.pendingMagicPets && this.pendingMagicPets.length > 0) {
       const idx = this.pendingMagicPets.findIndex(
-        (mp) => mp.targetId === cur.id,
+        (mp) => mp.targetId === cur.id && !mp.waitForCasterTurn,
       );
       if (idx >= 0) {
         const mp = this.pendingMagicPets.splice(idx, 1)[0];
@@ -798,7 +835,7 @@ class MonopolyGame {
       }
     }
 
-    // 2. Check own pending pet (strong/energy)
+    // 3. Check own pending pet (strong/energy)
     if (cur.pendingPet) {
       const pp = cur.pendingPet;
       cur.pendingPet = null;
@@ -867,9 +904,7 @@ class MonopolyGame {
       `\u{1F984} ${pending.userName}'s Magic Pet flipped HEADS \u2014 pushed ${pending.targetName} forward 1!`,
     );
     this._processLandingPassive(target, pending.playerId);
-    setTimeout(() => {
-      this._resolvePendingPets();
-    }, 1000);
+    this._resolvePendingPets();
     if (this.onUpdate) this.onUpdate();
   }
 
@@ -877,6 +912,10 @@ class MonopolyGame {
     this.petResolving = true;
 
     if (pp.type === "strong") {
+      // Set cooldown now that the effect is resolving
+      if (this.petMode !== "limited") {
+        player.petCooldown = pp.cooldown;
+      }
       const oldPos = player.position;
       player.position = (player.position + 1) % BOARD_SIZE;
       player.revealedTiles.add(player.position);
@@ -885,15 +924,17 @@ class MonopolyGame {
         `\u{1F981} ${player.name}'s Strong Pet pushed them forward 1 space! (${pp.cooldown} roll cooldown)`,
       );
       this._processLandingPassive(player, player.id);
-      setTimeout(() => {
-        this._resolvePendingPets();
-      }, 1500);
+      this._resolvePendingPets();
       if (this.onUpdate) this.onUpdate();
       return;
     }
 
     if (pp.type === "energy") {
       const coinFlip = Math.random() < 0.5;
+      // Set cooldown now that the coin flip is resolving
+      if (this.petMode !== "limited") {
+        player.petCooldown = pp.cooldown;
+      }
       this.petCoinFlip = {
         playerName: player.name,
         petType: "energy",
@@ -905,17 +946,22 @@ class MonopolyGame {
           playerId: player.id,
           cooldown: pp.cooldown,
         };
+        // Show coin flip result first, then move after animation finishes
         setTimeout(() => {
           this._executeOwnEnergyPetOnTurn();
-        }, 9500);
+        }, 5000);
       } else {
-        this._log(
-          `\u{1F406} ${player.name}'s Energy Pet flipped TAILS \u2014 no movement!`,
-        );
+        // Show coin flip result first, then resolve after animation finishes + 1s pause
         setTimeout(() => {
           this.petCoinFlip = null;
-          this._resolvePendingPets();
-        }, 9500);
+          this._log(
+            `\u{1F406} ${player.name}'s Energy Pet flipped TAILS \u2014 no movement!`,
+          );
+          if (this.onUpdate) this.onUpdate();
+          setTimeout(() => {
+            this._resolvePendingPets();
+          }, 1000);
+        }, 5000);
       }
       if (this.onUpdate) this.onUpdate();
       return;
@@ -947,17 +993,28 @@ class MonopolyGame {
     this._log(
       `\u{1F406} ${player.name}'s Energy Pet flipped HEADS \u2014 moved forward 1! (${pending.cooldown} roll cooldown)`,
     );
-    this._processLandingPassive(player, player.id);
+    // Full landing: allows auctions/pitching on unowned tiles
+    this._processLanding(player);
+
+    // If an interactive element started (auction, poker, vine swing, mushroom),
+    // stop pet resolution and let it play out. Player rolls dice after it completes.
+    if (this.auction || this.poker || this.vineSwing || this.mushroomPending) {
+      this.petResolving = false;
+      if (this.onUpdate) this.onUpdate();
+      return;
+    }
+
+    // Wait 1s after move before unlocking dice
+    if (this.onUpdate) this.onUpdate();
     setTimeout(() => {
       this._resolvePendingPets();
     }, 1000);
-    if (this.onUpdate) this.onUpdate();
   }
 
   _autoEndAfterPet(player) {
     // Auto-end turn after pet use with a brief pause so the result is visible
     if (!this.auction && !this.poker && !this.vineSwing) {
-      this._scheduleAutoEnd(player, 1000);
+      this._scheduleAutoEnd(player, 0);
     }
   }
 
@@ -1285,16 +1342,24 @@ class MonopolyGame {
       }
     }
 
+    // Timer-based bomb explosion: explode any bomb whose timer has expired
+    if (this._explodeExpiredBombs()) {
+      if (cur.bankrupt || this.state === "finished") {
+        return { dice: this.dice, moved: true };
+      }
+    }
+
     this._processLanding(cur);
 
     // Auto-end turn if no auction, vine swing, or poker was started
+    // 5s accounts for frontend dice animation + token walk + 2s visible pause
     if (
       !this.auction &&
       !this.vineSwing &&
       !this.poker &&
       !this.mushroomPending
     ) {
-      this._scheduleAutoEnd(cur, 2000);
+      this._scheduleAutoEnd(cur, 4000);
     }
 
     return { dice: this.dice, moved: true };
@@ -1316,6 +1381,11 @@ class MonopolyGame {
         return { dice: this.dice, moved: true };
       }
     }
+    if (this._explodeExpiredBombs()) {
+      if (cur.bankrupt || this.state === "finished") {
+        return { dice: this.dice, moved: true };
+      }
+    }
     this._processLanding(cur);
     if (
       !this.auction &&
@@ -1323,7 +1393,7 @@ class MonopolyGame {
       !this.poker &&
       !this.mushroomPending
     ) {
-      this._scheduleAutoEnd(cur, 2000);
+      this._scheduleAutoEnd(cur, 4000);
     }
     return { dice: this.dice, moved: true };
   }
@@ -1839,7 +1909,7 @@ class MonopolyGame {
       }
       // Non-buyable tile swapped in, or player left — schedule auto-end
       if (player) {
-        this._scheduleAutoEnd(player, 2000);
+        this._scheduleAutoEnd(player, 1000);
       }
     }
     return true;
@@ -2250,7 +2320,7 @@ class MonopolyGame {
     const turnPlayer = this.getCurrentPlayer();
     this.auction = null;
     if (turnPlayer) {
-      this._scheduleAutoEnd(turnPlayer, 2000);
+      this._scheduleAutoEnd(turnPlayer, 3000);
     }
   }
 
@@ -2423,7 +2493,7 @@ class MonopolyGame {
     this._processLanding(player);
 
     if (!this.auction && !this.vineSwing && !this.poker) {
-      this._scheduleAutoEnd(player, 2000);
+      this._scheduleAutoEnd(player, 1000);
     }
     return true;
   }
@@ -2911,7 +2981,7 @@ class MonopolyGame {
     this.bombs.push({
       placedBy: player.id,
       position: idx,
-      turnsLeft: 4,
+      turnsLeft: 3,
     });
     this._log(
       `${player.name} planted a bomb! \ud83d\udca3 (arms after your next turn, detonates in 3!)`,
@@ -2922,7 +2992,7 @@ class MonopolyGame {
   _checkBombDetonation(player) {
     if (!this.bombMode || this.bombs.length === 0) return false;
     const bombIndex = this.bombs.findIndex(
-      (b) => b.position === player.position && b.turnsLeft <= 3,
+      (b) => b.position === player.position && b.turnsLeft <= 2,
     );
     if (bombIndex === -1) return false;
     const bomb = this.bombs[bombIndex];
@@ -2950,6 +3020,46 @@ class MonopolyGame {
     }
     this._checkBombWin();
     return true;
+  }
+
+  _explodeExpiredBombs() {
+    if (!this.bombMode || this.bombs.length === 0) return false;
+    let anyExploded = false;
+    for (let i = this.bombs.length - 1; i >= 0; i--) {
+      if (this.bombs[i].turnsLeft <= 0) {
+        const bomb = this.bombs[i];
+        this.bombs.splice(i, 1);
+        const blastTiles = [
+          bomb.position,
+          (bomb.position - 1 + BOARD_SIZE) % BOARD_SIZE,
+          (bomb.position + 1) % BOARD_SIZE,
+        ];
+        this.lastExplosion = { position: bomb.position, tiles: blastTiles };
+        const victims = this.players.filter(
+          (p) => !p.bankrupt && blastTiles.includes(p.position),
+        );
+        if (victims.length > 0) {
+          this._log(
+            `\ud83d\udca5 BOOM! A bomb exploded on tile ${bomb.position}! \ud83d\udca3`,
+          );
+          const placer = this.players.find((p) => p.id === bomb.placedBy);
+          for (const v of victims) {
+            if (v.id === bomb.placedBy) {
+              this._bombSelfDamage(v);
+            } else {
+              this._bombEliminate(v, placer);
+            }
+          }
+          this._checkBombWin();
+        } else {
+          this._log(
+            `\ud83d\udca5 A bomb exploded on tile ${bomb.position} but no one was nearby! \ud83d\udca3`,
+          );
+        }
+        anyExploded = true;
+      }
+    }
+    return anyExploded;
   }
 
   _bombEliminate(victim, placer) {
@@ -3021,40 +3131,9 @@ class MonopolyGame {
     this.turn++;
     this.diceRolled = false;
 
-    // Tick bomb timers and explode expired bombs
+    // Tick bomb timers (explosion happens after next roll in rollDice)
     for (let i = this.bombs.length - 1; i >= 0; i--) {
       this.bombs[i].turnsLeft--;
-      if (this.bombs[i].turnsLeft <= 0) {
-        const bomb = this.bombs[i];
-        this.bombs.splice(i, 1);
-        const blastTiles = [
-          bomb.position,
-          (bomb.position - 1 + BOARD_SIZE) % BOARD_SIZE,
-          (bomb.position + 1) % BOARD_SIZE,
-        ];
-        this.lastExplosion = { position: bomb.position, tiles: blastTiles };
-        const victims = this.players.filter(
-          (p) => !p.bankrupt && blastTiles.includes(p.position),
-        );
-        if (victims.length > 0) {
-          this._log(
-            `\ud83d\udca5 BOOM! A bomb exploded on tile ${bomb.position}! \ud83d\udca3`,
-          );
-          const placer = this.players.find((p) => p.id === bomb.placedBy);
-          for (const v of victims) {
-            if (v.id === bomb.placedBy) {
-              this._bombSelfDamage(v);
-            } else {
-              this._bombEliminate(v, placer);
-            }
-          }
-          this._checkBombWin();
-        } else {
-          this._log(
-            `\ud83d\udca5 A bomb exploded on tile ${bomb.position} but no one was nearby! \ud83d\udca3`,
-          );
-        }
-      }
     }
 
     // Win check â€” only Super Banana purchase wins
@@ -3093,9 +3172,19 @@ class MonopolyGame {
     if (this.state !== "finished") {
       const newCur = this.getCurrentPlayer();
       if (newCur && !newCur.bankrupt) {
+        // Flip waitForCasterTurn when caster's turn arrives
+        if (this.pendingMagicPets) {
+          for (const mp of this.pendingMagicPets) {
+            if (mp.waitForCasterTurn && mp.userId === newCur.id) {
+              mp.waitForCasterTurn = false;
+            }
+          }
+        }
         const hasMagicPet =
           this.pendingMagicPets &&
-          this.pendingMagicPets.some((mp) => mp.targetId === newCur.id);
+          this.pendingMagicPets.some(
+            (mp) => mp.targetId === newCur.id && !mp.waitForCasterTurn,
+          );
         const hasOwnPet = !!newCur.pendingPet;
         if (hasMagicPet || hasOwnPet) {
           this.petResolving = true;

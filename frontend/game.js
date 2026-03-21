@@ -876,7 +876,7 @@ function updatePetAbilityBox(me, isMyTurn, isPicking) {
   const targetSel = document.getElementById("pet-target");
   const toggleLabel = document.getElementById("pet-toggle-label");
   const toggleText = document.getElementById("pet-toggle-text");
-  const toggleInput = document.getElementById("chk-auto-pet");
+  const petBtn = document.getElementById("btn-auto-pet");
 
   const petEmoji = PET_EMOJIS[me.pet] || "\ud83d\udc3e";
   const petName = PET_NAMES[me.pet] || "Pet";
@@ -903,9 +903,9 @@ function updatePetAbilityBox(me, isMyTurn, isPicking) {
       toggleLabel.classList.remove("pet-toggle-disabled");
       toggleLabel.classList.add("pet-toggle-cooldown");
     }
-    if (toggleInput) {
-      toggleInput.disabled = true;
-      toggleInput.checked = false;
+    if (petBtn) {
+      petBtn.disabled = true;
+      petBtn.dataset.armed = "false";
     }
     targetSel.style.display = "none";
     if (isLimited) {
@@ -922,27 +922,34 @@ function updatePetAbilityBox(me, isMyTurn, isPicking) {
       toggleLabel.classList.remove("pet-toggle-disabled");
       toggleLabel.classList.remove("pet-toggle-cooldown");
     }
-    if (toggleInput) toggleInput.disabled = isMyTurn;
+    if (petBtn) {
+      // Energy/Strong pet: disable on your turn or if already pending
+      if (me.pet === "energy" || me.pet === "strong") {
+        petBtn.disabled = isMyTurn || !!me.pendingPet;
+      } else {
+        petBtn.disabled = isMyTurn;
+      }
+    }
     if (isLimited) {
       info.textContent = `${petEmoji} ${petName} — ${me.petUses} use${me.petUses !== 1 ? "s" : ""} left`;
     } else {
       info.textContent = `${petEmoji} ${petName} — Ready!`;
     }
     if (toggleText) {
-      if (toggleInput && toggleInput.checked) {
-        const armed = window._petArmedForTurn;
-        const currentTurn = gs.turn || 0;
-        toggleText.textContent =
-          armed != null && currentTurn >= armed
-            ? "\ud83d\udc3e Pet activating this turn!"
-            : "\ud83d\udc3e Pet will activate next turn!";
+      if ((me.pet === "energy" || me.pet === "strong") && me.pendingPet) {
+        toggleText.textContent = "\ud83d\udc3e Pet acting next turn!";
+      } else if (petBtn && petBtn.dataset.armed === "true") {
+        toggleText.textContent = "\ud83d\udc3e Pet acting next turn!";
       } else {
-        toggleText.textContent = "Use Pet Next Turn";
+        toggleText.textContent =
+          me.pet === "energy" || me.pet === "strong"
+            ? "Use Pet"
+            : "Use Pet Next Turn";
       }
     }
 
     // Magic pet needs a target selector when toggle is on
-    const autoPetChecked = toggleInput && toggleInput.checked;
+    const autoPetChecked = petBtn && petBtn.dataset.armed === "true";
     if (me.pet === "devil") {
       targetSel.style.display = autoPetChecked ? "" : "none";
       if (autoPetChecked && targetSel.options.length === 0) {
@@ -1209,11 +1216,11 @@ function showGame() {
     coinEl.classList.toggle("coin-minus", gs.diceRolled && gs.dice[2] === -1);
   }
 
-  // Turn notification — show once per turn, keep visible for 1.5s
+  // Turn notification — show once per turn, keep visible for 1.5s (suppress during pet resolving)
   const notif = document.getElementById("turn-notification");
   if (notif) {
     const turnKey = isMyTurn ? gs.turn : null;
-    if (isMyTurn && turnKey !== window._lastNotifTurn) {
+    if (isMyTurn && !gs.petResolving && turnKey !== window._lastNotifTurn) {
       window._lastNotifTurn = turnKey;
       notif.classList.remove("show");
       void notif.offsetWidth; // reset animation
@@ -1441,16 +1448,17 @@ function showGame() {
   }
 
   // Auto-end: end turn automatically when possible (skip if pet is usable or auto-pet is armed)
-  // Use canPetFire (ignores autoEndDelay) so the checkbox works even during server delay
-  if (canPetFire && document.getElementById("chk-auto-end").checked) {
+  // Respect autoEndDelay so we don't skip the server's 2s pause after auction/pitch
+  if (canEnd && document.getElementById("chk-auto-end").checked) {
     const mePetReady =
       me &&
       me.pet &&
       (gs.petMode === "limited" ? (me.petUses || 0) > 0 : me.petCooldown <= 0);
+    const petBtn = document.getElementById("btn-auto-pet");
     const petArmed =
       mePetReady &&
-      document.getElementById("chk-auto-pet") &&
-      document.getElementById("chk-auto-pet").checked &&
+      petBtn &&
+      petBtn.dataset.armed === "true" &&
       window._petArmedForTurn != null &&
       (gs.turn || 0) >= window._petArmedForTurn;
     if (!mePetReady && !petArmed && !window._autoEndQueued) {
@@ -1472,31 +1480,21 @@ function showGame() {
   }
 
   // Auto-pet: when toggle is on, arm for next turn. Fire after roll resolves (and after auction if applicable).
-  const autoPetInput = document.getElementById("chk-auto-pet");
-  if (autoPetInput) {
-    // Detect toggle being turned on: arm for the current turn (effect is deferred to next turn)
-    if (autoPetInput.checked && window._petArmedForTurn == null) {
-      // Arm: pet will fire this turn after rolling (effect queued for next turn)
-      window._petArmedForTurn = gs.turn || 0;
-    } else if (!autoPetInput.checked) {
-      // Toggle turned off — disarm
-      window._petArmedForTurn = null;
-    }
-
-    // Fire auto-pet when armed turn has arrived, pet is ready
+  const petBtn = document.getElementById("btn-auto-pet");
+  if (petBtn) {
+    // Energy/Strong pet: fire immediately when toggled off-turn (server handles off-turn activation)
+    const petArmedNow = petBtn.dataset.armed === "true";
     if (
-      canPetFire &&
-      autoPetInput.checked &&
-      window._petArmedForTurn != null &&
-      (gs.turn || 0) >= window._petArmedForTurn
+      me &&
+      (me.pet === "energy" || me.pet === "strong") &&
+      petArmedNow &&
+      !isMyTurn &&
+      !me.pendingPet &&
+      !window._autoPetQueued
     ) {
       const mePetReady =
-        me &&
-        me.pet &&
-        (gs.petMode === "limited"
-          ? (me.petUses || 0) > 0
-          : me.petCooldown <= 0);
-      if (mePetReady && !window._autoPetQueued) {
+        gs.petMode === "limited" ? (me.petUses || 0) > 0 : me.petCooldown <= 0;
+      if (mePetReady) {
         window._autoPetQueued = true;
         setTimeout(() => {
           window._autoPetQueued = false;
@@ -1504,19 +1502,73 @@ function showGame() {
             gs && gs.players && gs.players.find((p) => p.id === myId);
           const petStillReady =
             meNow &&
-            meNow.pet &&
+            (meNow.pet === "energy" || meNow.pet === "strong") &&
+            !meNow.pendingPet &&
             (gs.petMode === "limited"
               ? (meNow.petUses || 0) > 0
               : meNow.petCooldown <= 0);
-          if (
-            petStillReady &&
-            document.getElementById("chk-auto-pet").checked
-          ) {
+          if (petStillReady && petBtn.dataset.armed === "true") {
             usePet();
-            document.getElementById("chk-auto-pet").checked = false;
-            window._petArmedForTurn = null;
+            // Toggle stays on until effect resolves at start of next turn
           }
-        }, 400);
+        }, 200);
+      }
+    }
+
+    // Energy/Strong pet: auto-uncheck toggle once pendingPet resolves on their turn
+    if (
+      me &&
+      (me.pet === "energy" || me.pet === "strong") &&
+      me.pendingPet &&
+      petBtn.dataset.armed === "true"
+    ) {
+      petBtn.dataset.armed = "false";
+      window._petArmedForTurn = null;
+    }
+
+    // Devil: arm for next turn, fire after roll resolves
+    if (me && me.pet !== "energy" && me.pet !== "strong") {
+      // Detect toggle being turned on: arm for the current turn (effect is deferred to next turn)
+      if (petBtn.dataset.armed === "true" && window._petArmedForTurn == null) {
+        // Arm: pet will fire this turn after rolling (effect queued for next turn)
+        window._petArmedForTurn = gs.turn || 0;
+      } else if (petBtn.dataset.armed !== "true") {
+        // Toggle turned off — disarm
+        window._petArmedForTurn = null;
+      }
+
+      // Fire auto-pet when armed turn has arrived, pet is ready
+      if (
+        canPetFire &&
+        petBtn.dataset.armed === "true" &&
+        window._petArmedForTurn != null &&
+        (gs.turn || 0) >= window._petArmedForTurn
+      ) {
+        const mePetReady =
+          me &&
+          me.pet &&
+          (gs.petMode === "limited"
+            ? (me.petUses || 0) > 0
+            : me.petCooldown <= 0);
+        if (mePetReady && !window._autoPetQueued) {
+          window._autoPetQueued = true;
+          setTimeout(() => {
+            window._autoPetQueued = false;
+            const meNow =
+              gs && gs.players && gs.players.find((p) => p.id === myId);
+            const petStillReady =
+              meNow &&
+              meNow.pet &&
+              (gs.petMode === "limited"
+                ? (meNow.petUses || 0) > 0
+                : meNow.petCooldown <= 0);
+            if (petStillReady && petBtn.dataset.armed === "true") {
+              usePet();
+              petBtn.dataset.armed = "false";
+              window._petArmedForTurn = null;
+            }
+          }, 400);
+        }
       }
     }
   }
@@ -1550,6 +1602,7 @@ function showGame() {
   if (placeBombBtn) {
     if (gs.bombMode && me.bomb) {
       placeBombBtn.style.display = "";
+      placeBombBtn.disabled = isMyTurn;
     } else {
       placeBombBtn.style.display = "none";
     }
@@ -3168,15 +3221,29 @@ window.addEventListener("DOMContentLoaded", () => {
   initBoardFloaters();
   showScreen("screen-menu");
 
-  // Pet toggle text update on change
-  const petToggle = document.getElementById("chk-auto-pet");
-  if (petToggle) {
-    petToggle.addEventListener("change", () => {
+  // Pet toggle button handler
+  const petToggleBtn = document.getElementById("btn-auto-pet");
+  if (petToggleBtn) {
+    petToggleBtn.addEventListener("click", () => {
       const txt = document.getElementById("pet-toggle-text");
+      const armed = petToggleBtn.dataset.armed === "true";
+      const now = !armed;
+      petToggleBtn.dataset.armed = now ? "true" : "false";
       if (txt)
-        txt.textContent = petToggle.checked
-          ? "\ud83d\udc3e Pet will activate!"
+        txt.textContent = now
+          ? "\ud83d\udc3e Pet acting next turn!"
           : "Use Pet Next Turn";
+      // Energy/Strong pets activate off-turn — fire usePet immediately when toggled on
+      if (now && gs) {
+        const me = gs.players && gs.players.find((p) => p.id === myId);
+        if (
+          me &&
+          (me.pet === "energy" || me.pet === "strong") &&
+          !me.pendingPet
+        ) {
+          usePet();
+        }
+      }
     });
   }
 

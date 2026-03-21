@@ -2902,9 +2902,9 @@ body {
 }
 .bomb-placement-banner {
   position: fixed;
-  top: 18px;
+  top: 50%;
   left: 50%;
-  transform: translateX(-50%);
+  transform: translate(-50%, -50%);
   z-index: 9998;
   background: linear-gradient(145deg, #1a0a0a 0%, #2c0e0e 100%);
   border: 2px solid #ff4444;
@@ -4481,73 +4481,64 @@ body {
 .pet-toggle {
   display: flex;
   align-items: center;
-  gap: 10px;
-  cursor: pointer;
-  user-select: none;
+  justify-content: center;
   padding: 4px 0;
+  width: 100%;
 }
-.pet-toggle input[type="checkbox"] {
-  display: none;
-}
-.pet-toggle-slider {
-  position: relative;
-  width: 42px;
-  height: 22px;
-  background: rgba(255, 255, 255, 0.12);
-  border-radius: 11px;
-  border: 1px solid rgba(255, 255, 255, 0.15);
+.pet-toggle-button {
+  width: 100%;
+  padding: 10px 18px;
+  font-size: 0.95em;
+  font-weight: 700;
+  border: 2px solid rgba(255, 255, 255, 0.15);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #ccc;
+  cursor: pointer;
   transition:
     background 0.25s,
     border-color 0.25s,
-    box-shadow 0.25s;
-  flex-shrink: 0;
+    color 0.25s,
+    box-shadow 0.25s,
+    transform 0.12s;
+  user-select: none;
+  letter-spacing: 0.02em;
 }
-.pet-toggle-slider::after {
-  content: "";
-  position: absolute;
-  top: 2px;
-  left: 2px;
-  width: 16px;
-  height: 16px;
-  background: #888;
-  border-radius: 50%;
-  transition:
-    transform 0.25s,
-    background 0.25s,
-    box-shadow 0.25s;
+.pet-toggle-button:hover:not(:disabled) {
+  background: rgba(255, 225, 53, 0.12);
+  border-color: rgba(255, 225, 53, 0.4);
+  color: #ffe135;
 }
-.pet-toggle input:checked + .pet-toggle-slider {
+.pet-toggle-button:active:not(:disabled) {
+  transform: scale(0.97);
+}
+.pet-toggle-button[data-armed="true"] {
   background: linear-gradient(135deg, #ffe135, #ff9800);
-  border-color: rgba(255, 225, 53, 0.6);
-  box-shadow: 0 0 10px rgba(255, 225, 53, 0.3);
+  border-color: rgba(255, 225, 53, 0.7);
+  color: #1a1a2e;
+  box-shadow: 0 0 14px rgba(255, 225, 53, 0.35);
 }
-.pet-toggle input:checked + .pet-toggle-slider::after {
-  transform: translateX(20px);
-  background: #1a1a2e;
-  box-shadow: 0 0 4px rgba(0, 0, 0, 0.3);
+.pet-toggle-button[data-armed="true"]:hover:not(:disabled) {
+  background: linear-gradient(135deg, #ffe850, #ffab1a);
+  box-shadow: 0 0 18px rgba(255, 225, 53, 0.5);
+}
+.pet-toggle-button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 .pet-toggle-text {
-  font-size: 0.82em;
-  font-weight: 600;
-  color: #999;
-  transition: color 0.25s;
-}
-.pet-toggle input:checked ~ .pet-toggle-text {
-  color: #ffe135;
+  font-size: inherit;
+  font-weight: inherit;
+  color: inherit;
+  pointer-events: none;
 }
 .pet-toggle.pet-toggle-disabled {
   opacity: 0.4;
-  cursor: not-allowed;
   pointer-events: none;
 }
-.pet-toggle.pet-toggle-cooldown .pet-toggle-slider {
-  background: rgba(255, 100, 50, 0.2);
+.pet-toggle.pet-toggle-cooldown .pet-toggle-button {
+  background: rgba(255, 100, 50, 0.15);
   border-color: rgba(255, 100, 50, 0.25);
-}
-.pet-toggle.pet-toggle-cooldown .pet-toggle-slider::after {
-  background: #664420;
-}
-.pet-toggle.pet-toggle-cooldown .pet-toggle-text {
   color: #aa7744;
 }
 
