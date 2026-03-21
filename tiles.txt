@@ -1,0 +1,90 @@
+MONKEY BUSINESS BOARD — ALL 52 TILES
+=================================
+
+── CORNERS (4) ──────────────────────────────────
+ 0  🌴 GROW 100%
+13  🌴 GROW 25%
+26  🌴 GROW 50%
+39  🌴 GROW 75%
+
+── LADY FINGER / Pink (10) ──────────────────────
+ 1  A1   60🍌
+ 3  A2   60🍌
+ 4  A3   60🍌
+15  A4   60🍌
+27  A7   60🍌
+29  A8  220🍌
+30  A9  240🍌
+31  A10 250🍌
+35  A5   60🍌
+47  A6   90🍌
+
+── BLUE JAVA / Light Blue (7) ───────────────────
+ 6  B1  100🍌
+ 7  B2  100🍌
+ 9  B3  100🍌
+10  B4  120🍌
+11  B5  130🍌
+19  B6  100🍌
+32  B7  100🍌
+
+── RED DACCA / Red (5) ──────────────────────────
+14  C1  140🍌
+16  C2  140🍌
+17  C3  160🍌
+18  C4  170🍌
+40  C5  175🍌
+
+── CAVENDISH / Orange (5) ───────────────────────
+20  D1  180🍌
+22  D2  180🍌
+23  D3  200🍌
+24  D4  210🍌
+41  D5  215🍌
+
+── GOLDFINGER / Yellow (4) ──────────────────────
+33  E1  260🍌
+34  E2  260🍌
+36  E3  280🍌
+37  E4  290🍌
+
+── GROS MICHEL / Dark Blue (3) ──────────────────
+48  G1  350🍌
+49  G2  380🍌
+51  G3  400🍌
+
+── DESERTS (7) ──────────────────────────────────
+ 8  🌵 Desert   10🍌
+12  🌵 Desert   10🍌
+28  🌵 Desert   10🍌
+38  🌵 Desert   10🍌
+43  🌵 Desert   10🍌
+44  🌵 Desert   10🍌
+45  🌵 Desert   10🍌
+46  🌵 Desert   10🍌
+
+── BANANA PEEL / -20% (2) ──────────────────────
+ 5  🍌 -20%  (black tile)
+50  🍌 -20%  (black tile)
+
+── BANANA PEEL / -10% (2) ──────────────────────
+ 2  🍌 -10%  (dark grey tile)
+42  🍌 -10%  (dark grey tile)
+
+── SPECIAL (1) ─────────────────────────────────
+21  ⭐ Special  (white tile)
+
+── VINE SWING (1) ──────────────────────────────
+25  Vine Swing  (bus ticket)
+
+=================================
+TOTALS
+  Properties:  34
+  Corners:      4
+  Deserts:      8
+  Peel -20%:    2
+  Peel -10%:    2
+  Special:      1
+  Vine Swing:   1
+  ─────────────
+  Total:       52

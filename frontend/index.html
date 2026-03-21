@@ -1,0 +1,2008 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Monkey Business</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@400;500;600;700;800&family=Fredoka:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div id="app">
+      <!-- Floating background emojis for pre-game screens -->
+      <div class="bg-floaters" id="bg-floaters"></div>
+
+      <!-- ── Auth (Login / Register) ─────────────────────────── -->
+      <div id="screen-auth" class="screen">
+        <div class="card auth-card">
+          <div class="card-header">
+            <span class="card-header-icon">🔐</span>
+            <h2>Sign In</h2>
+          </div>
+          <div class="auth-tabs">
+            <button
+              class="auth-tab auth-tab-active"
+              id="auth-tab-login"
+              onclick="showAuthLogin()"
+            >
+              Log In
+            </button>
+            <button
+              class="auth-tab"
+              id="auth-tab-register"
+              onclick="showAuthRegister()"
+            >
+              Register
+            </button>
+          </div>
+
+          <!-- Login Form -->
+          <div id="auth-login-form">
+            <div class="form-section">
+              <div class="form-section-title">📧 Gmail Account</div>
+              <label
+                >Email<input
+                  id="login-email"
+                  type="email"
+                  placeholder="you@gmail.com"
+              /></label>
+              <label
+                >Password<input
+                  id="login-password"
+                  type="password"
+                  placeholder="••••••••"
+              /></label>
+            </div>
+            <div class="auth-error" id="login-error"></div>
+            <div class="card-actions">
+              <button class="btn btn-big btn-glow" onclick="authLogin()">
+                Log In
+              </button>
+            </div>
+          </div>
+
+          <!-- Register Form -->
+          <div id="auth-register-form" style="display: none">
+            <div class="form-section">
+              <div class="form-section-title">📧 Create Account</div>
+              <label
+                >Display Name<input
+                  id="register-name"
+                  maxlength="16"
+                  placeholder="Your name"
+              /></label>
+              <label
+                >Gmail Address<input
+                  id="register-email"
+                  type="email"
+                  placeholder="you@gmail.com"
+              /></label>
+              <label
+                >Password (6+ chars)<input
+                  id="register-password"
+                  type="password"
+                  placeholder="••••••••"
+              /></label>
+            </div>
+            <div class="auth-error" id="register-error"></div>
+            <div class="card-actions">
+              <button class="btn btn-big btn-glow" onclick="authRegister()">
+                Create Account
+              </button>
+            </div>
+          </div>
+
+          <div class="auth-divider"><span>or</span></div>
+          <button class="btn btn-big btn-alt" onclick="continueAsGuest()">
+            👤 Continue as Guest
+          </button>
+          <button class="btn btn-alt" onclick="showScreen('screen-menu')">
+            ← Back
+          </button>
+        </div>
+      </div>
+
+      <!-- ── Profile ──────────────────────────────────────────── -->
+      <div id="screen-profile" class="screen">
+        <div class="card profile-card">
+          <div class="card-header">
+            <span class="card-header-icon">👤</span>
+            <h2>My Profile</h2>
+          </div>
+
+          <div class="profile-header-row">
+            <div
+              class="profile-avatar-big"
+              id="profile-avatar-display"
+              onclick="openAvatarPicker()"
+            >
+              🐵
+            </div>
+            <div class="profile-info">
+              <div class="profile-name" id="profile-display-name"></div>
+              <div class="profile-email-text" id="profile-email"></div>
+              <div class="profile-meta" id="profile-joined"></div>
+            </div>
+          </div>
+
+          <!-- Avatar Picker -->
+          <div
+            id="avatar-picker-section"
+            class="avatar-picker-section"
+            style="display: none"
+          >
+            <div class="form-section">
+              <div class="form-section-title">🎨 Choose Avatar</div>
+              <div class="avatar-picker-grid" id="avatar-picker-grid"></div>
+              <button
+                class="btn btn-alt"
+                onclick="closeAvatarPicker()"
+                style="margin-top: 8px"
+              >
+                Done
+              </button>
+            </div>
+          </div>
+
+          <!-- Edit Name -->
+          <div id="profile-edit-section" style="display: none">
+            <div class="form-section">
+              <div class="form-section-title">✏️ Edit Name</div>
+              <label
+                >Display Name<input
+                  id="edit-display-name"
+                  maxlength="16"
+                  placeholder="Your name"
+              /></label>
+              <div class="profile-edit-actions">
+                <button class="btn btn-glow" onclick="saveProfileName()">
+                  Save
+                </button>
+                <button class="btn btn-alt" onclick="closeProfileEdit()">
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Stats -->
+          <div class="profile-stats">
+            <div class="form-section-title">📊 Stats</div>
+            <div class="profile-stats-grid">
+              <div class="profile-stat">
+                <div class="profile-stat-val" id="stat-games-played">0</div>
+                <div class="profile-stat-label">Games Played</div>
+              </div>
+              <div class="profile-stat">
+                <div class="profile-stat-val" id="stat-games-won">0</div>
+                <div class="profile-stat-label">Games Won</div>
+              </div>
+              <div class="profile-stat">
+                <div class="profile-stat-val" id="stat-win-rate">—</div>
+                <div class="profile-stat-label">Win Rate</div>
+              </div>
+              <div class="profile-stat">
+                <div class="profile-stat-val" id="stat-total-bananas">0</div>
+                <div class="profile-stat-label">Total 🍌 Earned</div>
+              </div>
+              <div class="profile-stat">
+                <div class="profile-stat-val" id="stat-highest-bananas">0</div>
+                <div class="profile-stat-label">Best Game 🍌</div>
+              </div>
+              <div class="profile-stat">
+                <div class="profile-stat-val" id="stat-farms-owned">0</div>
+                <div class="profile-stat-label">Farms Owned</div>
+              </div>
+              <div class="profile-stat">
+                <div class="profile-stat-val" id="stat-auctions-won">0</div>
+                <div class="profile-stat-label">Auctions Won</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card-actions">
+            <button class="btn btn-alt" onclick="openProfileEdit()">
+              ✏️ Edit Name
+            </button>
+            <button class="btn btn-alt" onclick="openAvatarPicker()">
+              🎨 Change Avatar
+            </button>
+            <button class="btn btn-alt auth-logout-btn" onclick="authLogout()">
+              🚪 Log Out
+            </button>
+            <button class="btn btn-alt" onclick="showScreen('screen-menu')">
+              ← Back
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Menu ─────────────────────────────────────────────── -->
+      <div id="screen-menu" class="screen active">
+        <div class="card menu-card">
+          <div class="menu-logo">🐒</div>
+          <h1>💣 MONKEY BUSINESS 💰</h1>
+          <p class="menu-tagline">
+            🌴 Buy farms. Grow bananas. Bomb each other. Obtain the
+            <span class="rainbow-text">super banana</span>. 🌴
+          </p>
+          <div class="menu-monkeys">🙈🙉🙊</div>
+          <div
+            class="menu-welcome"
+            id="menu-welcome"
+            style="display: none"
+          ></div>
+          <div class="menu-buttons">
+            <button
+              class="btn btn-big btn-glow"
+              onclick="showScreen('screen-create')"
+            >
+              🌴 New Game
+            </button>
+            <button
+              class="btn btn-big btn-alt"
+              onclick="showScreen('screen-join')"
+            >
+              🐒 Join Game
+            </button>
+            <button class="btn btn-big btn-alt" onclick="openBoardPreview()">
+              🗺️ View Possible Variations and Rules
+            </button>
+            <button
+              class="btn btn-big btn-profile"
+              id="menu-profile-btn"
+              onclick="showProfile()"
+              style="display: none"
+            >
+              👤 My Profile
+            </button>
+          </div>
+          <div id="menu-auth-btns" class="menu-auth-btns">
+            <button
+              class="btn btn-alt btn-auth-link"
+              onclick="showScreen('screen-auth')"
+            >
+              🔐 Sign In / Register
+            </button>
+          </div>
+          <p class="menu-footer">A game of bidding and bluffing</p>
+        </div>
+      </div>
+
+      <!-- ── Create ───────────────────────────────────────────── -->
+      <div id="screen-create" class="screen">
+        <div class="card create-card">
+          <div class="card-header">
+            <span class="card-header-icon">🌴</span>
+            <h2>New Game</h2>
+          </div>
+          <div class="create-grid">
+            <div class="form-section">
+              <div class="form-section-title">🐒 Your Monkey</div>
+              <label
+                >Name<input
+                  id="create-name"
+                  maxlength="16"
+                  placeholder="Your name"
+              /></label>
+            </div>
+            <div class="form-section">
+              <div class="form-section-title">⚙️ Game Settings</div>
+              <label
+                >Players
+                <select
+                  id="create-max"
+                  onchange="updateSimpleAuctionVisibility()"
+                >
+                  <option value="2">2</option>
+                  <option value="3">3</option>
+                  <option value="4" selected>4</option>
+                </select>
+              </label>
+              <label
+                >Starting Bananas 🍌 <span id="bananas-display">2222</span>
+                <input
+                  id="create-bananas"
+                  type="range"
+                  min="100"
+                  max="4000"
+                  step="50"
+                  value="2222"
+                  oninput="
+                    document.getElementById('bananas-display').textContent =
+                      this.value
+                  "
+                />
+              </label>
+            </div>
+            <div class="form-section">
+              <div class="form-section-title">🎮 Game Mode</div>
+              <label
+                >Mode
+                <select id="create-mode" onchange="toggleModeSettings()">
+                  <option value="ffa">Free for All (2-4 players)</option>
+                  <option value="teams">2v2 Teams (4 players)</option>
+                </select>
+              </label>
+              <div id="team-settings" style="display: none">
+                <p class="mode-hint">Buy the Super Banana (7777🍌) to win!</p>
+              </div>
+            </div>
+            <div class="form-section">
+              <div class="form-section-title">🐾 Pet Mode</div>
+              <label>
+                <select id="create-petmode">
+                  <option value="cooldown">
+                    Cooldown (recharges each roll)
+                  </option>
+                  <option value="limited">Limited Uses (whole game)</option>
+                </select>
+              </label>
+            </div>
+            <div class="form-section" style="grid-column: 1 / -1">
+              <div class="form-section-title">🔧 Options</div>
+              <div style="display: flex; gap: 18px; flex-wrap: wrap">
+                <label class="toggle-label">
+                  <input type="checkbox" id="create-scouting" />
+                  <span>Enable Scouting 🔍</span>
+                </label>
+                <label class="toggle-label" id="simple-auction-label">
+                  <input type="checkbox" id="create-simple-auction" checked />
+                  <span>Simple Auction 🏷️</span>
+                </label>
+                <label class="toggle-label">
+                  <input type="checkbox" id="create-bomb-mode" checked />
+                  <span>Bomb Mode 💣</span>
+                </label>
+                <label class="toggle-label">
+                  <input type="checkbox" id="create-monkey-poker" checked />
+                  <span>Monkey Poker 🐵</span>
+                </label>
+              </div>
+            </div>
+          </div>
+          <div class="card-actions">
+            <button class="btn btn-big btn-glow" onclick="createGame()">
+              Create Game
+            </button>
+            <button class="btn btn-alt" onclick="showScreen('screen-menu')">
+              ← Back
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Join ─────────────────────────────────────────────── -->
+      <div id="screen-join" class="screen">
+        <div class="card join-card">
+          <div class="card-header">
+            <span class="card-header-icon">🐒</span>
+            <h2>Join Game</h2>
+          </div>
+          <div class="join-grid">
+            <div class="form-section">
+              <div class="form-section-title">🎫 Game Code</div>
+              <label
+                >Enter the 6-digit code
+                <div class="input-paste-row">
+                  <input
+                    id="join-code"
+                    maxlength="6"
+                    placeholder="000000"
+                    class="join-code-input"
+                  />
+                  <button type="button" class="btn-paste" onclick="pasteCode()">
+                    📋 Paste
+                  </button>
+                </div>
+              </label>
+            </div>
+            <div class="form-section">
+              <div class="form-section-title">🐒 Your Monkey</div>
+              <label
+                >Display name
+                <input id="join-name" maxlength="16" placeholder="Your name"
+              /></label>
+            </div>
+          </div>
+          <div class="card-actions">
+            <button class="btn btn-big btn-glow" onclick="joinGame()">
+              🌴 Join Game
+            </button>
+            <button class="btn btn-alt" onclick="showScreen('screen-menu')">
+              ← Back
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Lobby ────────────────────────────────────────────── -->
+      <div id="screen-lobby" class="screen">
+        <div class="card lobby-card">
+          <div class="card-header">
+            <span class="card-header-icon">🏝️</span>
+            <h2>Game Lobby</h2>
+          </div>
+          <div class="lobby-code-box">
+            <div class="lobby-code-label">INVITE CODE</div>
+            <div class="lobby-code-value" id="lobby-code"></div>
+            <div class="lobby-code-hint">Click to copy</div>
+          </div>
+          <div class="lobby-settings-summary" id="lobby-settings"></div>
+          <div
+            class="lobby-settings-controls"
+            id="lobby-settings-controls"
+            style="display: none"
+          >
+            <label
+              >🍌 Starting Bananas <span id="lobby-bananas-display">3333</span>
+              <input
+                id="lobby-bananas"
+                type="range"
+                min="100"
+                max="4000"
+                step="50"
+                value="3333"
+                oninput="
+                  document.getElementById('lobby-bananas-display').textContent =
+                    this.value;
+                  updateLobbySettings();
+                "
+              />
+            </label>
+            <div class="lobby-settings-row">
+              <label
+                >🎮 Game Mode
+                <select id="lobby-mode" onchange="updateLobbySettings()">
+                  <option value="ffa">Free for All</option>
+                  <option value="teams">2v2 Teams</option>
+                </select>
+              </label>
+              <label
+                >👥 Max Players
+                <select id="lobby-max" onchange="updateLobbySettings()">
+                  <option value="2">2</option>
+                  <option value="3">3</option>
+                  <option value="4" selected>4</option>
+                </select>
+              </label>
+            </div>
+            <label
+              >🐾 Pet Mode
+              <select id="lobby-petmode" onchange="updateLobbySettings()">
+                <option value="cooldown">Cooldown (recharges each roll)</option>
+                <option value="limited">Limited Uses (whole game)</option>
+              </select>
+            </label>
+          </div>
+          <div class="lobby-middle-row">
+            <div class="lobby-players-section">
+              <div class="lobby-players-title">
+                Players <span id="lobby-count" class="lobby-count"></span>
+              </div>
+              <div id="lobby-players" class="lobby-players-grid"></div>
+            </div>
+            <div class="lobby-pet-section" id="lobby-pet-section">
+              <div class="lobby-pet-title">🐾 Choose Your Pet</div>
+              <div class="lobby-pet-grid" id="lobby-pet-grid">
+                <button
+                  class="lobby-pet-card"
+                  data-pet="strong"
+                  onclick="selectPet('strong')"
+                >
+                  <div class="lobby-pet-emoji">🦁</div>
+                  <div class="lobby-pet-name">Strong Pet</div>
+                  <div
+                    class="lobby-pet-desc"
+                    data-cd-desc="Move forward 1 space (guaranteed). 20 roll cooldown."
+                    data-lim-desc="Move forward 1 space (guaranteed). 1 use per game."
+                  >
+                    Move forward 1 space (guaranteed). 20 roll cooldown.
+                  </div>
+                </button>
+                <button
+                  class="lobby-pet-card"
+                  data-pet="energy"
+                  onclick="selectPet('energy')"
+                >
+                  <div class="lobby-pet-emoji">🐆</div>
+                  <div class="lobby-pet-name">Energy Pet</div>
+                  <div
+                    class="lobby-pet-desc"
+                    data-cd-desc="Flip a coin to move forward 1. 7 roll cooldown."
+                    data-lim-desc="Flip a coin to move forward 1. 3 uses per game."
+                  >
+                    Flip a coin to move forward 1. 7 roll cooldown.
+                  </div>
+                </button>
+                <button
+                  class="lobby-pet-card"
+                  data-pet="devil"
+                  onclick="selectPet('devil')"
+                >
+                  <div class="lobby-pet-emoji">🦄</div>
+                  <div class="lobby-pet-name">Magic Pet</div>
+                  <div
+                    class="lobby-pet-desc"
+                    data-cd-desc="Flip a coin to push an opponent forward 1. 10 roll cooldown."
+                    data-lim-desc="Flip a coin to push an opponent forward 1. 2 uses per game."
+                  >
+                    Flip a coin to push an opponent forward 1. 10 roll cooldown.
+                  </div>
+                </button>
+              </div>
+            </div>
+          </div>
+          <!-- end lobby-middle-row -->
+          <div class="lobby-bottom-row">
+            <div class="lobby-waiting" id="lobby-waiting">
+              <div class="lobby-waiting-dots">
+                <span></span><span></span><span></span>
+              </div>
+              <span>Waiting for players</span>
+            </div>
+            <div class="card-actions">
+              <button
+                class="btn btn-big btn-glow"
+                id="btn-start"
+                onclick="startGame()"
+                disabled
+              >
+                🚀 Start Game
+              </button>
+              <button class="btn btn-alt" onclick="leaveGame()">← Leave</button>
+            </div>
+          </div>
+          <!-- end lobby-bottom-row -->
+        </div>
+      </div>
+
+      <!-- ── Game ─────────────────────────────────────────────── -->
+      <div id="screen-game" class="screen">
+        <!-- Reveal overlay -->
+        <div id="reveal-overlay"></div>
+
+        <!-- Game Over overlay -->
+        <div
+          id="game-over-overlay"
+          class="game-over-overlay"
+          style="display: none"
+        >
+          <div class="game-over-content">
+            <div class="game-over-title">🍌 GAME OVER 🍌</div>
+            <div id="game-over-winner" class="game-over-winner"></div>
+            <div id="game-over-standings" class="game-over-standings"></div>
+          </div>
+        </div>
+
+        <!-- Bomb Placement Banner -->
+        <div
+          id="bomb-placement-overlay"
+          class="bomb-placement-banner"
+          style="display: none"
+        >
+          <span class="bomb-placement-banner-text"
+            >💣 Click a tile on the board to plant your bomb</span
+          >
+          <button class="btn btn-alt btn-sm" onclick="closeBombPlacement()">
+            Cancel
+          </button>
+        </div>
+
+        <div class="game-layout">
+          <!-- Left: Ownership Panel -->
+          <aside class="panel panel-left" id="panel-owners">
+            <div class="info-box">
+              <h4>Your Bananas</h4>
+              <p id="info-money">500🍌</p>
+              <p id="info-position">Position: 0</p>
+            </div>
+
+            <div class="players-box">
+              <h4>Monkeys</h4>
+              <div id="players-list"></div>
+            </div>
+
+            <hr class="panel-divider" />
+            <h3>Owned Farms</h3>
+            <div id="owner-list"></div>
+            <hr class="panel-divider" />
+            <h3>Farm Chart</h3>
+            <div id="property-chart"></div>
+            <hr class="panel-divider" />
+            <h3>Tile Legend</h3>
+            <div id="tile-legend"></div>
+          </aside>
+
+          <!-- Center: Board -->
+          <main class="board-wrap">
+            <div id="board-floaters" class="board-floaters"></div>
+            <div id="turn-notification" class="turn-notification">
+              🍌 Your Turn! 🍌
+            </div>
+            <div id="auction-won-notification" class="auction-won-notification">
+              🎉 You Won the Auction! 🍌
+            </div>
+            <div id="mushroom-notification" class="mushroom-notification">
+              <div id="mushroom-notif-text">⭐ Super Banana Found! ⭐</div>
+            </div>
+            <div id="pet-coin-notification" class="pet-coin-notification">
+              <div id="pet-coin-text" class="pet-coin-text"></div>
+              <div class="pet-coin-scene">
+                <div id="pet-coin-flip" class="pet-coin-flipper">
+                  <div class="pet-coin-face pet-coin-heads">
+                    <span class="coin-icon">🍌</span>
+                  </div>
+                  <div class="pet-coin-face pet-coin-tails">
+                    <span class="coin-icon">💀</span>
+                  </div>
+                </div>
+              </div>
+              <div id="pet-coin-result" class="pet-coin-result"></div>
+            </div>
+            <div id="bomb-self-notification" class="bomb-self-notification">
+              💣 You got caught in your own bomb! 💥
+            </div>
+            <div
+              id="dice-roll-notification"
+              class="dice-roll-notification"
+            ></div>
+            <div id="board" class="board">
+              <!-- Auction Overlay (rendered in board center) -->
+              <div id="auction-box" class="auction-box" style="display: none">
+                <h4 id="auction-title">🍌 BANANA BID 🍌</h4>
+                <div id="auction-prop" class="auction-prop"></div>
+                <div id="auction-high" class="auction-high"></div>
+                <div id="auction-turn" class="auction-turn"></div>
+                <div id="auction-controls" class="auction-controls">
+                  <div class="bid-input-row">
+                    <input
+                      type="text"
+                      id="bid-amount"
+                      class="bid-input"
+                      inputmode="numeric"
+                      value="0"
+                      readonly
+                    />
+                    <span class="bid-input-label">🍌</span>
+                  </div>
+                  <div class="bid-keypad">
+                    <button class="bid-key" onclick="bidKeyPress('1')">
+                      1
+                    </button>
+                    <button class="bid-key" onclick="bidKeyPress('2')">
+                      2
+                    </button>
+                    <button class="bid-key" onclick="bidKeyPress('3')">
+                      3
+                    </button>
+                    <button class="bid-key" onclick="bidKeyPress('4')">
+                      4
+                    </button>
+                    <button class="bid-key" onclick="bidKeyPress('5')">
+                      5
+                    </button>
+                    <button class="bid-key" onclick="bidKeyPress('6')">
+                      6
+                    </button>
+                    <button class="bid-key" onclick="bidKeyPress('7')">
+                      7
+                    </button>
+                    <button class="bid-key" onclick="bidKeyPress('8')">
+                      8
+                    </button>
+                    <button class="bid-key" onclick="bidKeyPress('9')">
+                      9
+                    </button>
+                    <button
+                      class="bid-key bid-key-wide"
+                      onclick="bidKeyClear()"
+                    >
+                      C
+                    </button>
+                    <button class="bid-key" onclick="bidKeyPress('0')">
+                      0
+                    </button>
+                    <button
+                      class="bid-key bid-key-wide"
+                      onclick="bidKeyBackspace()"
+                    >
+                      ⌫
+                    </button>
+                  </div>
+                  <div class="bid-btn-row">
+                    <button
+                      class="btn btn-sm"
+                      id="btn-bid"
+                      onclick="placeBid()"
+                    >
+                      Bid
+                    </button>
+                    <button
+                      class="btn btn-sm btn-preset"
+                      onclick="setBidHalf()"
+                    >
+                      ½
+                    </button>
+                    <button class="btn btn-sm btn-preset" onclick="setBidMax()">
+                      MAX
+                    </button>
+                    <button
+                      class="btn btn-sm btn-preset"
+                      id="btn-pass"
+                      onclick="passBid()"
+                      style="display: none"
+                    >
+                      Pass
+                    </button>
+                  </div>
+                </div>
+                <div
+                  id="simple-auction-controls"
+                  class="simple-auction-controls"
+                  style="display: none"
+                >
+                  <button
+                    class="btn btn-sm btn-accept"
+                    onclick="respondAuction(true)"
+                  >
+                    ✅ Accept
+                  </button>
+                  <button
+                    class="btn btn-sm btn-decline"
+                    onclick="respondAuction(false)"
+                  >
+                    ❌ Decline
+                  </button>
+                </div>
+                <div id="auction-bids" class="auction-bids"></div>
+                <div id="bid-toast" class="bid-toast"></div>
+              </div>
+
+              <!-- Poker Table Overlay (rendered in board center) -->
+              <div id="poker-table" class="poker-table" style="display: none">
+                <div class="poker-header">
+                  <span id="poker-header-text">🃏 POKER MATCH 🃏</span>
+                  <button
+                    class="poker-guide-btn"
+                    id="poker-guide-btn"
+                    onclick="togglePokerGuide()"
+                    title="Poker Guide"
+                  >
+                    ❓
+                  </button>
+                </div>
+                <div id="poker-guide" class="poker-guide" style="display: none">
+                  <div class="poker-guide-inner">
+                    <div class="poker-guide-close" onclick="togglePokerGuide()">
+                      ✕
+                    </div>
+                    <div class="poker-guide-title">🃏 Poker Hand Guide</div>
+                    <div class="poker-guide-section">
+                      <div class="poker-guide-subtitle">
+                        Hand Rankings (Best → Worst)
+                      </div>
+                      <table class="poker-guide-table">
+                        <tr>
+                          <td class="pgr">1</td>
+                          <td class="pgh">Royal Flush</td>
+                          <td class="pge">A K Q J 10 same suit</td>
+                        </tr>
+                        <tr>
+                          <td class="pgr">2</td>
+                          <td class="pgh">Straight Flush</td>
+                          <td class="pge">5 in a row, same suit</td>
+                        </tr>
+                        <tr>
+                          <td class="pgr">3</td>
+                          <td class="pgh">Four of a Kind</td>
+                          <td class="pge">4 cards same rank</td>
+                        </tr>
+                        <tr>
+                          <td class="pgr">4</td>
+                          <td class="pgh">Full House</td>
+                          <td class="pge">3 of a kind + a pair</td>
+                        </tr>
+                        <tr>
+                          <td class="pgr">5</td>
+                          <td class="pgh">Flush</td>
+                          <td class="pge">5 cards same suit</td>
+                        </tr>
+                        <tr>
+                          <td class="pgr">6</td>
+                          <td class="pgh">Straight</td>
+                          <td class="pge">5 in a row, any suit</td>
+                        </tr>
+                        <tr>
+                          <td class="pgr">7</td>
+                          <td class="pgh">Three of a Kind</td>
+                          <td class="pge">3 cards same rank</td>
+                        </tr>
+                        <tr>
+                          <td class="pgr">8</td>
+                          <td class="pgh">Two Pair</td>
+                          <td class="pge">2 different pairs</td>
+                        </tr>
+                        <tr>
+                          <td class="pgr">9</td>
+                          <td class="pgh">One Pair</td>
+                          <td class="pge">2 cards same rank</td>
+                        </tr>
+                        <tr>
+                          <td class="pgr">10</td>
+                          <td class="pgh">High Card</td>
+                          <td class="pge">Nothing — highest card wins</td>
+                        </tr>
+                      </table>
+                    </div>
+                    <div class="poker-guide-section">
+                      <div class="poker-guide-subtitle">How It Works</div>
+                      <div class="poker-guide-text">
+                        You get <b>2 hole cards</b> (private). Up to
+                        <b>5 community cards</b> are dealt face-up in rounds.
+                        Make the best 5-card hand from your 2 + the community
+                        cards.
+                      </div>
+                    </div>
+                    <div class="poker-guide-section">
+                      <div class="poker-guide-subtitle">Rounds</div>
+                      <div class="poker-guide-text">
+                        <b>Pre-Flop</b> → 0 community cards<br />
+                        <b>Flop</b> → 3 community cards<br />
+                        <b>Turn</b> → 4 community cards<br />
+                        <b>River</b> → 5 community cards<br />
+                        <b>Showdown</b> → Cards revealed, best hand wins
+                      </div>
+                    </div>
+                    <div class="poker-guide-section">
+                      <div class="poker-guide-subtitle">Actions</div>
+                      <div class="poker-guide-text">
+                        <b>Fold</b> — Give up your hand (you lose your bets)<br />
+                        <b>Check</b> — Pass without betting (only if no one
+                        bet)<br />
+                        <b>Call</b> — Match the current bet<br />
+                        <b>Raise</b> — Increase the bet<br />
+                        <b>All In</b> — Bet everything you have
+                      </div>
+                    </div>
+                    <div class="poker-guide-section">
+                      <div class="poker-guide-subtitle">Tips for Beginners</div>
+                      <div class="poker-guide-text">
+                        • Pairs in your hand (e.g. two Kings) are strong
+                        starting hands<br />
+                        • High cards of the same suit (e.g. A♠ K♠) have flush
+                        potential<br />
+                        • Don't be afraid to fold weak hands — it saves 🍌<br />
+                        • If you have a pair + the board pairs, that's Two Pair
+                        or a Full House<br />
+                        • Bluffing (raising with a weak hand) can work — but be
+                        careful!<br />
+                        • SB (Small Blind) acts first after the flop; BB (Big
+                        Blind) has position advantage
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div class="poker-pot">
+                  Pot: <span id="poker-pot-amount">0</span>🍌
+                </div>
+                <div class="poker-opponent">
+                  <div class="poker-player-info">
+                    <span class="poker-player-name" id="poker-opp-name"></span>
+                    <span class="poker-player-role" id="poker-opp-role"></span>
+                    <span class="poker-player-bet" id="poker-opp-bet"></span>
+                  </div>
+                  <div class="poker-cards" id="poker-opp-cards"></div>
+                  <div class="poker-hand-name" id="poker-opp-hand"></div>
+                </div>
+                <div class="poker-community" id="poker-community"></div>
+                <div class="poker-round-label" id="poker-round-label"></div>
+                <div class="poker-me">
+                  <div class="poker-hand-name" id="poker-my-hand"></div>
+                  <div class="poker-cards" id="poker-my-cards"></div>
+                  <div class="poker-player-info">
+                    <span class="poker-player-name" id="poker-my-name"></span>
+                    <span class="poker-player-role" id="poker-my-role"></span>
+                    <span class="poker-player-bet" id="poker-my-bet"></span>
+                  </div>
+                </div>
+                <div class="poker-actions" id="poker-actions">
+                  <button
+                    class="btn btn-sm poker-btn-fold"
+                    onclick="pokerFold()"
+                  >
+                    Fold
+                  </button>
+                  <button
+                    class="btn btn-sm poker-btn-check"
+                    id="poker-btn-check"
+                    onclick="pokerCheck()"
+                  >
+                    Check
+                  </button>
+                  <button
+                    class="btn btn-sm poker-btn-call"
+                    id="poker-btn-call"
+                    onclick="pokerCall()"
+                  >
+                    Call
+                  </button>
+                  <div class="poker-raise-row">
+                    <input
+                      type="range"
+                      id="poker-raise-slider"
+                      min="0"
+                      max="1000"
+                      value="0"
+                      oninput="
+                        document.getElementById(
+                          'poker-raise-display',
+                        ).textContent = this.value
+                      "
+                    />
+                    <span id="poker-raise-display" class="poker-raise-display"
+                      >0</span
+                    >🍌
+                    <button
+                      class="btn btn-sm poker-btn-raise"
+                      onclick="pokerRaise()"
+                    >
+                      Raise
+                    </button>
+                    <button
+                      class="btn btn-sm btn-preset"
+                      onclick="pokerAllIn()"
+                    >
+                      ALL IN
+                    </button>
+                  </div>
+                </div>
+                <div
+                  class="poker-result"
+                  id="poker-result"
+                  style="display: none"
+                >
+                  <div id="poker-result-text"></div>
+                </div>
+              </div>
+              <button
+                id="board-chat-toggle"
+                class="board-chat-toggle"
+                title="Open Chat"
+              >
+                💬
+              </button>
+              <button
+                id="board-log-toggle"
+                class="board-log-toggle"
+                title="Open Jungle Log"
+              >
+                📜
+              </button>
+              <div id="board-log" class="board-log board-log-hidden">
+                <div class="board-log-header" id="board-log-header">
+                  <span class="board-log-header-title">📜 Jungle Log</span>
+                  <button
+                    id="board-log-close"
+                    class="board-log-close"
+                    title="Close"
+                  >
+                    ✕
+                  </button>
+                </div>
+                <div id="board-log-messages" class="board-log-messages"></div>
+              </div>
+              <div id="board-chat" class="board-chat board-chat-hidden">
+                <div class="board-chat-header" id="board-chat-header">
+                  <span class="board-chat-header-title">💬 Chat</span>
+                  <button
+                    id="board-chat-close"
+                    class="board-chat-close"
+                    title="Close"
+                  >
+                    ✕
+                  </button>
+                </div>
+                <div id="board-chat-messages" class="board-chat-messages"></div>
+                <form
+                  id="board-chat-form"
+                  class="board-chat-form"
+                  autocomplete="off"
+                >
+                  <input
+                    id="board-chat-input"
+                    class="board-chat-input"
+                    type="text"
+                    maxlength="200"
+                    placeholder="Type a message…"
+                  />
+                  <button type="submit" class="board-chat-send">➤</button>
+                </form>
+              </div>
+            </div>
+          </main>
+
+          <!-- Right: Controls -->
+          <aside class="panel panel-right">
+            <div class="turn-info">
+              <div class="turn-label">Current Turn</div>
+              <div id="turn-name" class="turn-name">—</div>
+            </div>
+
+            <div class="dice-box">
+              <div class="dice">
+                <div class="die-scene" id="die-scene1">
+                  <div class="die-cube" id="die1">
+                    <div class="die-face die-face-1">
+                      <span class="pip"></span>
+                    </div>
+                    <div class="die-face die-face-2">
+                      <span class="pip"></span><span class="pip"></span>
+                    </div>
+                    <div class="die-face die-face-3">
+                      <span class="pip"></span><span class="pip"></span
+                      ><span class="pip"></span>
+                    </div>
+                    <div class="die-face die-face-4">
+                      <span class="pip"></span><span class="pip"></span
+                      ><span class="pip"></span><span class="pip"></span>
+                    </div>
+                    <div class="die-face die-face-5">
+                      <span class="pip"></span><span class="pip"></span
+                      ><span class="pip"></span><span class="pip"></span
+                      ><span class="pip"></span>
+                    </div>
+                    <div class="die-face die-face-6">
+                      <span class="pip"></span><span class="pip"></span
+                      ><span class="pip"></span><span class="pip"></span
+                      ><span class="pip"></span><span class="pip"></span>
+                    </div>
+                  </div>
+                </div>
+                <div class="die-scene" id="die-scene2">
+                  <div class="die-cube" id="die2">
+                    <div class="die-face die-face-1">
+                      <span class="pip"></span>
+                    </div>
+                    <div class="die-face die-face-2">
+                      <span class="pip"></span><span class="pip"></span>
+                    </div>
+                    <div class="die-face die-face-3">
+                      <span class="pip"></span><span class="pip"></span
+                      ><span class="pip"></span>
+                    </div>
+                    <div class="die-face die-face-4">
+                      <span class="pip"></span><span class="pip"></span
+                      ><span class="pip"></span><span class="pip"></span>
+                    </div>
+                    <div class="die-face die-face-5">
+                      <span class="pip"></span><span class="pip"></span
+                      ><span class="pip"></span><span class="pip"></span
+                      ><span class="pip"></span>
+                    </div>
+                    <div class="die-face die-face-6">
+                      <span class="pip"></span><span class="pip"></span
+                      ><span class="pip"></span><span class="pip"></span
+                      ><span class="pip"></span><span class="pip"></span>
+                    </div>
+                  </div>
+                </div>
+                <div class="coin-scene" id="coin-scene">
+                  <div class="coin-flip" id="coin">
+                    <div class="coin-face coin-front">0</div>
+                    <div class="coin-face coin-back">-1</div>
+                  </div>
+                </div>
+              </div>
+              <button class="btn" id="btn-roll" onclick="rollDice()" disabled>
+                Roll Dice
+              </button>
+              <label
+                class="auto-toggle"
+                title="Automatically roll dice when it's your turn"
+              >
+                <input type="checkbox" id="chk-auto-roll" />
+                Auto Roll
+              </label>
+              <div class="debug-teleport">
+                <input
+                  type="number"
+                  id="debug-tile"
+                  min="0"
+                  max="51"
+                  value="0"
+                  placeholder="Tile #"
+                />
+                <button
+                  class="btn btn-sm"
+                  id="btn-debug-move"
+                  onclick="debugMove()"
+                  disabled
+                >
+                  Go
+                </button>
+                <button class="btn btn-sm" onclick="debugShuffle()">🔀</button>
+                <button
+                  class="btn btn-sm"
+                  onclick="debugResetPet()"
+                  title="Reset pet cooldown"
+                >
+                  🐾
+                </button>
+                <button
+                  class="btn btn-sm"
+                  onclick="debugAddBananas()"
+                  title="Add 10000 bananas"
+                >
+                  +🍌
+                </button>
+              </div>
+            </div>
+
+            <div class="action-box">
+              <div
+                class="pet-ability-box"
+                id="pet-ability-box"
+                style="display: none"
+              >
+                <div class="pet-ability-info" id="pet-ability-info"></div>
+                <div
+                  class="pet-flip-result"
+                  id="pet-flip-result"
+                  style="display: none"
+                ></div>
+                <select
+                  class="pet-target-select"
+                  id="pet-target"
+                  style="display: none"
+                ></select>
+                <label class="pet-toggle" id="pet-toggle-label">
+                  <input type="checkbox" id="chk-auto-pet" />
+                  <span class="pet-toggle-slider"></span>
+                  <span class="pet-toggle-text" id="pet-toggle-text"
+                    >Use Pet Next Turn</span
+                  >
+                </label>
+              </div>
+              <button
+                class="btn btn-alt"
+                id="btn-trade"
+                onclick="openTradePanel()"
+              >
+                🔄 Trade
+              </button>
+              <button
+                class="btn btn-bomb"
+                id="btn-buy-bomb"
+                onclick="buyBomb()"
+                style="display: none"
+              >
+                💣 Buy Bomb (5000🍌)
+              </button>
+              <button
+                class="btn btn-bomb"
+                id="btn-place-bomb"
+                onclick="openBombPlacement()"
+                style="display: none"
+              >
+                💣 Place Bomb
+              </button>
+              <button
+                class="btn btn-alt"
+                id="btn-end"
+                onclick="endTurn()"
+                disabled
+              >
+                End Turn
+              </button>
+              <label class="auto-toggle" title="Automatically end your turn">
+                <input type="checkbox" id="chk-auto-end" />
+                Auto End
+              </label>
+            </div>
+
+            <!-- Trade Panel -->
+            <div id="trade-panel" class="trade-panel" style="display: none">
+              <div class="trade-panel-header">
+                🔄 Trade
+                <button class="trade-panel-close" onclick="closeTradePanel()">
+                  ✕
+                </button>
+              </div>
+
+              <!-- Trade Property Section (all modes) -->
+              <div class="trade-section" id="trade-property-section">
+                <div class="trade-section-title">🤝 Trade Property</div>
+                <label class="trade-label"
+                  >Trade with
+                  <select
+                    id="trade-prop-recipient"
+                    onchange="populateTheirFarms()"
+                  ></select>
+                </label>
+                <label class="trade-label"
+                  >Your Farm (give)
+                  <select id="trade-prop-mine"></select>
+                </label>
+                <label class="trade-label"
+                  >Their Farm (take)
+                  <select id="trade-prop-theirs"></select>
+                </label>
+                <button
+                  class="btn btn-glow"
+                  id="btn-trade-prop"
+                  onclick="sendPropertyTrade()"
+                >
+                  Swap Farms
+                </button>
+              </div>
+
+              <!-- Send Bananas Section (teams only) -->
+              <div class="trade-section" id="trade-bananas-section">
+                <div class="trade-section-title">🍌 Send Bananas</div>
+                <div class="trade-fee-notice">Transfer fee: 50🍌</div>
+                <label class="trade-label"
+                  >Recipient
+                  <select id="trade-recipient"></select>
+                </label>
+                <label class="trade-label"
+                  >Amount
+                  <div class="trade-amount-row">
+                    <input
+                      type="range"
+                      id="trade-amount"
+                      min="1"
+                      max="100"
+                      value="50"
+                      oninput="
+                        document.getElementById(
+                          'trade-amount-display',
+                        ).textContent = this.value
+                      "
+                    />
+                    <span id="trade-amount-display" class="trade-amount-display"
+                      >50</span
+                    >🍌
+                  </div>
+                </label>
+                <div class="trade-total" id="trade-total">
+                  Total cost: 100🍌
+                </div>
+                <button
+                  class="btn btn-glow"
+                  id="btn-send-trade"
+                  onclick="sendTrade()"
+                >
+                  Send
+                </button>
+              </div>
+
+              <!-- Farm Swap Section (teams only) -->
+              <div class="trade-section" id="trade-swap-section">
+                <div class="trade-section-title">🔄 Swap Farms</div>
+                <div class="trade-fee-notice">Swap fee: 100🍌 per trade</div>
+                <label class="trade-label"
+                  >Your Farm
+                  <select id="swap-my-farm"></select>
+                </label>
+                <label class="trade-label"
+                  >Teammate's Farm
+                  <select id="swap-mate-farm"></select>
+                </label>
+                <button
+                  class="btn btn-glow"
+                  id="btn-swap-farm"
+                  onclick="swapFarm()"
+                >
+                  Swap (100🍌)
+                </button>
+              </div>
+            </div>
+
+            <label class="toggle-reveal"
+              ><input
+                type="checkbox"
+                id="chk-reveal"
+                onchange="toggleRevealAll()"
+              />
+              Reveal All Tiles</label
+            >
+            <label class="toggle-reveal" title="Auto bid 1🍌 in auctions">
+              <input type="checkbox" id="chk-auto-bid" />
+              Auto Bid 1
+            </label>
+            <label
+              class="toggle-reveal"
+              title="Auto accept farms in Price It auctions"
+            >
+              <input type="checkbox" id="chk-auto-accept" />
+              Auto Accept
+            </label>
+          </aside>
+        </div>
+      </div>
+    </div>
+
+    <!-- Board Preview Overlay -->
+    <div
+      id="board-preview-overlay"
+      class="board-preview-overlay"
+      style="display: none"
+    >
+      <div class="board-preview-content">
+        <div class="board-preview-header">
+          <h2>🗺️ Variations & Rules</h2>
+          <div class="bp-tabs">
+            <button
+              class="bp-tab bp-tab-active"
+              id="bp-tab-variations"
+              onclick="switchPreviewTab('variations')"
+            >
+              Board Variations
+            </button>
+            <button
+              class="bp-tab"
+              id="bp-tab-rules"
+              onclick="switchPreviewTab('rules')"
+            >
+              Rules
+            </button>
+          </div>
+        </div>
+        <!-- Variations Tab -->
+        <div id="bp-view-variations" class="bp-view">
+          <p class="board-preview-hint">
+            Preview how the board could look. Tiles are shuffled each game!
+          </p>
+          <div class="board-preview-body">
+            <div class="board-preview-board-wrap">
+              <div id="board-preview" class="board board-preview-board"></div>
+            </div>
+            <div
+              class="board-preview-tiles-panel"
+              id="board-preview-tiles"
+            ></div>
+          </div>
+          <div class="board-preview-actions">
+            <button
+              class="btn btn-big btn-glow"
+              onclick="shuffleBoardPreview()"
+            >
+              🔀 Shuffle
+            </button>
+          </div>
+        </div>
+        <!-- Rules Tab -->
+        <div id="bp-view-rules" class="bp-view" style="display: none">
+          <div class="rules-panel">
+            <!-- ═══ QUICK REFERENCE ═══ -->
+            <div class="rules-quickref">
+              <h3>⚡ Quick Reference</h3>
+              <div class="rules-quickref-grid">
+                <div class="rules-qr-item">
+                  <span class="rules-qr-icon">🎯</span>
+                  <span
+                    ><b>Goal:</b> Buy the ⭐ Magic Banana (7,777🍌) or 💣 blow
+                    up an opponent</span
+                  >
+                </div>
+                <div class="rules-qr-item">
+                  <span class="rules-qr-icon">🎲</span>
+                  <span><b>Movement:</b> 2 dice + coin flip = 1–12 spaces</span>
+                </div>
+                <div class="rules-qr-item">
+                  <span class="rules-qr-icon">🗺️</span>
+                  <span
+                    ><b>Board:</b> 52 tiles — 4 fixed corners, 48 shuffled</span
+                  >
+                </div>
+                <div class="rules-qr-item">
+                  <span class="rules-qr-icon">💰</span>
+                  <span><b>Start:</b> 1,000🍌 (configurable 100–4,000)</span>
+                </div>
+                <div class="rules-qr-item">
+                  <span class="rules-qr-icon">🏠</span>
+                  <span><b>Farms:</b> Won via auction, grow 🍌 at corners</span>
+                </div>
+                <div class="rules-qr-item">
+                  <span class="rules-qr-icon">🚫</span>
+                  <span><b>No bankruptcy</b> — you can't go below 0🍌</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- ═══ CATEGORY: HOW TO PLAY ═══ -->
+            <div class="rules-category-header">
+              <span class="rules-cat-line"></span>
+              <span class="rules-cat-label">🎮 How to Play</span>
+              <span class="rules-cat-line"></span>
+            </div>
+
+            <div class="rules-section">
+              <h3>🎯 Objective</h3>
+              <p>
+                Find and buy the <b>⭐ Magic Banana</b> (costs 7,777🍌) to win
+                instantly! It hides on a random tile each game — land on it with
+                enough money and the game is yours.
+              </p>
+              <div class="rules-callout rules-callout-warn">
+                <b>💣 Bomb Mode:</b> If enabled, you can also win by detonating
+                a bomb under an opponent! See the Bombs section below.
+              </div>
+              <p>
+                In <b>Teams mode (2v2)</b>, your team wins when either teammate
+                buys the Magic Banana. A <b>coin flip</b> decides which team
+                goes first (seats 1 & 3) and which goes second (seats 2 & 4).
+                One random player from the second team gets a free
+                <b>scout pick</b> for balance.
+              </p>
+            </div>
+
+            <div class="rules-section">
+              <h3>🎲 Turns & Dice</h3>
+              <p>
+                Each turn you roll <b>2 dice</b> (1–6 each) plus a
+                <b>coin flip</b> that adds 0 or −1. Your total move = die₁ +
+                die₂ + coin, giving you <b>1 to 12 spaces</b> clockwise around
+                the 52-tile board.
+              </p>
+              <div class="rules-callout rules-callout-tip">
+                <b>🍌 Banana Piles:</b> As you move, you automatically
+                <b>collect banana piles</b> from your own farms along the path.
+                When you land on an <b>opponent's</b> farm, you <b>steal</b>
+                their banana pile!
+              </div>
+            </div>
+
+            <div class="rules-section">
+              <h3>🚫 No Bankruptcy</h3>
+              <p>
+                You <b>cannot go below 0🍌</b>. If a payment would take you
+                negative, you simply pay what you can. Even at 0🍌 you stay in
+                the game — no one is eliminated (except by ⭐ Super Banana or 💣
+                Bomb).
+              </p>
+            </div>
+
+            <!-- ═══ CATEGORY: THE BOARD ═══ -->
+            <div class="rules-category-header">
+              <span class="rules-cat-line"></span>
+              <span class="rules-cat-label">🗺️ The Board</span>
+              <span class="rules-cat-line"></span>
+            </div>
+
+            <div class="rules-section">
+              <h3>🔀 Board Shuffling</h3>
+              <p>
+                Every game, the
+                <b>48 non-corner tiles are randomly shuffled</b>. Only the 4
+                GROW corners stay in fixed positions. The ⭐ Magic Banana hides
+                in a new spot each game — no two games are alike!
+              </p>
+              <p>
+                At game start, all tiles are briefly
+                <b>revealed for 5 seconds</b>
+                before the board shuffles — memorize what you can!
+              </p>
+            </div>
+
+            <div class="rules-section">
+              <h3>🏠 Farm Groups</h3>
+              <p>
+                Farms are color-coded into 6 groups. Higher-yield farms are
+                rarer and more valuable. Landing on an unowned farm triggers an
+                <b>auction</b> — you don't buy directly.
+              </p>
+              <table class="rules-table">
+                <thead>
+                  <tr>
+                    <th>Group</th>
+                    <th>Yield</th>
+                    <th>Count</th>
+                    <th>Rarity</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>🟡 Cavendish</td>
+                    <td>50🍌</td>
+                    <td>11</td>
+                    <td class="rules-rarity rules-rarity-common">Common</td>
+                  </tr>
+                  <tr>
+                    <td>🔵 Blue Java</td>
+                    <td>100🍌</td>
+                    <td>7</td>
+                    <td class="rules-rarity rules-rarity-common">Common</td>
+                  </tr>
+                  <tr>
+                    <td>🔴 Red Dacca</td>
+                    <td>200🍌</td>
+                    <td>5</td>
+                    <td class="rules-rarity rules-rarity-uncommon">Uncommon</td>
+                  </tr>
+                  <tr>
+                    <td>🩷 Lady Finger</td>
+                    <td>200🍌</td>
+                    <td>5</td>
+                    <td class="rules-rarity rules-rarity-uncommon">Uncommon</td>
+                  </tr>
+                  <tr>
+                    <td>🟠 Goldfinger</td>
+                    <td>360🍌</td>
+                    <td>4</td>
+                    <td class="rules-rarity rules-rarity-rare">Rare</td>
+                  </tr>
+                  <tr>
+                    <td>🟣 Gros Michel</td>
+                    <td>500🍌</td>
+                    <td>3</td>
+                    <td class="rules-rarity rules-rarity-legendary">
+                      Legendary
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+              <p>
+                <b>Chain bonus:</b> When you win an auction, any
+                <b>adjacent unowned farms of the same color</b> are claimed for
+                free! Position your bids strategically.
+              </p>
+            </div>
+
+            <div class="rules-section">
+              <h3>🌴 GROW Tiles (Corners)</h3>
+              <p>
+                The 4 corner tiles grow bananas on
+                <b>all your farms at once</b>. Bananas go into each farm's
+                <b>banana pile</b>, which you harvest when you pass over them on
+                future turns.
+              </p>
+              <table class="rules-table">
+                <thead>
+                  <tr>
+                    <th>Corner</th>
+                    <th>GROW %</th>
+                    <th>Position</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>🌴 GROW 100%</td>
+                    <td><b>100%</b></td>
+                    <td>Bottom-left (Start)</td>
+                  </tr>
+                  <tr>
+                    <td>🌴 GROW 25%</td>
+                    <td>25%</td>
+                    <td>Top-left</td>
+                  </tr>
+                  <tr>
+                    <td>🌴 GROW 50%</td>
+                    <td>50%</td>
+                    <td>Top-right</td>
+                  </tr>
+                  <tr>
+                    <td>🌴 GROW 75%</td>
+                    <td>75%</td>
+                    <td>Bottom-right</td>
+                  </tr>
+                </tbody>
+              </table>
+
+              <div class="rules-formula">
+                <b>📐 Growth Formula:</b><br />
+                Growth = Yield × Set Multiplier × GROW% × (1 + Side Bonus)
+              </div>
+
+              <p>
+                <b>Set Multiplier:</b> Based on how many farms you own in that
+                color group. Own 1 = 1× multiplier. Own 3 of 5 Red Dacca = each
+                grows at <b>3×</b>. Own all 5 = <b>5×</b> each! Completing color
+                sets is extremely powerful.
+              </p>
+              <p>
+                <b>Side Bonus</b> (based on which board edge the farm sits on):
+              </p>
+              <ul>
+                <li>Bottom row: <b>+0%</b></li>
+                <li>Left column: <b>+10%</b></li>
+                <li>Top row: <b>+20%</b></li>
+                <li>Right column: <b>+30%</b></li>
+              </ul>
+              <div class="rules-callout rules-callout-example">
+                <b>📝 Example:</b> You own 3 Red Dacca farms (yield 200🍌). One
+                sits on the top row. You land on GROW 50%. Growth = 200 × 3 ×
+                0.50 × (1 + 0.20) = <b>360🍌</b> added to that farm's banana
+                pile.
+              </div>
+              <div class="rules-callout rules-callout-warn">
+                <b>🐒 Squatter Rule:</b> If an opponent is sitting on your farm
+                when it grows, <i>they</i> steal the growth instead of it going
+                to the banana pile!
+              </div>
+            </div>
+
+            <div class="rules-section">
+              <h3>🏜️ Desert Tiles</h3>
+              <p>
+                <b>8 desert tiles</b> that cost 0🍌. They produce no yield and
+                are excluded from GROW. Won through auctions like normal farms —
+                but since they cost nothing, the winning bid is always 0. Useful
+                for chain bonus positioning!
+              </p>
+            </div>
+
+            <div class="rules-section">
+              <h3>🍌 Tax Tiles</h3>
+              <p>Landing on a tax tile takes a percentage of your bananas:</p>
+              <ul>
+                <li><b>🍌 Tax −10%</b> — Lose 10% of your bananas (2 tiles)</li>
+                <li><b>🍌 Tax −15%</b> — Lose 15% of your bananas (2 tiles)</li>
+              </ul>
+            </div>
+
+            <div class="rules-section">
+              <h3>🌿 Vine Swing</h3>
+              <p>
+                Landing here lets you <b>teleport to any farm you own</b>. That
+                farm's tile is then processed normally — you collect its banana
+                pile, and it can trigger poker if an opponent is there. If you
+                <b>don't own any farms</b>, nothing happens.
+              </p>
+            </div>
+
+            <div class="rules-section">
+              <h3>⭐ Super Banana</h3>
+              <p>
+                The legendary hidden ⭐ tile. Landing on it with
+                <b>7,777🍌 or more</b> means you buy it and
+                <b>win the game instantly</b>!
+              </p>
+              <div class="rules-callout rules-callout-tip">
+                <b>Can't afford it?</b> The tile is revealed to all players for
+                4.5 seconds, then it <b>swaps to a random hidden tile</b>
+                elsewhere on the board. The tile left behind becomes a normal
+                farm that gets auctioned.
+              </div>
+              <div class="rules-callout rules-callout-warn">
+                <b>No hidden tiles left?</b> If you can't afford it and there
+                are no hidden tiles to swap to — you are <b>eliminated</b> and
+                the richest remaining player wins!
+              </div>
+            </div>
+
+            <!-- ═══ CATEGORY: AUCTIONS ═══ -->
+            <div class="rules-category-header">
+              <span class="rules-cat-line"></span>
+              <span class="rules-cat-label">🔨 Auctions</span>
+              <span class="rules-cat-line"></span>
+            </div>
+
+            <div class="rules-section">
+              <h3>🔨 Banana Bid (Standard Auction)</h3>
+              <p>
+                When you land on an unowned farm, an auction begins with
+                <b>3 phases</b>:
+              </p>
+              <div class="rules-steps">
+                <div class="rules-step">
+                  <span class="rules-step-num">1</span>
+                  <span
+                    ><b>Lander bids</b> — You name your opening price (visible
+                    to all)</span
+                  >
+                </div>
+                <div class="rules-step">
+                  <span class="rules-step-num">2</span>
+                  <span
+                    ><b>Challengers respond</b> — Other players can pass or
+                    place a <b>blind bid</b> (must be higher than yours)</span
+                  >
+                </div>
+                <div class="rules-step">
+                  <span class="rules-step-num">3</span>
+                  <span
+                    ><b>Lander's final bid</b> — If anyone challenged, you get
+                    one last <b>blind bid</b> to reclaim it</span
+                  >
+                </div>
+              </div>
+              <p>
+                Highest bidder wins the farm and pays their bid.
+                <b>Ties go to the lander.</b>
+              </p>
+              <div class="rules-callout rules-callout-tip">
+                <b>Broke?</b> If you have 0🍌 and land on an unowned tile, the
+                richest opponent claims it free. If <i>everyone</i> is broke,
+                the lander gets it free.
+              </div>
+            </div>
+
+            <div class="rules-section">
+              <h3>🏷️ Simple Auction (Optional)</h3>
+              <p>
+                A faster auction variant for <b>FFA games only</b>. When
+                enabled:
+              </p>
+              <div class="rules-steps">
+                <div class="rules-step">
+                  <span class="rules-step-num">1</span>
+                  <span
+                    ><b>Lander names a price</b> — You set the sale price for
+                    the farm</span
+                  >
+                </div>
+                <div class="rules-step">
+                  <span class="rules-step-num">2</span>
+                  <span
+                    ><b>Opponents accept or decline</b> — Each opponent chooses
+                    whether to buy it at your price</span
+                  >
+                </div>
+                <div class="rules-step">
+                  <span class="rules-step-num">3</span>
+                  <span
+                    ><b>Tiebreaker</b> — If multiple opponents accept, they
+                    enter a <b>blind bid</b> to decide who gets the right to
+                    buy</span
+                  >
+                </div>
+              </div>
+              <p>
+                If no one accepts, the <b>lander pays their own price</b> and
+                gets the farm. Great for speeding up games!
+              </p>
+            </div>
+
+            <div class="rules-section">
+              <h3>🤝 Teams Auction</h3>
+              <p>
+                In <b>Teams mode</b>, auctions are always <b>1v1</b>: you vs.
+                the <b>closest opponent</b> (ties broken by who has more 🍌).
+                Same 3-phase flow as the standard auction, just with fewer
+                bidders.
+              </p>
+            </div>
+
+            <!-- ═══ CATEGORY: ENCOUNTERS ═══ -->
+            <div class="rules-category-header">
+              <span class="rules-cat-line"></span>
+              <span class="rules-cat-label">⚔️ Encounters</span>
+              <span class="rules-cat-line"></span>
+            </div>
+
+            <div class="rules-section">
+              <h3>🃏 Poker (Texas Hold'em)</h3>
+              <p>
+                Triggered when
+                <b>two non-teammate players share the same tile</b> and both
+                have money. Play a heads-up hand of <b>Texas Hold'em</b>:
+              </p>
+              <ul>
+                <li>Landing player = <b>Big Blind</b> (up to 200🍌)</li>
+                <li>Other player = <b>Small Blind</b> (up to 100🍌)</li>
+                <li>Rounds: <b>Preflop → Flop → Turn → River → Showdown</b></li>
+                <li>
+                  Standard poker hand rankings (pair, straight, flush, etc.)
+                </li>
+              </ul>
+              <p>
+                Each round you can <b>check, raise, or fold</b>. Winner takes
+                the pot. Tied hands split it evenly.
+              </p>
+            </div>
+
+            <div class="rules-section">
+              <h3>🐵 Monkey Poker (Optional)</h3>
+              <p>
+                A simplified poker variant — <b>on by default</b>. Replaces
+                Texas Hold'em with a faster, luck-based card game:
+              </p>
+              <ul>
+                <li>Cards are numbered <b>1–10</b> (no suits)</li>
+                <li>Each player gets <b>1 card per round</b> over 3 rounds</li>
+                <li>Rounds: <b>Preflop → Flop → River → Showdown</b></li>
+                <li>At showdown, <b>highest sum wins</b> the pot</li>
+              </ul>
+              <div class="rules-callout rules-callout-tip">
+                <b>Why Monkey Poker?</b> It's faster and more accessible than
+                full Texas Hold'em. You still bluff and fold, but don't need to
+                know poker hand rankings. Toggle it off in game settings for the
+                real deal!
+              </div>
+            </div>
+
+            <div class="rules-section">
+              <h3>💣 Bombs (Optional)</h3>
+              <p>
+                When <b>Bomb Mode</b> is enabled, players can buy and plant
+                hidden explosives on the board:
+              </p>
+              <div class="rules-steps">
+                <div class="rules-step">
+                  <span class="rules-step-num">1</span>
+                  <span><b>Buy a bomb</b> for 5,000🍌 (one at a time)</span>
+                </div>
+                <div class="rules-step">
+                  <span class="rules-step-num">2</span>
+                  <span
+                    ><b>Place it</b> on any tile on the board (can't stack on
+                    existing bombs)</span
+                  >
+                </div>
+                <div class="rules-step">
+                  <span class="rules-step-num">3</span>
+                  <span
+                    ><b>Wait...</b> if an opponent lands on it — 💥 BOOM! You
+                    win!</span
+                  >
+                </div>
+              </div>
+              <div class="rules-callout rules-callout-warn">
+                <b>⏳ Bombs expire!</b> Each bomb lasts for 2 × (active players)
+                turns. If no one triggers it in time, it fizzles out and your
+                5,000🍌 is gone. You can only hold one bomb at a time, and you
+                <b>can't trigger your own bomb</b>.
+              </div>
+            </div>
+
+            <!-- ═══ CATEGORY: ABILITIES ═══ -->
+            <div class="rules-category-header">
+              <span class="rules-cat-line"></span>
+              <span class="rules-cat-label">🐾 Abilities & Tools</span>
+              <span class="rules-cat-line"></span>
+            </div>
+
+            <div class="rules-section">
+              <h3>🐾 Pets</h3>
+              <p>
+                Choose a pet in the lobby. Each pet has a unique ability you can
+                use <b>after rolling</b> on your turn:
+              </p>
+              <table class="rules-table">
+                <thead>
+                  <tr>
+                    <th>Pet</th>
+                    <th>Ability</th>
+                    <th>Cooldown</th>
+                    <th>Limited</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>🦁 Strong</td>
+                    <td>Move forward 1 space (guaranteed)</td>
+                    <td>20 rolls</td>
+                    <td>1 use</td>
+                  </tr>
+                  <tr>
+                    <td>🐆 Energy</td>
+                    <td>50% chance to move forward 1 space</td>
+                    <td>7 rolls</td>
+                    <td>3 uses</td>
+                  </tr>
+                  <tr>
+                    <td>🦄 Magic</td>
+                    <td>50% chance to push an opponent forward 1</td>
+                    <td>10 rolls</td>
+                    <td>2 uses</td>
+                  </tr>
+                </tbody>
+              </table>
+              <p>
+                <b>Cooldown mode:</b> Pet recharges after N rolls (counting
+                <i>all</i> players' rolls). <b>Limited mode:</b> Fixed number of
+                uses for the entire game — use them wisely!
+              </p>
+            </div>
+
+            <div class="rules-section">
+              <h3>🔭 Scouting</h3>
+              <p>
+                Optional pre-game ability. When enabled, each player picks
+                <b>one hidden tile</b> to secretly reveal to themselves before
+                the game begins. The tile stays hidden to everyone else until
+                normally discovered. In Teams mode, one player scouts for both
+                teammates.
+              </p>
+            </div>
+
+            <!-- ═══ CATEGORY: GAME MODES ═══ -->
+            <div class="rules-category-header">
+              <span class="rules-cat-line"></span>
+              <span class="rules-cat-label">⚙️ Game Modes & Settings</span>
+              <span class="rules-cat-line"></span>
+            </div>
+
+            <div class="rules-section">
+              <h3>👥 Teams Mode (2v2)</h3>
+              <p>
+                4 players split into 2 teams. Either teammate buying the ⭐
+                Magic Banana wins it for the whole team.
+              </p>
+              <ul>
+                <li>
+                  <b>No yield</b> between teammates — landing on your teammate's
+                  farm is safe
+                </li>
+                <li><b>Trade bananas</b> with your teammate (50🍌 fee)</li>
+                <li><b>Swap farms</b> with your teammate (100🍌 fee)</li>
+                <li>GROW counts <b>teammate farms</b> for set multiplier</li>
+                <li>Teammate banana piles are <b>collected, not stolen</b></li>
+                <li>Auctions are <b>1v1</b> against closest opponent</li>
+              </ul>
+            </div>
+
+            <div class="rules-section">
+              <h3>⚙️ Configurable Options</h3>
+              <p>These settings can be toggled when creating a game:</p>
+              <table class="rules-table">
+                <thead>
+                  <tr>
+                    <th>Setting</th>
+                    <th>Default</th>
+                    <th>Description</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>💰 Starting Bananas</td>
+                    <td>1,000🍌</td>
+                    <td>Range: 100–4,000🍌</td>
+                  </tr>
+                  <tr>
+                    <td>👥 Max Players</td>
+                    <td>4</td>
+                    <td>2–4 players (locked to 4 in Teams)</td>
+                  </tr>
+                  <tr>
+                    <td>🔍 Scouting</td>
+                    <td>Off</td>
+                    <td>Pre-game tile reveal pick</td>
+                  </tr>
+                  <tr>
+                    <td>🏷️ Simple Auction</td>
+                    <td>On</td>
+                    <td>Faster auction format (FFA only)</td>
+                  </tr>
+                  <tr>
+                    <td>💣 Bomb Mode</td>
+                    <td>On</td>
+                    <td>Buy & plant bombs for instant win</td>
+                  </tr>
+                  <tr>
+                    <td>🐵 Monkey Poker</td>
+                    <td>On</td>
+                    <td>Simplified poker (1–10 cards, sum wins)</td>
+                  </tr>
+                  <tr>
+                    <td>🐾 Pet Mode</td>
+                    <td>Cooldown</td>
+                    <td>Cooldown (recharges) or Limited (fixed uses)</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+        <!-- Shared back button -->
+        <div class="board-preview-actions">
+          <button class="btn btn-big btn-alt" onclick="closeBoardPreview()">
+            ← Back
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <script src="board.js"></script>
+    <script src="auth.js"></script>
+    <script src="game.js"></script>
+  </body>
+</html>
