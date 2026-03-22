@@ -190,7 +190,11 @@ io.on("connection", (socket) => {
   socket.on("roll_dice", (data) => {
     const game = games.get(data.gameId);
     if (!game) return;
-    const result = game.rollDice(socket.id);
+    const dc = data.diceCount;
+    const result = game.rollDice(
+      socket.id,
+      dc === 1 || dc === 3 ? dc : undefined,
+    );
     if (result) {
       emitGameUpdate(data.gameId, game);
       if (game.mushroomPending) {
@@ -455,6 +459,6 @@ if (process.env.NODE_ENV !== "production") {
 }
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () =>
+server.listen(PORT, "0.0.0.0", () =>
   console.log(`Monopoly server running on port ${PORT}`),
 );

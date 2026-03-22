@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@400;500;600;700;800&family=Fredoka:wght@400;500;600;700&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@400;500;600;700;800&family=Bungee&family=Fredoka:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     />
     <link rel="stylesheet" href="styles.css" />
@@ -226,9 +226,9 @@
       <div id="screen-menu" class="screen active">
         <div class="card menu-card">
           <div class="menu-logo">🐒</div>
-          <h1>💣 MONKEY BUSINESS 💰</h1>
+          <h1>🍍 MONKEY BUSINESS 💰</h1>
           <p class="menu-tagline">
-            🌴 Buy farms. Grow bananas. Bomb each other. Obtain the
+            🌴 To buy farms. To grow bananas. To bomb monkeys. To achieve the
             <span class="rainbow-text">super banana</span>. 🌴
           </p>
           <div class="menu-monkeys">🙈🙉🙊</div>
@@ -357,7 +357,7 @@
                 </label>
                 <label class="toggle-label">
                   <input type="checkbox" id="create-bomb-mode" checked />
-                  <span>Bomb Mode 💣</span>
+                  <span>Pineapple Bomb Mode 🍍</span>
                 </label>
                 <label class="toggle-label">
                   <input type="checkbox" id="create-monkey-poker" checked />
@@ -499,10 +499,10 @@
                   <div class="lobby-pet-name">Strong Pet</div>
                   <div
                     class="lobby-pet-desc"
-                    data-cd-desc="Move forward 1 space (guaranteed). 20 roll cooldown."
+                    data-cd-desc="Move forward 1 space (guaranteed). 15 roll cooldown."
                     data-lim-desc="Move forward 1 space (guaranteed). 1 use per game."
                   >
-                    Move forward 1 space (guaranteed). 20 roll cooldown.
+                    Move forward 1 space (guaranteed). 15 roll cooldown.
                   </div>
                 </button>
                 <button
@@ -529,10 +529,11 @@
                   <div class="lobby-pet-name">Magic Pet</div>
                   <div
                     class="lobby-pet-desc"
-                    data-cd-desc="Flip a coin to push an opponent forward 1. 10 roll cooldown."
-                    data-lim-desc="Flip a coin to push an opponent forward 1. 2 uses per game."
+                    data-cd-desc="Flip a coin: heads forward 1, tails backward 1. 10 roll cooldown."
+                    data-lim-desc="Flip a coin: heads forward 1, tails backward 1. 2 uses per game."
                   >
-                    Flip a coin to push an opponent forward 1. 10 roll cooldown.
+                    Flip a coin: heads forward 1, tails backward 1. 10 roll
+                    cooldown.
                   </div>
                 </button>
               </div>
@@ -577,6 +578,13 @@
             <div class="game-over-title">🍌 GAME OVER 🍌</div>
             <div id="game-over-winner" class="game-over-winner"></div>
             <div id="game-over-standings" class="game-over-standings"></div>
+            <button
+              class="btn"
+              style="margin-top: 18px; font-size: 1.1em; padding: 10px 32px"
+              onclick="leaveGame()"
+            >
+              🏠 Back to Lobby
+            </button>
           </div>
         </div>
 
@@ -587,7 +595,7 @@
           style="display: none"
         >
           <span class="bomb-placement-banner-text"
-            >💣 Click a tile on the board to plant your bomb</span
+            >🍍 Click a tile on the board to plant your pineapple bomb</span
           >
           <button class="btn btn-alt btn-sm" onclick="closeBombPlacement()">
             Cancel
@@ -646,12 +654,13 @@
               <div id="pet-coin-result" class="pet-coin-result"></div>
             </div>
             <div id="bomb-self-notification" class="bomb-self-notification">
-              💣 You got caught in your own bomb! 💥
+              🍍 You got caught in your own pineapple bomb! 💥
             </div>
             <div
               id="dice-roll-notification"
               class="dice-roll-notification"
             ></div>
+            <div id="pet-used-notification" class="pet-used-notification"></div>
             <div id="board" class="board">
               <!-- Auction Overlay (rendered in board center) -->
               <div id="auction-box" class="auction-box" style="display: none">
@@ -1092,7 +1101,35 @@
                     </div>
                   </div>
                 </div>
-                <div class="coin-scene" id="coin-scene">
+                <div class="die-scene" id="die-scene3" style="display: none">
+                  <div class="die-cube" id="die3">
+                    <div class="die-face die-face-1">
+                      <span class="pip"></span>
+                    </div>
+                    <div class="die-face die-face-2">
+                      <span class="pip"></span><span class="pip"></span>
+                    </div>
+                    <div class="die-face die-face-3">
+                      <span class="pip"></span><span class="pip"></span
+                      ><span class="pip"></span>
+                    </div>
+                    <div class="die-face die-face-4">
+                      <span class="pip"></span><span class="pip"></span
+                      ><span class="pip"></span><span class="pip"></span>
+                    </div>
+                    <div class="die-face die-face-5">
+                      <span class="pip"></span><span class="pip"></span
+                      ><span class="pip"></span><span class="pip"></span
+                      ><span class="pip"></span>
+                    </div>
+                    <div class="die-face die-face-6">
+                      <span class="pip"></span><span class="pip"></span
+                      ><span class="pip"></span><span class="pip"></span
+                      ><span class="pip"></span><span class="pip"></span>
+                    </div>
+                  </div>
+                </div>
+                <div class="coin-scene" id="coin-scene" style="display: none">
                   <div class="coin-flip" id="coin">
                     <div class="coin-face coin-front">0</div>
                     <div class="coin-face coin-back">-1</div>
@@ -1173,6 +1210,24 @@
                   </button>
                 </label>
               </div>
+              <div style="display: flex; gap: 8px; margin-top: 4px">
+                <button
+                  class="btn btn-alt"
+                  id="btn-roll-1"
+                  onclick="armDiceOverride(1)"
+                  style="flex: 1"
+                >
+                  🎲 500🍌
+                </button>
+                <button
+                  class="btn btn-alt"
+                  id="btn-roll-3"
+                  onclick="armDiceOverride(3)"
+                  style="flex: 1"
+                >
+                  🎲🎲🎲 1000🍌
+                </button>
+              </div>
               <button
                 class="btn btn-alt"
                 id="btn-trade"
@@ -1186,7 +1241,7 @@
                 onclick="buyBomb()"
                 style="display: none"
               >
-                💣 Buy Bomb (5000🍌)
+                🍍 Buy Pineapple Bomb 5000🍌
               </button>
               <button
                 class="btn btn-bomb"
@@ -1194,7 +1249,7 @@
                 onclick="openBombPlacement()"
                 style="display: none"
               >
-                💣 Place Bomb
+                🍍 Place Pineapple Bomb
               </button>
               <button
                 class="btn btn-alt"
@@ -1327,6 +1382,20 @@
               <input type="checkbox" id="chk-auto-accept" />
               Auto Accept
             </label>
+            <label
+              class="toggle-reveal"
+              title="Auto pick a random farm when landing on Vine Swing"
+            >
+              <input type="checkbox" id="chk-auto-vine" />
+              Auto Vine
+            </label>
+            <label
+              class="toggle-reveal"
+              title="Auto fold when it's your turn in poker"
+            >
+              <input type="checkbox" id="chk-auto-fold" />
+              Auto Fold
+            </label>
           </aside>
         </div>
       </div>
@@ -1391,7 +1460,7 @@
                 <div class="rules-qr-item">
                   <span class="rules-qr-icon">🎯</span>
                   <span
-                    ><b>Goal:</b> Buy the ⭐ Magic Banana (7,777🍌) or 💣 blow
+                    ><b>Goal:</b> Buy the ⭐ Magic Banana (7,777🍌) or 🍍 blow
                     up an opponent</span
                   >
                 </div>
@@ -1435,8 +1504,9 @@
                 enough money and the game is yours.
               </p>
               <div class="rules-callout rules-callout-warn">
-                <b>💣 Bomb Mode:</b> If enabled, you can also win by detonating
-                a bomb under an opponent! See the Bombs section below.
+                <b>🍍 Pineapple Bomb Mode:</b> If enabled, you can also win by
+                detonating a pineapple bomb under an opponent! See the Bombs
+                section below.
               </div>
               <p>
                 In <b>Teams mode (2v2)</b>, your team wins when either teammate
@@ -1468,8 +1538,8 @@
               <p>
                 You <b>cannot go below 0🍌</b>. If a payment would take you
                 negative, you simply pay what you can. Even at 0🍌 you stay in
-                the game — no one is eliminated (except by ⭐ Super Banana or 💣
-                Bomb).
+                the game — no one is eliminated (except by ⭐ Super Banana or 🍍
+                Pineapple Bomb).
               </p>
             </div>
 
@@ -1537,13 +1607,13 @@
                     <td class="rules-rarity rules-rarity-uncommon">Uncommon</td>
                   </tr>
                   <tr>
-                    <td>🟠 Goldfinger</td>
+                    <td>� Gros Michel</td>
                     <td>360🍌</td>
                     <td>4</td>
                     <td class="rules-rarity rules-rarity-rare">Rare</td>
                   </tr>
                   <tr>
-                    <td>🟣 Gros Michel</td>
+                    <td>🟠 Goldfinger</td>
                     <td>500🍌</td>
                     <td>3</td>
                     <td class="rules-rarity rules-rarity-legendary">
@@ -1616,8 +1686,8 @@
               <ul>
                 <li>Bottom row: <b>+0%</b></li>
                 <li>Left column: <b>+10%</b></li>
-                <li>Top row: <b>+20%</b></li>
-                <li>Right column: <b>+30%</b></li>
+                <li>Top row: <b>+25%</b></li>
+                <li>Right column: <b>+50%</b></li>
               </ul>
               <div class="rules-callout rules-callout-example">
                 <b>📝 Example:</b> You own 3 Red Dacca farms (yield 200🍌). One
@@ -1646,9 +1716,19 @@
               <h3>🍌 Tax Tiles</h3>
               <p>Landing on a tax tile takes a percentage of your bananas:</p>
               <ul>
-                <li><b>🍌 Tax −10%</b> — Lose 10% of your bananas (2 tiles)</li>
-                <li><b>🍌 Tax −15%</b> — Lose 15% of your bananas (2 tiles)</li>
+                <li><b>🍌 Tax −10%</b> — Lose 10% of your bananas (1 tile)</li>
+                <li><b>🍌 Tax −15%</b> — Lose 15% of your bananas (1 tile)</li>
               </ul>
+            </div>
+
+            <div class="rules-section">
+              <h3>🌱 Easy Grow</h3>
+              <p>
+                A mini grow tile that triggers when you
+                <b>cross it or land on it</b>. Grows bananas on all your farms
+                at <b>+10%</b> rate. This tile shuffles with the rest of the
+                board.
+              </p>
             </div>
 
             <div class="rules-section">
@@ -1823,7 +1903,7 @@
             </div>
 
             <div class="rules-section">
-              <h3>💣 Bombs (Optional)</h3>
+              <h3>🍍 Pineapple Bombs (Optional)</h3>
               <p>
                 When <b>Bomb Mode</b> is enabled, players can buy and plant
                 hidden explosives on the board:
@@ -1976,7 +2056,7 @@
                     <td>Faster auction format (FFA only)</td>
                   </tr>
                   <tr>
-                    <td>💣 Bomb Mode</td>
+                    <td>🍍 Pineapple Bomb Mode</td>
                     <td>On</td>
                     <td>Buy & plant bombs for instant win</td>
                   </tr>

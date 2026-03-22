@@ -42,16 +42,16 @@ MONKEY BUSINESS BOARD — ALL 52 TILES
 24  D4  210🍌
 41  D5  215🍌
 
-── GOLDFINGER / Yellow (4) ──────────────────────
-33  E1  260🍌
-34  E2  260🍌
-36  E3  280🍌
-37  E4  290🍌
+── GROS MICHEL / Dark Blue (4) ──────────────────
+33  G1  360🍌
+34  G2  360🍌
+36  G3  360🍌
+37  G4  360🍌
 
-── GROS MICHEL / Dark Blue (3) ──────────────────
-48  G1  350🍌
-49  G2  380🍌
-51  G3  400🍌
+── GOLDFINGER / Orange (3) ──────────────────────
+48  E1  500🍌
+49  E2  500🍌
+51  E3  500🍌
 
 ── DESERTS (7) ──────────────────────────────────
  8  🌵 Desert   10🍌
@@ -67,9 +67,11 @@ MONKEY BUSINESS BOARD — ALL 52 TILES
  5  🍌 -20%  (black tile)
 50  🍌 -20%  (black tile)
 
-── BANANA PEEL / -10% (2) ──────────────────────
+── BANANA PEEL / -10% (1) ──────────────────────
  2  🍌 -10%  (dark grey tile)
-42  🍌 -10%  (dark grey tile)
+
+── EASY GROW / +10% (1) ───────────────────────
+42  🌱 +10%  (green tile, triggers on cross or land)
 
 ── SPECIAL (1) ─────────────────────────────────
 21  ⭐ Special  (white tile)
@@ -83,7 +85,8 @@ TOTALS
   Corners:      4
   Deserts:      8
   Peel -20%:    2
-  Peel -10%:    2
+  Peel -10%:    1
+  Easy Grow:    1
   Special:      1
   Vine Swing:   1
   ─────────────

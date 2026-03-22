@@ -269,7 +269,7 @@ body {
 .menu-buttons {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 14px;
 }
 
 /* ── Buttons ──────────────────────────────────────────────────── */
@@ -277,16 +277,17 @@ body {
   padding: 10px 18px;
   border: none;
   border-radius: 12px;
+  font-family: "Fredoka", "Baloo 2", sans-serif;
   font-size: 0.95em;
   font-weight: 600;
   cursor: pointer;
   background: linear-gradient(135deg, #e67e22, #d35400);
-  color: #fff;
+  color: #f0e0c8;
   transition:
     transform 0.15s,
     opacity 0.15s,
     box-shadow 0.15s;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
 }
 .btn:hover:not(:disabled) {
   opacity: 0.92;
@@ -308,11 +309,19 @@ body {
 .btn-alt:hover:not(:disabled) {
   box-shadow: 0 4px 12px rgba(90, 122, 58, 0.3);
 }
+.btn-armed {
+  background: linear-gradient(135deg, #5a8a3e, #3a6a2e);
+  border-color: #7aaa4a;
+  box-shadow: 0 0 8px rgba(120, 170, 60, 0.5);
+}
 .btn-big {
-  padding: 14px 28px;
-  font-size: 1.15em;
+  padding: 16px 30px;
+  font-family: "Bungee", "Fredoka", sans-serif;
+  font-size: 1.1em;
+  font-weight: 400;
   border-radius: 14px;
-  letter-spacing: 1px;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
 }
 .btn-glow {
   box-shadow: 0 0 20px rgba(230, 126, 34, 0.25);
@@ -380,12 +389,6 @@ body {
 }
 .card select {
   cursor: pointer;
-  appearance: none;
-  -webkit-appearance: none;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23ffe135' stroke-width='1.5' fill='none'/%3E%3C/svg%3E");
-  background-repeat: no-repeat;
-  background-position: right 12px center;
-  padding-right: 32px;
 }
 .card select option {
   background: #1a2e0f;
@@ -630,7 +633,7 @@ body {
   width: 100%;
 }
 .lobby-settings-controls select {
-  padding: 9px 32px 9px 12px;
+  padding: 9px 12px;
   border-radius: 10px;
   border: 1px solid rgba(255, 255, 255, 0.12);
   background: linear-gradient(
@@ -638,14 +641,9 @@ body {
     rgba(15, 25, 10, 0.8),
     rgba(25, 40, 18, 0.6)
   );
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23ffe135' stroke-width='1.5' fill='none'/%3E%3C/svg%3E");
-  background-repeat: no-repeat;
-  background-position: right 12px center;
   color: #f0f0f0;
   font-family: inherit;
   font-size: 1em;
-  appearance: none;
-  -webkit-appearance: none;
   cursor: pointer;
   box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.3);
   transition:
@@ -993,8 +991,8 @@ body {
   --gc-lightblue: #5a9ab8;
   --gc-red: #c45040;
   --gc-pink: #c8609a;
-  --gc-orange: #d48a30;
-  --gc-darkblue: #3850a0;
+  --gc-orange: #c5952a;
+  --gc-darkblue: #8a8a8a;
 }
 
 #reveal-overlay {
@@ -1322,10 +1320,10 @@ body {
   background: #e91e90;
 }
 .owner-prop-dot.g-orange {
-  background: #ff8c00;
+  background: #c5952a;
 }
 .owner-prop-dot.g-darkblue {
-  background: #2952c4;
+  background: #a0a0a0;
 }
 .owner-prop-dot.g-mushroom {
   background: linear-gradient(
@@ -1361,10 +1359,10 @@ body {
   color: #e91e90;
 }
 .owner-prop-mult.g-orange {
-  color: #ff8c00;
+  color: #c5952a;
 }
 .owner-prop-mult.g-darkblue {
-  color: #5b8af7;
+  color: #b8b8b8;
 }
 .owner-prop-bonus {
   color: #2ecc71;
@@ -1374,6 +1372,12 @@ body {
   padding: 1px 6px;
   border-radius: 6px;
   margin-left: 4px;
+}
+.owner-set-count {
+  color: rgba(255, 255, 255, 0.45);
+  font-size: 0.78em;
+  font-weight: 600;
+  margin-left: 2px;
 }
 .owner-prop-price {
   margin-left: auto;
@@ -1475,7 +1479,7 @@ body {
   background: #e91e90;
 }
 .chart-group-dot.g-orange {
-  background: #ff8c00;
+  background: #c5952a;
 }
 .chart-group-dot.g-red {
   background: #e74c3c;
@@ -1487,7 +1491,7 @@ body {
   background: #2ecc71;
 }
 .chart-group-dot.g-darkblue {
-  background: #2952c4;
+  background: #a0a0a0;
 }
 .chart-group-dot.g-railroad {
   background: #333;
@@ -1522,6 +1526,28 @@ body {
 }
 .chart-item.chart-owned .chart-item-price {
   color: #555;
+}
+.chart-item.dice-match-glow {
+  background: rgba(255, 225, 53, 0.15);
+  box-shadow:
+    0 0 8px rgba(255, 225, 53, 0.6),
+    inset 0 0 4px rgba(255, 225, 53, 0.2);
+  animation: chart-dice-glow 1.2s ease-in-out infinite alternate;
+  color: #ffe135;
+  text-decoration: none;
+}
+.chart-item.dice-match-glow .chart-item-price {
+  color: #ffe135;
+}
+@keyframes chart-dice-glow {
+  0% {
+    box-shadow: 0 0 4px rgba(255, 225, 53, 0.3);
+  }
+  100% {
+    box-shadow:
+      0 0 12px rgba(255, 225, 53, 0.8),
+      inset 0 0 6px rgba(255, 225, 53, 0.3);
+  }
 }
 .chart-item-owner {
   font-size: 0.85em;
@@ -2328,11 +2354,11 @@ body {
   opacity: 0.9;
 }
 .pet-coin-scene {
-  width: 80px;
-  height: 80px;
-  perspective: 600px;
+  width: 90px;
+  height: 90px;
+  perspective: 800px;
   margin: 4px 0;
-  filter: drop-shadow(0 4px 16px rgba(255, 215, 0, 0.25));
+  filter: drop-shadow(0 4px 20px rgba(255, 215, 0, 0.35));
 }
 .pet-coin-flipper {
   width: 100%;
@@ -2343,8 +2369,8 @@ body {
 }
 .pet-coin-face {
   position: absolute;
-  width: 80px;
-  height: 80px;
+  width: 90px;
+  height: 90px;
   border-radius: 50%;
   display: flex;
   align-items: center;
@@ -2352,7 +2378,7 @@ body {
   backface-visibility: hidden;
 }
 .pet-coin-face .coin-icon {
-  font-size: 36px;
+  font-size: 40px;
   line-height: 1;
 }
 .pet-coin-heads {
@@ -2412,25 +2438,28 @@ body {
 }
 @keyframes petCoinSpin {
   0% {
-    transform: rotateY(0deg) scale(1);
+    transform: rotateY(0deg) scale(1) translateY(0);
   }
-  10% {
-    transform: rotateY(180deg) scale(0.92) translateY(-8px);
+  5% {
+    transform: rotateY(60deg) scale(0.95) translateY(-6px);
   }
-  25% {
-    transform: rotateY(540deg) scale(0.85) translateY(-20px);
+  15% {
+    transform: rotateY(360deg) scale(0.85) translateY(-28px);
   }
-  45% {
-    transform: rotateY(900deg) scale(0.82) translateY(-26px);
+  30% {
+    transform: rotateY(720deg) scale(0.8) translateY(-38px);
   }
-  65% {
-    transform: rotateY(1260deg) scale(0.88) translateY(-14px);
+  50% {
+    transform: rotateY(1080deg) scale(0.82) translateY(-30px);
   }
-  80% {
-    transform: rotateY(1440deg) scale(0.94) translateY(-4px);
+  70% {
+    transform: rotateY(1380deg) scale(0.9) translateY(-12px);
   }
-  92% {
-    transform: rotateY(1530deg) scale(0.98) translateY(-1px);
+  85% {
+    transform: rotateY(1530deg) scale(0.96) translateY(-3px);
+  }
+  93% {
+    transform: rotateY(1590deg) scale(0.99) translateY(1px);
   }
   100% {
     transform: rotateY(1620deg) scale(1) translateY(0);
@@ -2438,25 +2467,28 @@ body {
 }
 @keyframes petCoinSpinTails {
   0% {
-    transform: rotateY(0deg) scale(1);
+    transform: rotateY(0deg) scale(1) translateY(0);
   }
-  10% {
-    transform: rotateY(180deg) scale(0.92) translateY(-8px);
+  5% {
+    transform: rotateY(60deg) scale(0.95) translateY(-6px);
   }
-  25% {
-    transform: rotateY(540deg) scale(0.85) translateY(-20px);
+  15% {
+    transform: rotateY(360deg) scale(0.85) translateY(-28px);
   }
-  45% {
-    transform: rotateY(900deg) scale(0.82) translateY(-26px);
+  30% {
+    transform: rotateY(720deg) scale(0.8) translateY(-38px);
   }
-  65% {
-    transform: rotateY(1260deg) scale(0.88) translateY(-14px);
+  50% {
+    transform: rotateY(1080deg) scale(0.82) translateY(-30px);
   }
-  80% {
-    transform: rotateY(1440deg) scale(0.94) translateY(-4px);
+  70% {
+    transform: rotateY(1380deg) scale(0.9) translateY(-12px);
   }
-  92% {
-    transform: rotateY(1530deg) scale(0.98) translateY(-1px);
+  85% {
+    transform: rotateY(1710deg) scale(0.96) translateY(-3px);
+  }
+  93% {
+    transform: rotateY(1770deg) scale(0.99) translateY(1px);
   }
   100% {
     transform: rotateY(1800deg) scale(1) translateY(0);
@@ -2502,6 +2534,34 @@ body {
   backdrop-filter: blur(4px);
 }
 .dice-roll-notification.show {
+  display: block;
+}
+
+.pet-used-notification {
+  display: none;
+  position: absolute;
+  top: 18%;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 99;
+  font-family: "Baloo 2", "Fredoka", sans-serif;
+  font-size: 19px;
+  font-weight: 700;
+  color: #e0c0ff;
+  background: linear-gradient(135deg, #1a102e 0%, #2a1840 100%);
+  border: 2px solid rgba(180, 130, 255, 0.4);
+  border-radius: 14px;
+  padding: 10px 24px;
+  text-align: center;
+  box-shadow:
+    0 0 24px rgba(180, 130, 255, 0.2),
+    0 6px 20px rgba(0, 0, 0, 0.4);
+  animation: turnPulse 0.4s ease-out;
+  pointer-events: none;
+  white-space: nowrap;
+  backdrop-filter: blur(4px);
+}
+.pet-used-notification.show {
   display: block;
 }
 
@@ -2672,6 +2732,17 @@ body {
   color: #fff;
   border-color: rgba(100, 80, 40, 0.3);
 }
+.space.type-easygrow {
+  background:
+    radial-gradient(
+      circle at 50% 50%,
+      rgba(80, 180, 60, 0.2) 0%,
+      transparent 70%
+    ),
+    linear-gradient(160deg, #2a4a20 0%, #1a3010 100%);
+  color: #b0e890;
+  border-color: rgba(80, 160, 50, 0.4);
+}
 .space.type-auction {
   background: linear-gradient(160deg, #9068b8 0%, #7050a0 100%);
   color: #fff;
@@ -2708,6 +2779,7 @@ body {
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
   border: 2px solid rgba(255, 225, 53, 0.5);
   animation: pile-glow 2s ease-in-out infinite alternate;
+  transform: var(--pile-transform, translate(-50%, -100%));
 }
 .pile-brown {
   border-color: #8b4513;
@@ -2740,6 +2812,32 @@ body {
   100% {
     box-shadow: 0 0 6px rgba(255, 225, 53, 0.7);
   }
+}
+@keyframes dice-match-bounce {
+  0% {
+    transform: var(--pile-transform, translate(-50%, -100%)) scale(1);
+  }
+  20% {
+    transform: var(--pile-transform, translate(-50%, -100%)) scale(1.45);
+  }
+  40% {
+    transform: var(--pile-transform, translate(-50%, -100%)) scale(0.95);
+  }
+  60% {
+    transform: var(--pile-transform, translate(-50%, -100%)) scale(1.2);
+  }
+  80% {
+    transform: var(--pile-transform, translate(-50%, -100%)) scale(1);
+  }
+  100% {
+    transform: var(--pile-transform, translate(-50%, -100%)) scale(1);
+  }
+}
+.banana-pile.dice-match-grow {
+  animation:
+    dice-match-bounce 0.6s ease-out,
+    pile-glow 2s ease-in-out infinite alternate 0.6s;
+  box-shadow: 0 0 10px rgba(255, 225, 53, 0.9);
 }
 .has-banana-pile {
   box-shadow:
@@ -3445,11 +3543,24 @@ body {
   line-height: 1;
   flex-shrink: 0;
 }
-.pstat-money {
+.pstat-pile {
   margin-left: auto;
+  color: #a8d860;
+  font-weight: 600;
+  font-size: 0.78em;
+  opacity: 0.8;
+}
+.pstat-money {
+  margin-left: 6px;
   color: #ffe135;
   font-weight: 700;
   font-size: 0.95em;
+}
+.pstat-pile + .pstat-money {
+  margin-left: 6px;
+}
+.pstat:not(:has(.pstat-pile)) .pstat-money {
+  margin-left: auto;
 }
 .pstat-bankrupt {
   text-decoration: line-through;
@@ -4221,8 +4332,10 @@ body {
   color: #fff;
 }
 .space.g-orange {
-  background: linear-gradient(160deg, #e09438 0%, #c47828 100%);
+  background: linear-gradient(160deg, #d4a84b 0%, #8b6914 50%, #c9a23a 100%);
   color: #fff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+  box-shadow: inset 0 1px 0 rgba(255, 235, 170, 0.35);
 }
 .space.g-red {
   background: linear-gradient(160deg, #d05848 0%, #b44030 100%);
@@ -4237,8 +4350,10 @@ body {
   color: #fff;
 }
 .space.g-darkblue {
-  background: linear-gradient(160deg, #4058b0 0%, #304098 100%);
+  background: linear-gradient(160deg, #c0c0c0 0%, #7a7a7a 50%, #b0b0b0 100%);
   color: #fff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.4);
 }
 .space.g-railroad {
   background: linear-gradient(160deg, #686868 0%, #484848 100%);
@@ -4395,8 +4510,8 @@ body {
 .lobby-pet-card {
   background: rgba(255, 255, 255, 0.06);
   border: 2px solid rgba(255, 255, 255, 0.12);
-  border-radius: 10px;
-  padding: 6px 10px;
+  border-radius: 12px;
+  padding: 10px 14px;
   cursor: pointer;
   text-align: left;
   transition:
@@ -4408,7 +4523,7 @@ body {
   font-family: inherit;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
 }
 
 .lobby-pet-card:hover {
@@ -4424,20 +4539,20 @@ body {
 }
 
 .lobby-pet-emoji {
-  font-size: 1.2em;
+  font-size: 1.6em;
   flex-shrink: 0;
 }
 
 .lobby-pet-name {
   font-weight: 700;
-  font-size: 0.75em;
+  font-size: 0.85em;
   margin-bottom: 0;
 }
 
 .lobby-pet-desc {
-  font-size: 0.6em;
-  color: #aaa;
-  line-height: 1.2;
+  font-size: 0.72em;
+  color: #ccc;
+  line-height: 1.3;
 }
 
 .lobby-pet-badge {

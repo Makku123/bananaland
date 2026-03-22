@@ -318,12 +318,17 @@ function showGameOver() {
     winnerEl.innerHTML = `${emoji} <span class="winner-name">${winnerPlayer.name}</span><br>is the richest monkey and wins! \u2b50\uD83D\uDC51`;
   } else if (winnerPlayer) {
     const emoji = MONKEY_EMOJI[winnerPlayer.color] || "\uD83D\uDC35";
-    winnerEl.innerHTML = `${emoji} <span class="winner-name">${winnerPlayer.name}</span><br>is the Banana King! \uD83D\uDC51`;
+    winnerEl.innerHTML = `${emoji} <span class="winner-name">${winnerPlayer.name}</span><br>is the Monkey God! \uD83D\uDC51\u2b50`;
   }
 
-  // Standings sorted by money (bankrupt players last)
+  // Standings sorted by money (winner always first, bankrupt players last)
   const standingsEl = document.getElementById("game-over-standings");
+  const winnerId = winnerPlayer ? winnerPlayer.id : null;
   const sorted = [...gs.players].sort((a, b) => {
+    if (winnerId) {
+      if (a.id === winnerId) return -1;
+      if (b.id === winnerId) return 1;
+    }
     if (a.bankrupt !== b.bankrupt) return a.bankrupt ? 1 : -1;
     return b.money - a.money;
   });
@@ -378,8 +383,8 @@ function showReveal() {
     "lightblue",
     "red",
     "pink",
-    "orange",
     "darkblue",
+    "orange",
   ];
   const groupNames = {
     yellow: "Cavendish",
@@ -475,7 +480,7 @@ function showReveal() {
       '<span class="reveal-group-dot" style="background:#5a8a3c"></span> Desert \ud83c\udf35 ' +
       '<span class="reveal-group-meta">' +
       cacti.length +
-      " tiles \u00b7 values: 0, 15, 20, 25, 30, 35, 40, 45\ud83c\udf4c</span>";
+      " tiles</span>";
     section.appendChild(header);
 
     const row = document.createElement("div");
@@ -626,7 +631,7 @@ function showLobby() {
     ${gs.gameMode === "teams" ? `<div class="lobby-setting">\u2b50 <span class="lobby-setting-val">Win: Buy the Super Banana (7777\ud83c\udf4c)</span></div>` : ""}
     ${gs.scouting ? '<div class="lobby-setting">\ud83d\udd0d <span class="lobby-setting-val">Scouting</span></div>' : ""}
     ${gs.simpleAuction ? '<div class="lobby-setting">\ud83c\udff7\ufe0f <span class="lobby-setting-val">Simple Auction</span></div>' : ""}
-    ${gs.bombMode ? '<div class="lobby-setting">\ud83d\udca3 <span class="lobby-setting-val">Bomb Mode</span></div>' : ""}
+    ${gs.bombMode ? '<div class="lobby-setting">\ud83c\udf4d <span class="lobby-setting-val">Pineapple Bomb Mode</span></div>' : ""}
     ${gs.monkeyPoker ? '<div class="lobby-setting">\ud83d\udc35 <span class="lobby-setting-val">Monkey Poker</span></div>' : ""}
     ${!gs.monkeyPoker ? '<div class="lobby-setting">\ud83c\udccf <span class="lobby-setting-val">Real Poker</span></div>' : ""}
   `;
@@ -826,14 +831,7 @@ function usePet() {
   } else {
     if (me.petCooldown > 0) return;
   }
-  if (me.pet === "devil") {
-    const sel = document.getElementById("pet-target");
-    const targetId = sel.value;
-    if (!targetId) return;
-    socket.emit("use_pet", { gameId, targetId });
-  } else {
-    socket.emit("use_pet", { gameId });
-  }
+  socket.emit("use_pet", { gameId });
 }
 
 function updateLobbyPets() {
@@ -883,16 +881,28 @@ function updatePetAbilityBox(me, isMyTurn, isPicking) {
 
   const isLimited = gs.petMode === "limited";
   const petUsable = isLimited ? (me.petUses || 0) > 0 : me.petCooldown <= 0;
+  const canAffordPet = me.money >= 100;
 
-  // Show last coin flip result near toggle
+  // Show last coin flip result near toggle (delayed until coin animation finishes)
   const flipResultEl = document.getElementById("pet-flip-result");
   if (flipResultEl) {
     if (gs.petCoinFlip) {
-      const isHeads = gs.petCoinFlip.result === "heads";
-      flipResultEl.textContent = isHeads ? "✅ HEADS" : "❌ TAILS";
-      flipResultEl.style.color = isHeads ? "#4caf50" : "#ff5555";
-      flipResultEl.style.display = "";
+      const flipSideKey = `${gs.turn}-${gs.petCoinFlip.playerName}-${gs.petCoinFlip.result}`;
+      if (flipSideKey !== window._lastPetFlipSideKey) {
+        window._lastPetFlipSideKey = flipSideKey;
+        flipResultEl.style.display = "none";
+        clearTimeout(window._petFlipSideTimer);
+        // 400ms show delay + 150ms pause + 1200ms animation + 0ms buffer
+        window._petFlipSideTimer = setTimeout(() => {
+          const isHeads = gs.petCoinFlip && gs.petCoinFlip.result === "heads";
+          flipResultEl.textContent = isHeads ? "✅ HEADS" : "❌ TAILS";
+          flipResultEl.style.color = isHeads ? "#4caf50" : "#ff5555";
+          flipResultEl.style.display = "";
+        }, 1750);
+      }
     } else {
+      window._lastPetFlipSideKey = null;
+      clearTimeout(window._petFlipSideTimer);
       flipResultEl.style.display = "none";
     }
   }
@@ -923,11 +933,19 @@ function updatePetAbilityBox(me, isMyTurn, isPicking) {
       toggleLabel.classList.remove("pet-toggle-cooldown");
     }
     if (petBtn) {
-      // Energy/Strong pet: disable on your turn or if already pending
-      if (me.pet === "energy" || me.pet === "strong") {
-        petBtn.disabled = isMyTurn || !!me.pendingPet;
+      // Energy/Strong/Magic pet: disable on your turn or if already pending
+      const diceArmed = !!window._armedDiceOverride;
+      const notYetRolled = !me.hasRolled;
+      if (me.pet === "energy" || me.pet === "strong" || me.pet === "devil") {
+        petBtn.disabled =
+          isMyTurn ||
+          !!me.pendingPet ||
+          !canAffordPet ||
+          diceArmed ||
+          notYetRolled;
       } else {
-        petBtn.disabled = isMyTurn;
+        petBtn.disabled =
+          isMyTurn || !canAffordPet || diceArmed || notYetRolled;
       }
     }
     if (isLimited) {
@@ -936,21 +954,26 @@ function updatePetAbilityBox(me, isMyTurn, isPicking) {
       info.textContent = `${petEmoji} ${petName} — Ready!`;
     }
     if (toggleText) {
-      if ((me.pet === "energy" || me.pet === "strong") && me.pendingPet) {
+      if (
+        (me.pet === "energy" || me.pet === "strong" || me.pet === "devil") &&
+        me.pendingPet
+      ) {
         toggleText.textContent = "\ud83d\udc3e Pet acting next turn!";
       } else if (petBtn && petBtn.dataset.armed === "true") {
         toggleText.textContent = "\ud83d\udc3e Pet acting next turn!";
+      } else if (!me.hasRolled) {
+        toggleText.textContent = "\u26D4 Roll dice first";
       } else {
-        toggleText.textContent =
-          me.pet === "energy" || me.pet === "strong"
-            ? "Use Pet"
-            : "Use Pet Next Turn";
+        toggleText.innerHTML =
+          me.pet === "energy" || me.pet === "strong" || me.pet === "devil"
+            ? "Use Pet<br>100\uD83C\uDF4C"
+            : "Use Pet Next Turn<br>100\uD83C\uDF4C";
       }
     }
 
     // Magic pet needs a target selector when toggle is on
     const autoPetChecked = petBtn && petBtn.dataset.armed === "true";
-    if (me.pet === "devil") {
+    if (false) {
       targetSel.style.display = autoPetChecked ? "" : "none";
       if (autoPetChecked && targetSel.options.length === 0) {
         targetSel.innerHTML = "";
@@ -1019,8 +1042,12 @@ function showGame() {
     const isMyTurnLabel = cur && cur.id === myId;
     document.getElementById("turn-name").textContent = cur
       ? isMyTurnLabel
-        ? "Your turn!"
-        : cur.name
+        ? gs.petUsedThisTurn
+          ? "\ud83d\udc3e Pet used!"
+          : "Your turn!"
+        : gs.petUsedThisTurn && cur
+          ? `\ud83d\udc3e ${cur.name}'s pet used!`
+          : cur.name
       : "—";
     document.getElementById("turn-name").style.color = isMyTurnLabel
       ? "#ffe135"
@@ -1032,6 +1059,13 @@ function showGame() {
   // Dice
   const die1El = document.getElementById("die1");
   const die2El = document.getElementById("die2");
+  const die3El = document.getElementById("die3");
+  const dieScene2 = document.getElementById("die-scene2");
+  const dieScene3 = document.getElementById("die-scene3");
+  // Show/hide die scenes based on dice count
+  const numDice = gs.dice ? gs.dice.length : 2;
+  if (dieScene2) dieScene2.style.display = numDice >= 2 ? "" : "none";
+  if (dieScene3) dieScene3.style.display = numDice >= 3 ? "" : "none";
   const coinEl = document.getElementById("coin");
   // Brief delay before allowing dice roll at the start of each turn
   const ROLL_DELAY = 2000;
@@ -1056,6 +1090,49 @@ function showGame() {
     rollDelayDone;
   document.getElementById("btn-roll").disabled = !canRoll;
   document.getElementById("btn-debug-move").disabled = !canRoll;
+
+  // Dice override buttons: show on other players' turns when affordable
+  const myMoney = me ? me.money : 0;
+  const roll1Btn = document.getElementById("btn-roll-1");
+  const roll3Btn = document.getElementById("btn-roll-3");
+  const armedDice = window._armedDiceOverride || null;
+  const petIsArmedForDice =
+    (document.getElementById("btn-auto-pet") &&
+      document.getElementById("btn-auto-pet").dataset.armed === "true") ||
+    (me && me.pendingPet);
+  const isFirstRound = gs.turn < gs.players.length;
+  if (roll1Btn) {
+    roll1Btn.style.display = me && !isMyTurn ? "" : "none";
+    roll1Btn.disabled =
+      myMoney < 500 || !!petIsArmedForDice || isFirstRound || armedDice === 3;
+    roll1Btn.textContent =
+      armedDice === 1
+        ? "\uD83C\uDFB2\u00d71 Armed \u2713"
+        : "\uD83C\uDFB2\u00d71 500\uD83C\uDF4C";
+    if (armedDice === 1) roll1Btn.classList.add("btn-armed");
+    else roll1Btn.classList.remove("btn-armed");
+  }
+  if (roll3Btn) {
+    roll3Btn.style.display = me && !isMyTurn ? "" : "none";
+    roll3Btn.disabled =
+      myMoney < 1000 || !!petIsArmedForDice || isFirstRound || armedDice === 1;
+    roll3Btn.textContent =
+      armedDice === 3
+        ? "\uD83C\uDFB2\u00d73 Armed \u2713"
+        : "\uD83C\uDFB2\u00d73 1000\uD83C\uDF4C";
+    if (armedDice === 3) roll3Btn.classList.add("btn-armed");
+    else roll3Btn.classList.remove("btn-armed");
+  }
+  // When it's our turn and dice override is armed, show indicator on roll button
+  if (canRoll && armedDice) {
+    const rollBtn = document.getElementById("btn-roll");
+    if (rollBtn)
+      if (rollBtn)
+        rollBtn.textContent = `\uD83C\uDFB2 Roll (${armedDice === 1 ? "1 die" : "3 dice"})`;
+  } else {
+    const rollBtn = document.getElementById("btn-roll");
+    if (rollBtn) rollBtn.textContent = "Roll Dice";
+  }
 
   // Auto-roll: trigger dice roll when it's our turn and we haven't rolled yet
   if (canRoll && document.getElementById("chk-auto-roll").checked) {
@@ -1086,8 +1163,8 @@ function showGame() {
 
   // Universal dice roll notification — show for all players when dice are rolled
   const diceNotif = document.getElementById("dice-roll-notification");
-  if (diceNotif && gs.diceRolled && cur) {
-    const diceKey = `${gs.turn}-${gs.dice[0]}-${gs.dice[1]}-${gs.dice[2]}`;
+  if (diceNotif && gs.diceRolled && !gs.petUsedThisTurn && cur) {
+    const diceKey = gs.dice.join("-") + "-" + gs.turn;
     if (diceKey !== window._lastDiceKey) {
       window._lastDiceKey = diceKey;
       // Freeze token positions and tile reveals at pre-roll state during animation
@@ -1103,36 +1180,40 @@ function showGame() {
         window._prevMoney != null ? window._prevMoney : null;
       // Start rolling animation
       die1El.classList.add("rolling");
-      die2El.classList.add("rolling");
+      if (numDice >= 2) die2El.classList.add("rolling");
+      if (numDice >= 3) die3El.classList.add("rolling");
       const rollDuration = 550;
       const rollInterval = 70;
       let elapsed = 0;
       const ticker = setInterval(() => {
-        // Only randomize the coin during animation; dice faces handled by CSS 3D spin
-        const fakeCoin = Math.random() < 0.5;
-        coinEl.classList.toggle("coin-minus", !fakeCoin);
         elapsed += rollInterval;
         if (elapsed >= rollDuration) {
           clearInterval(ticker);
           setDieFace(die1El, gs.dice[0]);
-          setDieFace(die2El, gs.dice[1]);
-          coinEl.classList.toggle("coin-minus", gs.dice[2] === -1);
+          if (numDice >= 2) setDieFace(die2El, gs.dice[1]);
+          if (numDice >= 3) setDieFace(die3El, gs.dice[2]);
           die1El.classList.remove("rolling");
-          die2El.classList.remove("rolling");
+          if (numDice >= 2) die2El.classList.remove("rolling");
+          if (numDice >= 3) die3El.classList.remove("rolling");
           // Store final transform for bounce animation
           die1El.style.setProperty("--die-final", DIE_TRANSFORMS[gs.dice[0]]);
-          die2El.style.setProperty("--die-final", DIE_TRANSFORMS[gs.dice[1]]);
+          if (numDice >= 2)
+            die2El.style.setProperty("--die-final", DIE_TRANSFORMS[gs.dice[1]]);
+          if (numDice >= 3)
+            die3El.style.setProperty("--die-final", DIE_TRANSFORMS[gs.dice[2]]);
           // Step-by-step token walk to final position
-          const total = gs.dice[0] + gs.dice[1] + gs.dice[2];
-          const coinColor = gs.dice[2] === 0 ? "#ffe135" : "#ff4444";
-          const coinLabel = gs.dice[2] === 0 ? "+0" : "-1";
-          const rollText = `🎲 ${cur.name} rolled ${gs.dice[0]}+${gs.dice[1]}<span style="color:${coinColor}">${coinLabel}</span> = ${total}`;
+          const total = gs.dice.reduce((a, b) => a + b, 0);
+          const rollText = `🎲 ${cur.name} rolled ${gs.dice.join("+")} = ${total}`;
           const startPos =
             window._diceRollingPositions &&
             window._diceRollingPositions[cur.id] != null
               ? window._diceRollingPositions[cur.id]
               : cur.position;
-          const steps = (cur.position - startPos + 52 + 52) % 52 || total;
+          // Detect backward movement (e.g. magic pet tails): if forward distance > half the board, walk backward instead
+          const forwardDist = (cur.position - startPos + 52) % 52;
+          const backwardDist = (startPos - cur.position + 52) % 52;
+          const walkBackward = forwardDist > 26 && backwardDist <= 3;
+          const steps = walkBackward ? backwardDist : forwardDist || total;
           let step = 0;
           // Keep reveals frozen during walk, but let token move
           window._diceRollingRevealed = window._diceRollingRevealed || null;
@@ -1175,8 +1256,10 @@ function showGame() {
                 route();
               }, 500);
             } else {
-              // Move token one tile forward
-              const intermediatePos = (startPos + step) % 52;
+              // Move token one tile forward (or backward)
+              const intermediatePos = walkBackward
+                ? (startPos - step + 52) % 52
+                : (startPos + step) % 52;
               window._diceRollingPositions = window._diceRollingPositions || {};
               window._diceRollingPositions[cur.id] = intermediatePos;
               // Mark this tile as visited so its banana pile disappears
@@ -1208,20 +1291,47 @@ function showGame() {
     } else {
       if (gs.dice[0]) setDieFace(die1El, gs.dice[0]);
       if (gs.dice[1]) setDieFace(die2El, gs.dice[1]);
-      coinEl.classList.toggle("coin-minus", gs.diceRolled && gs.dice[2] === -1);
+      if (gs.dice[2]) setDieFace(die3El, gs.dice[2]);
     }
   } else {
     if (gs.dice[0]) setDieFace(die1El, gs.dice[0]);
     if (gs.dice[1]) setDieFace(die2El, gs.dice[1]);
-    coinEl.classList.toggle("coin-minus", gs.diceRolled && gs.dice[2] === -1);
+    if (gs.dice[2]) setDieFace(die3El, gs.dice[2]);
   }
 
   // Turn notification — show once per turn, keep visible for 1.5s (suppress during pet resolving)
   const notif = document.getElementById("turn-notification");
+
+  // Pet used notification — show when any player activates a pet
+  const petNotifEl = document.getElementById("pet-used-notification");
+  if (petNotifEl && gs.lastPetUsed) {
+    const petKey = `${gs.turn}-${gs.lastPetUsed.playerName}-${gs.lastPetUsed.petType}`;
+    if (petKey !== window._lastPetNotifKey) {
+      window._lastPetNotifKey = petKey;
+      const emoji = PET_EMOJIS[gs.lastPetUsed.petType] || "\ud83d\udc3e";
+      const name = PET_NAMES[gs.lastPetUsed.petType] || "Pet";
+      petNotifEl.textContent = `${emoji} ${gs.lastPetUsed.playerName} used ${name}!`;
+      petNotifEl.classList.remove("show");
+      void petNotifEl.offsetWidth;
+      petNotifEl.classList.add("show");
+      clearTimeout(window._petNotifTimer);
+      window._petNotifTimer = setTimeout(
+        () => petNotifEl.classList.remove("show"),
+        2500,
+      );
+    }
+  }
+
   if (notif) {
     const turnKey = isMyTurn ? gs.turn : null;
-    if (isMyTurn && !gs.petResolving && turnKey !== window._lastNotifTurn) {
+    if (
+      isMyTurn &&
+      (gs.petTurnDelay || !gs.petResolving) &&
+      turnKey !== window._lastNotifTurn
+    ) {
       window._lastNotifTurn = turnKey;
+      // Cancel bomb placement mode when it becomes your turn
+      if (window._bombPlacementMode) closeBombPlacement();
       notif.classList.remove("show");
       void notif.offsetWidth; // reset animation
       notif.classList.add("show");
@@ -1238,6 +1348,35 @@ function showGame() {
   const mushNotif = document.getElementById("mushroom-notification");
   if (mushNotif) {
     if (
+      gs.superBananaWin &&
+      !window._diceRollingPositions &&
+      !window._tokenWalking
+    ) {
+      // Super banana win phased notifications
+      const textEl = document.getElementById("mushroom-notif-text");
+      if (
+        gs.superBananaWin.phase === "found" &&
+        !window._superBananaFoundShown
+      ) {
+        window._superBananaFoundShown = true;
+        window._mushNotifShown = true;
+        if (textEl) textEl.textContent = "\u2b50 Super Banana Found! \u2b50";
+        mushNotif.classList.remove("show");
+        void mushNotif.offsetWidth;
+        mushNotif.classList.add("show");
+      } else if (
+        gs.superBananaWin.phase === "bought" &&
+        !window._superBananaBoughtShown
+      ) {
+        window._superBananaBoughtShown = true;
+        const buyer = gs.players.find(
+          (p) => p.id === gs.superBananaWin.playerId,
+        );
+        const name = buyer ? buyer.name : "Someone";
+        if (textEl)
+          textEl.textContent = `\u2b50 ${name} can afford it! ${name} bought the Super Banana and became Monkey God! \ud83d\udc51`;
+      }
+    } else if (
       gs.mushroomPending &&
       !window._mushNotifShown &&
       !window._diceRollingPositions &&
@@ -1255,8 +1394,10 @@ function showGame() {
           textEl.textContent =
             "\u2b50 Can't afford it! The Super Banana will swap with another tile and hide...";
       }, 3000);
-    } else if (!gs.mushroomPending) {
+    } else if (!gs.mushroomPending && !gs.superBananaWin) {
       window._mushNotifShown = false;
+      window._superBananaFoundShown = false;
+      window._superBananaBoughtShown = false;
       mushNotif.classList.remove("show");
       clearTimeout(window._mushPhase2Timer);
     }
@@ -1269,7 +1410,7 @@ function showGame() {
       const selfKey = `${gs.turn}-${gs.bombSelfDamage.lost}`;
       if (selfKey !== window._lastBombSelfKey) {
         window._lastBombSelfKey = selfKey;
-        bombSelfNotif.textContent = `💣 Caught in your own bomb! Lost ${gs.bombSelfDamage.lost}🍌! 💥`;
+        bombSelfNotif.textContent = `🍍 Caught in your own pineapple bomb! Lost ${gs.bombSelfDamage.lost}🍌! 💥`;
         bombSelfNotif.classList.remove("show");
         void bombSelfNotif.offsetWidth;
         bombSelfNotif.classList.add("show");
@@ -1317,7 +1458,7 @@ function showGame() {
           const isHeads = flipData.result === "heads";
           const animName = isHeads ? "petCoinSpin" : "petCoinSpinTails";
           void coinFlipEl.offsetWidth;
-          coinFlipEl.style.animation = `${animName} 2.5s cubic-bezier(0.15, 0.8, 0.25, 1) forwards`;
+          coinFlipEl.style.animation = `${animName} 1.2s cubic-bezier(0.12, 0.75, 0.2, 1) forwards`;
 
           // Show result after spin settles
           setTimeout(() => {
@@ -1328,24 +1469,28 @@ function showGame() {
             if (isHeads) {
               resultEl.classList.add("heads");
               if (flipData.petType === "devil") {
-                resultEl.textContent = `\u2705 HEADS \u2014 ${flipData.targetName} pushed!`;
+                resultEl.textContent = "\u2705 HEADS \u2014 Moved forward!";
               } else {
                 resultEl.textContent = "\u2705 HEADS \u2014 Moved forward!";
               }
             } else {
               resultEl.classList.add("tails");
-              resultEl.textContent = "\u274c TAILS \u2014 No effect!";
+              if (flipData.petType === "devil") {
+                resultEl.textContent = "\u274c TAILS \u2014 Moved backward!";
+              } else {
+                resultEl.textContent = "\u274c TAILS \u2014 No effect!";
+              }
             }
             resultEl.classList.add("visible");
-          }, 2600);
-        }, 250);
+          }, 1300);
+        }, 150);
 
-        // Auto-hide after spin + result display (7200ms from when notification appears)
+        // Auto-hide after spin + result display
         clearTimeout(window._petCoinTimer);
         window._petCoinTimer = setTimeout(() => {
           petCoinNotif.classList.remove("show");
-        }, 7200);
-      }, 1000);
+        }, 3800);
+      }, 400);
     }
   }
 
@@ -1421,8 +1566,14 @@ function showGame() {
   document.getElementById("btn-end").disabled = !canEnd;
 
   // Show countdown timer on End Turn button when auto-end delay is active
+  // Don't show it while the token is still walking — wait until it lands
   const btnEnd = document.getElementById("btn-end");
-  if (gs.autoEndDelay && gs.autoEndDelayMs > 0) {
+  if (
+    gs.autoEndDelay &&
+    gs.autoEndDelayMs > 0 &&
+    !window._tokenWalking &&
+    !window._diceRollingPositions
+  ) {
     if (!window._autoEndCountdown) {
       window._autoEndCountdownStart = Date.now();
       window._autoEndCountdownMs = gs.autoEndDelayMs;
@@ -1431,7 +1582,7 @@ function showGame() {
         const remaining = Math.max(0, window._autoEndCountdownMs - elapsed);
         const secs = Math.ceil(remaining / 1000);
         const btn = document.getElementById("btn-end");
-        if (btn) btn.textContent = `End Turn (${secs}s)`;
+        if (btn) btn.textContent = `Ending turn in ${secs}`;
         if (remaining <= 0) {
           clearInterval(window._autoEndCountdown);
           window._autoEndCountdown = null;
@@ -1479,6 +1630,50 @@ function showGame() {
     }
   }
 
+  // Auto vine swing: pick a random owned farm when vine swing is active
+  if (
+    gs.vineSwing &&
+    gs.vineSwing === myId &&
+    document.getElementById("chk-auto-vine").checked &&
+    !window._autoVineQueued
+  ) {
+    const ownedProps = (gs.properties || []).filter((p) => p.owner === myId);
+    if (ownedProps.length > 0) {
+      window._autoVineQueued = true;
+      const pick = ownedProps[Math.floor(Math.random() * ownedProps.length)];
+      setTimeout(() => {
+        window._autoVineQueued = false;
+        if (socket && gameId)
+          socket.emit("vine_swing_move", { gameId, position: pick.id });
+      }, 300);
+    }
+  }
+  if (!gs.vineSwing || gs.vineSwing !== myId) {
+    window._autoVineQueued = false;
+  }
+
+  // Auto fold poker: fold when it's our turn
+  if (
+    gs.poker &&
+    !gs.poker.resolved &&
+    gs.poker.currentTurn === myId &&
+    document.getElementById("chk-auto-fold").checked &&
+    !window._autoFoldQueued
+  ) {
+    const myPk = gs.poker.players && gs.poker.players[myId];
+    if (myPk && !myPk.folded) {
+      window._autoFoldQueued = true;
+      setTimeout(() => {
+        window._autoFoldQueued = false;
+        if (socket && gameId)
+          socket.emit("poker_action", { gameId, action: "fold" });
+      }, 300);
+    }
+  }
+  if (!gs.poker || gs.poker.resolved || gs.poker.currentTurn !== myId) {
+    window._autoFoldQueued = false;
+  }
+
   // Auto-pet: when toggle is on, arm for next turn. Fire after roll resolves (and after auction if applicable).
   const petBtn = document.getElementById("btn-auto-pet");
   if (petBtn) {
@@ -1486,7 +1681,7 @@ function showGame() {
     const petArmedNow = petBtn.dataset.armed === "true";
     if (
       me &&
-      (me.pet === "energy" || me.pet === "strong") &&
+      (me.pet === "energy" || me.pet === "strong" || me.pet === "devil") &&
       petArmedNow &&
       !isMyTurn &&
       !me.pendingPet &&
@@ -1502,7 +1697,9 @@ function showGame() {
             gs && gs.players && gs.players.find((p) => p.id === myId);
           const petStillReady =
             meNow &&
-            (meNow.pet === "energy" || meNow.pet === "strong") &&
+            (meNow.pet === "energy" ||
+              meNow.pet === "strong" ||
+              meNow.pet === "devil") &&
             !meNow.pendingPet &&
             (gs.petMode === "limited"
               ? (meNow.petUses || 0) > 0
@@ -1518,7 +1715,7 @@ function showGame() {
     // Energy/Strong pet: auto-uncheck toggle once pendingPet resolves on their turn
     if (
       me &&
-      (me.pet === "energy" || me.pet === "strong") &&
+      (me.pet === "energy" || me.pet === "strong" || me.pet === "devil") &&
       me.pendingPet &&
       petBtn.dataset.armed === "true"
     ) {
@@ -1527,7 +1724,12 @@ function showGame() {
     }
 
     // Devil: arm for next turn, fire after roll resolves
-    if (me && me.pet !== "energy" && me.pet !== "strong") {
+    if (
+      me &&
+      me.pet !== "energy" &&
+      me.pet !== "strong" &&
+      me.pet !== "devil"
+    ) {
       // Detect toggle being turned on: arm for the current turn (effect is deferred to next turn)
       if (petBtn.dataset.armed === "true" && window._petArmedForTurn == null) {
         // Arm: pet will fire this turn after rolling (effect queued for next turn)
@@ -1620,6 +1822,17 @@ function showGame() {
   updateAuctionPanel();
 
   // Players list
+  // Compute per-player uncollected banana piles
+  const playerPiles = {};
+  if (gs.properties) {
+    for (const prop of gs.properties) {
+      if (prop.owner && prop.bananaPile > 0) {
+        playerPiles[prop.owner] =
+          (playerPiles[prop.owner] || 0) + prop.bananaPile;
+      }
+    }
+  }
+
   const plist = document.getElementById("players-list");
   plist.innerHTML = "";
   if (gs.gameMode === "teams" && gs.teams) {
@@ -1641,9 +1854,13 @@ function showGame() {
         const petTag = p.pet
           ? `<span class="pstat-pet">${PET_EMOJIS[p.pet] || ""}${p.petCooldown > 0 ? p.petCooldown : "✓"}</span>`
           : "";
+        const pileTag = playerPiles[p.id]
+          ? `<span class="pstat-pile">${playerPiles[p.id]}🍌</span>`
+          : "";
         div.innerHTML =
           `<div class="pstat-monkey c-${p.color}">${MONKEY_EMOJI[p.color] || "\uD83D\uDC35"}</div>` +
           `<span>${p.name}<span class="team-badge team-${teamKey}">T${teamKey}</span>${petTag}</span>` +
+          pileTag +
           `<span class="pstat-money">${p.money}🍌</span>`;
         teamDiv.appendChild(div);
       });
@@ -1657,9 +1874,13 @@ function showGame() {
       const petTag = p.pet
         ? `<span class="pstat-pet">${PET_EMOJIS[p.pet] || ""}${p.petCooldown > 0 ? p.petCooldown : "✓"}</span>`
         : "";
+      const pileTag = playerPiles[p.id]
+        ? `<span class="pstat-pile">${playerPiles[p.id]}🍌</span>`
+        : "";
       div.innerHTML =
         `<div class="pstat-monkey c-${p.color}">${MONKEY_EMOJI[p.color] || "\uD83D\uDC35"}</div>` +
         `<span>${p.name}${petTag}</span>` +
+        pileTag +
         `<span class="pstat-money">${p.money}🍌</span>`;
       plist.appendChild(div);
     });
@@ -1713,8 +1934,8 @@ function updateOwnerPanel() {
     lightblue: "Blue Java",
     red: "Red Dacca",
     pink: "Lady Finger",
-    orange: "Goldfinger",
     darkblue: "Gros Michel",
+    orange: "Goldfinger",
   };
   gs.players.forEach((player) => {
     const section = document.createElement("div");
@@ -1741,13 +1962,24 @@ function updateOwnerPanel() {
         if (!farmsByGroup[tile.group]) farmsByGroup[tile.group] = [];
         farmsByGroup[tile.group].push(tile);
       });
+      // Count total tiles per group from board layout
+      const groupTotals = {};
+      if (gs.boardLayout) {
+        for (const key of Object.keys(gs.boardLayout)) {
+          const t = gs.boardLayout[key];
+          if (t && t.group && GROUP_NAMES[t.group]) {
+            groupTotals[t.group] = (groupTotals[t.group] || 0) + 1;
+          }
+        }
+      }
       propsHTML = '<div class="owner-props">';
       Object.keys(GROUP_NAMES).forEach((g) => {
         if (!counts[g]) return;
         const bonusPct = (counts[g] - 1) * 10;
         const bonusLabel = bonusPct > 0 ? `+${bonusPct}%` : "";
+        const countLabel = `${counts[g]}/${groupTotals[g] || "?"}`;
         propsHTML += `<div class="owner-set-group">`;
-        propsHTML += `<div class="owner-set-header"><span class="owner-prop-dot g-${g}"></span><span class="owner-set-name">${GROUP_NAMES[g]}</span>${bonusLabel ? ` <span class="owner-prop-bonus">${bonusLabel}</span>` : ""}</div>`;
+        propsHTML += `<div class="owner-set-header"><span class="owner-prop-dot g-${g}"></span><span class="owner-set-name">${GROUP_NAMES[g]}</span> <span class="owner-set-count">${countLabel}</span>${bonusLabel ? ` <span class="owner-prop-bonus">${bonusLabel}</span>` : ""}</div>`;
         const farms = farmsByGroup[g] || [];
         farms.forEach((f) => {
           const mult = 1 + (counts[g] - 1) * 0.1;
@@ -1773,8 +2005,8 @@ const CHART_GROUPS = [
   { key: "lightblue", label: "BJ — Blue Java" },
   { key: "red", label: "RD — Red Dacca" },
   { key: "pink", label: "LF — Lady Finger" },
-  { key: "orange", label: "GF — Goldfinger" },
   { key: "darkblue", label: "GM — Gros Michel" },
+  { key: "orange", label: "GF — Goldfinger" },
 ];
 
 function updatePropertyChart() {
@@ -1794,9 +2026,10 @@ function updatePropertyChart() {
       prop && prop.owner ? gs.players.find((pl) => pl.id === prop.owner) : null;
     if (!grouped[tile.group]) grouped[tile.group] = [];
     grouped[tile.group].push({
+      pos,
       name: tile.tileName,
       label: tile.tileLabel || null,
-      price: tile.price,
+      price: Math.round(tile.price * (1 + getSideBonus(pos))),
       owner: ownerPlayer,
     });
   });
@@ -1821,7 +2054,11 @@ function updatePropertyChart() {
       const ownerDot = item.owner
         ? `<span class="chart-item-owner c-${item.owner.color}">${MONKEY_EMOJI[item.owner.color] || "\uD83D\uDC35"}</span>`
         : "";
-      html += `<div class="chart-item${owned}"><span class="chart-item-name">${displayName}</span><span class="chart-item-price">${item.price}🍌 yield</span>${ownerDot}</div>`;
+      const diceGlow =
+        gs.diceMatchTiles && gs.diceMatchTiles.includes(item.pos)
+          ? " dice-match-glow"
+          : "";
+      html += `<div class="chart-item${owned}${diceGlow}"><span class="chart-item-name">${displayName}</span><span class="chart-item-price">${item.price}🍌 yield</span>${ownerDot}</div>`;
     });
     div.innerHTML = html;
     el.appendChild(div);
@@ -1835,7 +2072,15 @@ function updateTileLegend() {
   if (!el || !gs || !gs.boardLayout) return;
   el.innerHTML = "";
 
-  const counts = { grow: 0, bus: 0, tax: 0, tax10: 0, desert: 0, special: 0 };
+  const counts = {
+    grow: 0,
+    bus: 0,
+    tax: 0,
+    tax10: 0,
+    easygrow: 0,
+    desert: 0,
+    special: 0,
+  };
   for (const tile of gs.boardLayout) {
     if (counts[tile.type] !== undefined) counts[tile.type]++;
   }
@@ -1843,6 +2088,11 @@ function updateTileLegend() {
   const entries = [
     { icon: "🌴", name: "GROW", count: counts.grow },
     { icon: "🌿", name: "Vine Swing", count: counts.bus },
+    {
+      icon: "🌱",
+      name: "Easy Grow 25🍌 + 10% each tile",
+      count: counts.easygrow,
+    },
     { icon: "🍌", name: "-10% Peel", count: counts.tax10 },
     { icon: "🍌", name: "-15% Peel", count: counts.tax },
     { icon: "🌵", name: "Desert", count: counts.desert },
@@ -1915,8 +2165,28 @@ function startGame() {
   socket.emit("start_game", { gameId });
 }
 
-function rollDice() {
-  socket.emit("roll_dice", { gameId });
+function rollDice(diceCount) {
+  const override = diceCount || window._armedDiceOverride || undefined;
+  window._armedDiceOverride = null;
+  const opts = { gameId };
+  if (override === 1 || override === 3) opts.diceCount = override;
+  socket.emit("roll_dice", opts);
+}
+
+function armDiceOverride(count) {
+  if (window._armedDiceOverride === count) {
+    window._armedDiceOverride = null;
+  } else {
+    window._armedDiceOverride = count;
+    // Disarm pet if armed
+    const petBtn = document.getElementById("btn-auto-pet");
+    if (petBtn && petBtn.dataset.armed === "true") {
+      petBtn.dataset.armed = "false";
+      const txt = document.getElementById("pet-toggle-text");
+      if (txt) txt.innerHTML = "Use Pet Next Turn<br>100\uD83C\uDF4C";
+    }
+  }
+  route();
 }
 
 function debugMove() {
@@ -2083,8 +2353,11 @@ function updateAuctionPanel() {
     window._challengerRevealTimer = null;
     return;
   }
-  // Delay showing auction until dice animation finishes (tokens reach destination)
-  if (window._diceRollingPositions && !window._auctionDelayShown) {
+  // Delay showing auction until dice animation finishes and token lands
+  if (
+    (window._diceRollingPositions || window._tokenWalking) &&
+    !window._auctionDelayShown
+  ) {
     box.style.display = "none";
     return;
   }
@@ -2131,7 +2404,7 @@ function updateAuctionPanel() {
 
   const propEl = document.getElementById("auction-prop");
   if (myId === a.landingPlayer && a.propName) {
-    propEl.textContent = `${a.propName} \u2014 ${a.propPrice}\uD83C\uDF4C yield`;
+    propEl.textContent = `${a.propName} \u2014 ${Math.round(a.propPrice * (1 + getSideBonus(a.position)))}\uD83C\uDF4C yield`;
     propEl.className = a.propGroup
       ? "auction-prop g-" + a.propGroup
       : "auction-prop";
@@ -2955,7 +3228,7 @@ function populatePropertyTrade() {
     if (!tile || !tile.tileLabel) return;
     const opt = document.createElement("option");
     opt.value = pos;
-    opt.textContent = `${tile.tileLabel} (${tile.price}🍌 yield)`;
+    opt.textContent = `${tile.tileLabel} (${Math.round(tile.price * (1 + getSideBonus(pos)))}🍌 yield)`;
     myPropSel.appendChild(opt);
   });
 
@@ -3000,7 +3273,7 @@ function populateTheirFarms() {
     if (!tile || !tile.tileLabel) return;
     const opt = document.createElement("option");
     opt.value = pos;
-    opt.textContent = `${tile.tileLabel} (${tile.price}🍌 yield)`;
+    opt.textContent = `${tile.tileLabel} (${Math.round(tile.price * (1 + getSideBonus(pos)))}🍌 yield)`;
     theirPropSel.appendChild(opt);
   });
 
@@ -3077,7 +3350,7 @@ function populateFarmSwap() {
     if (!tile || !tile.tileLabel) return;
     const opt = document.createElement("option");
     opt.value = pos;
-    opt.textContent = `${tile.tileLabel} (${tile.price}🍌 yield)`;
+    opt.textContent = `${tile.tileLabel} (${Math.round(tile.price * (1 + getSideBonus(pos)))}🍌 yield)`;
     myFarmSel.appendChild(opt);
   });
 
@@ -3087,7 +3360,7 @@ function populateFarmSwap() {
     if (!tile || !tile.tileLabel) return;
     const opt = document.createElement("option");
     opt.value = pos;
-    opt.textContent = `${tile.tileLabel} (${tile.price}🍌 yield)`;
+    opt.textContent = `${tile.tileLabel} (${Math.round(tile.price * (1 + getSideBonus(pos)))}🍌 yield)`;
     mateFarmSel.appendChild(opt);
   });
 
@@ -3110,6 +3383,8 @@ function leaveGame() {
   if (gameId) socket.emit("leave_game", { gameId });
   gameId = null;
   gs = null;
+  const goOverlay = document.getElementById("game-over-overlay");
+  if (goOverlay) goOverlay.style.display = "none";
   showScreen("screen-menu");
 }
 
@@ -3135,8 +3410,8 @@ function initFloaters() {
     "\ud83d\udcb8",
     "\ud83c\udf43",
     "\ud83c\udf3e",
-    "\ud83d\udca3",
-    "\ud83d\udca3",
+    "\ud83c\udf4d",
+    "\ud83c\udf4d",
   ];
   for (let i = 0; i < 20; i++) {
     const el = document.createElement("span");
@@ -3229,16 +3504,23 @@ window.addEventListener("DOMContentLoaded", () => {
       const armed = petToggleBtn.dataset.armed === "true";
       const now = !armed;
       petToggleBtn.dataset.armed = now ? "true" : "false";
-      if (txt)
-        txt.textContent = now
-          ? "\ud83d\udc3e Pet acting next turn!"
-          : "Use Pet Next Turn";
-      // Energy/Strong pets activate off-turn — fire usePet immediately when toggled on
+      if (txt) {
+        if (now) {
+          txt.textContent = "\ud83d\udc3e Pet acting next turn!";
+        } else {
+          txt.innerHTML = "Use Pet Next Turn<br>100\uD83C\uDF4C";
+        }
+      }
+      // Disarm dice override when pet is armed
+      if (now) {
+        window._armedDiceOverride = null;
+      }
+      // Energy/Strong/Magic pets activate off-turn — fire usePet immediately when toggled on
       if (now && gs) {
         const me = gs.players && gs.players.find((p) => p.id === myId);
         if (
           me &&
-          (me.pet === "energy" || me.pet === "strong") &&
+          (me.pet === "energy" || me.pet === "strong" || me.pet === "devil") &&
           !me.pendingPet
         ) {
           usePet();

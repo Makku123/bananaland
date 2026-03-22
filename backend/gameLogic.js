@@ -1,9 +1,9 @@
-// --- Monkey Business Board Game Logic ----------------------------
+﻿// --- Monkey Business Board Game Logic ----------------------------
 // 52 spaces, 4 corners at 0/13/26/39, 12 non-corner per side
 
 const BOARD_SIZE = 52;
 const CORNER_POSITIONS = new Set([0, 13, 26, 39]);
-const GROW_PERCENTAGES = { 0: 1.0, 13: 0.25, 26: 0.5, 39: 0.75 };
+const GROW_PERCENTAGES = { 0: 1.0, 13: 0.75, 26: 0.5, 39: 0.25 };
 
 // --- Poker Helpers -----------------------------------------------
 const POKER_SUITS = ["h", "d", "c", "s"];
@@ -304,32 +304,32 @@ const PROPERTIES = [
     price: 50,
     rent: [6, 28, 80, 220, 380, 500],
   },
-  // Goldfinger (4)
+  // Gros Michel (4)
   {
     id: 33,
-    name: "E1",
-    group: "orange",
+    name: "G1",
+    group: "darkblue",
     price: 360,
     rent: [22, 110, 330, 800, 975, 1150],
   },
   {
     id: 34,
-    name: "E2",
-    group: "orange",
-    price: 360,
-    rent: [22, 110, 330, 800, 975, 1150],
-  },
-  {
-    id: 36,
-    name: "E3",
-    group: "orange",
+    name: "G2",
+    group: "darkblue",
     price: 360,
     rent: [24, 120, 360, 850, 1025, 1200],
   },
   {
+    id: 36,
+    name: "G3",
+    group: "darkblue",
+    price: 360,
+    rent: [25, 125, 370, 875, 1050, 1225],
+  },
+  {
     id: 37,
-    name: "E4",
-    group: "orange",
+    name: "G4",
+    group: "darkblue",
     price: 360,
     rent: [27, 133, 380, 900, 1075, 1250],
   },
@@ -349,25 +349,25 @@ const PROPERTIES = [
     price: 200,
     rent: [19, 95, 250, 675, 875, 1075],
   },
-  // Gros Michel (3)
+  // Goldfinger (3)
   {
     id: 48,
-    name: "G1",
-    group: "darkblue",
+    name: "E1",
+    group: "orange",
     price: 500,
     rent: [35, 175, 500, 1100, 1300, 1500],
   },
   {
     id: 49,
-    name: "G2",
-    group: "darkblue",
+    name: "E2",
+    group: "orange",
     price: 500,
     rent: [42, 188, 550, 1250, 1450, 1750],
   },
   {
     id: 51,
-    name: "G3",
-    group: "darkblue",
+    name: "E3",
+    group: "orange",
     price: 500,
     rent: [50, 200, 600, 1400, 1700, 2000],
   },
@@ -415,7 +415,7 @@ const BOARD = [
     },
   },
   // -- Left column: CAGE -> BANANA BREAK (positions 13-25) --
-  { id: 13, name: "\ud83c\udf34 GROW 25%", type: "grow" },
+  { id: 13, name: "\ud83c\udf34 GROW 75%", type: "grow" },
   { id: 14, type: "property", buyable: _BUYABLE_MAP.get(14) },
   { id: 15, type: "property", buyable: _BUYABLE_MAP.get(15) },
   { id: 16, type: "property", buyable: _BUYABLE_MAP.get(16) },
@@ -476,10 +476,10 @@ const BOARD = [
     },
   },
   // -- Right column: GO TO CAGE -> GO BANANAS (positions 39-51) --
-  { id: 39, name: "\ud83c\udf34 GROW 75%", type: "grow" },
+  { id: 39, name: "\ud83c\udf34 GROW 25%", type: "grow" },
   { id: 40, type: "property", buyable: _BUYABLE_MAP.get(40) },
   { id: 41, type: "property", buyable: _BUYABLE_MAP.get(41) },
-  { id: 42, name: "\ud83c\udf4c -10%", type: "tax10" },
+  { id: 42, name: "\ud83c\udf31", type: "easygrow" },
   {
     id: 43,
     name: "\ud83c\udf35",
@@ -520,7 +520,18 @@ const BOARD = [
   { id: 47, type: "property", buyable: _BUYABLE_MAP.get(47) },
   { id: 48, type: "property", buyable: _BUYABLE_MAP.get(48) },
   { id: 49, type: "property", buyable: _BUYABLE_MAP.get(49) },
-  { id: 50, name: "\ud83c\udf4c -15%", type: "tax" },
+  {
+    id: 50,
+    name: "\ud83c\udf35",
+    type: "desert",
+    buyable: {
+      name: "\ud83c\udf35",
+      type: "property",
+      group: "desert",
+      price: 0,
+      rent: [0, 0, 0, 0, 0, 0],
+    },
+  },
   { id: 51, type: "property", buyable: _BUYABLE_MAP.get(51) },
 ];
 
@@ -532,8 +543,8 @@ const PET_TYPES = {
   strong: {
     name: "Strong Pet",
     emoji: "ðŸ¦",
-    cooldown: 20,
-    description: "Move forward 1 space (guaranteed). 20 roll cooldown.",
+    cooldown: 15,
+    description: "Move forward 1 space (guaranteed). 15 roll cooldown.",
   },
   energy: {
     name: "Energy Pet",
@@ -545,7 +556,8 @@ const PET_TYPES = {
     name: "Magic Pet",
     emoji: "🦄",
     cooldown: 10,
-    description: "Flip a coin to move an opponent forward 1. 10 roll cooldown.",
+    description:
+      "Flip a coin: heads move forward 1, tails move backward 1. 10 roll cooldown.",
   },
 };
 
@@ -592,7 +604,7 @@ class MonopolyGame {
     this.players = [];
     this.currentPlayerIndex = 0;
     this.turn = 0;
-    this.dice = [0, 0, 0];
+    this.dice = [0, 0];
     this.diceRolled = false;
     this.log = []; // recent action log
     this.properties = new Map();
@@ -603,6 +615,7 @@ class MonopolyGame {
     this.pendingPetMove = null; // deferred move after coin flip animation
     this.pendingMagicPets = []; // queued magic pet effects for target's turn
     this.petResolving = false; // true while a pet effect plays at start of turn
+    this.petUsedThisTurn = false; // true when own pet fired this turn (skips dice)
     this.onUpdate = null; // callback to emit game state
     this.bombs = []; // { placedBy, position, turnsLeft }
     // Team mode: teams = { A: [id1, id2], B: [id3, id4] }
@@ -654,6 +667,7 @@ class MonopolyGame {
       petUses: 0,
       pendingPet: null,
       bomb: false,
+      hasRolled: false,
     };
     this.players.push(player);
     return player;
@@ -704,6 +718,11 @@ class MonopolyGame {
     } else {
       if (player.petCooldown > 0) return false;
     }
+    // Pet usage costs 100 bananas
+    if (player.money < 100) return false;
+    // Must have rolled at least once before using pet
+    if (!player.hasRolled) return false;
+    player.money -= 100;
 
     const petType = player.pet;
     const cooldown = PET_TYPES[petType].cooldown;
@@ -726,9 +745,8 @@ class MonopolyGame {
         ? `${player.petUses} use${player.petUses !== 1 ? "s" : ""} left`
         : `${cooldown} roll cooldown`;
       player.pendingPet = { type: "energy", cooldown };
-      this._log(
-        `\u{1F406} ${player.name}'s Energy Pet will activate on their turn! (${costLabel})`,
-      );
+      this.lastPetUsed = { playerName: player.name, petType: "energy" };
+      this._log();
       return true;
     }
 
@@ -749,56 +767,29 @@ class MonopolyGame {
         ? `${player.petUses} use${player.petUses !== 1 ? "s" : ""} left`
         : `${cooldown} roll cooldown`;
       player.pendingPet = { type: "strong", cooldown };
-      this._log(
-        `\u{1F981} ${player.name}'s Strong Pet will activate on their turn! (${costLabel})`,
-      );
+      this.lastPetUsed = { playerName: player.name, petType: "strong" };
+      this._log();
       return true;
     }
 
-    // Devil: must be current player after rolling
-    const cur = this.getCurrentPlayer();
-    if (!cur || cur.id !== socketId || !this.diceRolled) return false;
-    // Can't use pet during auction, poker, or vine swing
-    if (this.auction || this.poker || this.vineSwing) return false;
+    // Devil (Magic Pet): activate OFF-turn. Coin flip + move resolves at start of player's next turn.
+    if (petType === "devil") {
+      const cur = this.getCurrentPlayer();
+      // Magic pet can only be activated when it's NOT your turn
+      if (cur && cur.id === socketId) return false;
+      // Can't activate if already pending
+      if (player.pendingPet) return false;
+      if (this.auction || this.poker || this.vineSwing) return false;
 
-    // Cancel any pending auto-end timer since player is using their pet
-    this._cancelAutoEnd();
-
-    // Consume pet: decrement uses or set cooldown
-    const _consumePet = () => {
       if (isLimited) {
         player.petUses = Math.max(0, (player.petUses || 0) - 1);
-      } else {
-        player.petCooldown = cooldown;
       }
-    };
-    const _petCostLabel = () =>
-      isLimited
+      const costLabel = isLimited
         ? `${player.petUses} use${player.petUses !== 1 ? "s" : ""} left`
         : `${cooldown} roll cooldown`;
-
-    if (petType === "devil") {
-      // Must specify a target opponent
-      const target = this.players.find((p) => p.id === targetId);
-      if (!target || target.bankrupt || target.id === socketId) return false;
-      if (
-        this.gameMode === "teams" &&
-        this.getTeamOf(target.id) === this.getTeamOf(socketId)
-      )
-        return false;
-      _consumePet();
-      this.pendingMagicPets.push({
-        userId: player.id,
-        userName: player.name,
-        targetId: target.id,
-        targetName: target.name,
-        cooldown,
-        waitForCasterTurn: true,
-      });
-      this._log(
-        `\u{1F984} ${player.name}'s Magic Pet targets ${target.name}! Will activate after ${player.name}'s next turn! (${_petCostLabel()})`,
-      );
-      this._autoEndAfterPet(player);
+      player.pendingPet = { type: "devil", cooldown };
+      this.lastPetUsed = { playerName: player.name, petType: "devil" };
+      this._log();
       return true;
     }
 
@@ -845,40 +836,61 @@ class MonopolyGame {
 
     // Nothing to resolve
     this.petResolving = false;
+    if (this.petUsedThisTurn) {
+      this.diceRolled = true;
+      this._log(`\u{1F43E} Pet used!`);
+      const cur2 = this.getCurrentPlayer();
+      if (
+        cur2 &&
+        !this.auction &&
+        !this.poker &&
+        !this.vineSwing &&
+        !this.mushroomPending
+      ) {
+        this._scheduleAutoEnd(cur2, 3000);
+      }
+    }
     if (this.onUpdate) this.onUpdate();
   }
 
   _triggerMagicPetOnTurn(mp) {
     this.petResolving = true;
-    const coinFlip = Math.random() < 0.5;
-    this.petCoinFlip = {
-      playerName: mp.userName,
-      petType: "devil",
-      result: coinFlip ? "heads" : "tails",
-      targetName: mp.targetName,
-    };
-    if (coinFlip) {
-      this.pendingPetMove = {
-        type: "devil_on_turn",
-        playerId: mp.userId,
-        userName: mp.userName,
-        targetId: mp.targetId,
-        targetName: mp.targetName,
-        cooldown: mp.cooldown,
-      };
-      setTimeout(() => {
-        this._executeMagicPetOnTurn();
-      }, 9500);
-    } else {
-      this._log(
-        `\u{1F984} ${mp.userName}'s Magic Pet flipped TAILS \u2014 ${mp.targetName} is safe!`,
-      );
-      setTimeout(() => {
-        this.petCoinFlip = null;
-        this._resolvePendingPets();
-      }, 9500);
-    }
+    // Show "Your Turn" for 2s before coin flip
+    this.petTurnDelay = true;
     if (this.onUpdate) this.onUpdate();
+    setTimeout(() => {
+      this.petTurnDelay = false;
+      const coinFlip = Math.random() < 0.5;
+      this.petCoinFlip = {
+        playerName: mp.userName,
+        petType: "devil",
+        result: coinFlip ? "heads" : "tails",
+        targetName: mp.targetName,
+      };
+      if (coinFlip) {
+        this.pendingPetMove = {
+          type: "devil_on_turn",
+          playerId: mp.userId,
+          userName: mp.userName,
+          targetId: mp.targetId,
+          targetName: mp.targetName,
+          cooldown: mp.cooldown,
+        };
+        if (this.onUpdate) this.onUpdate();
+        setTimeout(() => {
+          this._executeMagicPetOnTurn();
+        }, 9500);
+      } else {
+        this._log(
+          `\u{1F984} ${mp.userName}'s Magic Pet flipped TAILS \u2014 ${mp.targetName} is safe!`,
+        );
+        if (this.onUpdate) this.onUpdate();
+        setTimeout(() => {
+          this.petCoinFlip = null;
+          this._resolvePendingPets();
+        }, 9500);
+      }
+    }, 2000);
   }
 
   _executeMagicPetOnTurn() {
@@ -910,6 +922,7 @@ class MonopolyGame {
 
   _triggerOwnPetOnTurn(player, pp) {
     this.petResolving = true;
+    this.petUsedThisTurn = true;
 
     if (pp.type === "strong") {
       // Set cooldown now that the effect is resolving
@@ -930,40 +943,88 @@ class MonopolyGame {
     }
 
     if (pp.type === "energy") {
-      const coinFlip = Math.random() < 0.5;
       // Set cooldown now that the coin flip is resolving
       if (this.petMode !== "limited") {
         player.petCooldown = pp.cooldown;
       }
-      this.petCoinFlip = {
-        playerName: player.name,
-        petType: "energy",
-        result: coinFlip ? "heads" : "tails",
-      };
-      if (coinFlip) {
-        this.pendingPetMove = {
-          type: "energy_on_turn",
-          playerId: player.id,
-          cooldown: pp.cooldown,
+      // Show "Your Turn" for 2s before coin flip
+      this.petTurnDelay = true;
+      if (this.onUpdate) this.onUpdate();
+      setTimeout(() => {
+        this.petTurnDelay = false;
+        const coinFlip = Math.random() < 0.5;
+        this.petCoinFlip = {
+          playerName: player.name,
+          petType: "energy",
+          result: coinFlip ? "heads" : "tails",
         };
-        // Show coin flip result first, then move after animation finishes
-        setTimeout(() => {
-          this._executeOwnEnergyPetOnTurn();
-        }, 5000);
-      } else {
-        // Show coin flip result first, then resolve after animation finishes + 1s pause
-        setTimeout(() => {
-          this.petCoinFlip = null;
-          this._log(
-            `\u{1F406} ${player.name}'s Energy Pet flipped TAILS \u2014 no movement!`,
-          );
+        if (coinFlip) {
+          this.pendingPetMove = {
+            type: "energy_on_turn",
+            playerId: player.id,
+            cooldown: pp.cooldown,
+          };
+          if (this.onUpdate) this.onUpdate();
+          // Show coin flip result first, then move after animation finishes
+          setTimeout(() => {
+            this._executeOwnEnergyPetOnTurn();
+          }, 5000);
+        } else {
+          if (this.onUpdate) this.onUpdate();
+          // Show coin flip result first, then resolve after animation finishes + 1s pause
+          setTimeout(() => {
+            this.petCoinFlip = null;
+            this._log(
+              `\u{1F406} ${player.name}'s Energy Pet flipped TAILS \u2014 no movement!`,
+            );
+            if (this.onUpdate) this.onUpdate();
+            setTimeout(() => {
+              this._resolvePendingPets();
+            }, 1000);
+          }, 5000);
+        }
+      }, 2000);
+      return;
+    }
+
+    if (pp.type === "devil") {
+      // Set cooldown now that the coin flip is resolving
+      if (this.petMode !== "limited") {
+        player.petCooldown = pp.cooldown;
+      }
+      // Show "Your Turn" for 2s before coin flip
+      this.petTurnDelay = true;
+      if (this.onUpdate) this.onUpdate();
+      setTimeout(() => {
+        this.petTurnDelay = false;
+        const coinFlip = Math.random() < 0.5;
+        this.petCoinFlip = {
+          playerName: player.name,
+          petType: "devil",
+          result: coinFlip ? "heads" : "tails",
+        };
+        if (coinFlip) {
+          this.pendingPetMove = {
+            type: "devil_self_forward",
+            playerId: player.id,
+            cooldown: pp.cooldown,
+          };
           if (this.onUpdate) this.onUpdate();
           setTimeout(() => {
-            this._resolvePendingPets();
-          }, 1000);
-        }, 5000);
-      }
-      if (this.onUpdate) this.onUpdate();
+            this._executeOwnDevilPetOnTurn(true);
+          }, 5000);
+        } else {
+          this.pendingPetMove = {
+            type: "devil_self_backward",
+            playerId: player.id,
+            cooldown: pp.cooldown,
+          };
+          if (this.onUpdate) this.onUpdate();
+          setTimeout(() => {
+            this._executeOwnDevilPetOnTurn(false);
+          }, 5000);
+        }
+      }, 2000);
       return;
     }
 
@@ -997,14 +1058,65 @@ class MonopolyGame {
     this._processLanding(player);
 
     // If an interactive element started (auction, poker, vine swing, mushroom),
-    // stop pet resolution and let it play out. Player rolls dice after it completes.
+    // stop pet resolution and let it play out. Pet counts as the roll.
     if (this.auction || this.poker || this.vineSwing || this.mushroomPending) {
       this.petResolving = false;
+      this.diceRolled = true;
       if (this.onUpdate) this.onUpdate();
       return;
     }
 
     // Wait 1s after move before unlocking dice
+    if (this.onUpdate) this.onUpdate();
+    setTimeout(() => {
+      this._resolvePendingPets();
+    }, 1000);
+  }
+
+  _executeOwnDevilPetOnTurn(isForward) {
+    const pending = this.pendingPetMove;
+    if (
+      !pending ||
+      (pending.type !== "devil_self_forward" &&
+        pending.type !== "devil_self_backward")
+    ) {
+      this._resolvePendingPets();
+      return;
+    }
+    this.pendingPetMove = null;
+    this.petCoinFlip = null;
+
+    const player = this.players.find((p) => p.id === pending.playerId);
+    if (!player || player.bankrupt) {
+      this._resolvePendingPets();
+      return;
+    }
+
+    const oldPos = player.position;
+    if (isForward) {
+      player.position = (player.position + 1) % BOARD_SIZE;
+      player.revealedTiles.add(player.position);
+      this._collectBananasOnPath(player, oldPos, player.position);
+      this._log(
+        `\u{1F984} ${player.name}'s Magic Pet flipped HEADS \u2014 moved forward 1!`,
+      );
+    } else {
+      player.position = (player.position - 1 + BOARD_SIZE) % BOARD_SIZE;
+      player.revealedTiles.add(player.position);
+      this._collectBananasAtTile(player, player.position);
+      this._log(
+        `\u{1F984} ${player.name}'s Magic Pet flipped TAILS \u2014 moved backward 1!`,
+      );
+    }
+    this._processLanding(player);
+
+    if (this.auction || this.poker || this.vineSwing || this.mushroomPending) {
+      this.petResolving = false;
+      this.diceRolled = true;
+      if (this.onUpdate) this.onUpdate();
+      return;
+    }
+
     if (this.onUpdate) this.onUpdate();
     setTimeout(() => {
       this._resolvePendingPets();
@@ -1018,10 +1130,10 @@ class MonopolyGame {
     }
   }
 
-  _scheduleAutoEnd(player, delayMs) {
+  _scheduleAutoEnd(player, delayMs, displayDelayMs) {
     if (this._autoEndTimer) clearTimeout(this._autoEndTimer);
     this.autoEndDelay = true;
-    this.autoEndDelayMs = delayMs;
+    this.autoEndDelayMs = displayDelayMs != null ? displayDelayMs : delayMs;
     this._autoEndTimer = setTimeout(() => {
       this._autoEndTimer = null;
       this.autoEndDelay = false;
@@ -1301,9 +1413,10 @@ class MonopolyGame {
     return prop && prop.owner === null;
   }
 
-  rollDice(socketId) {
+  rollDice(socketId, diceCount) {
     this.lastExplosion = null;
     this.bombSelfDamage = null;
+    this.diceMatchTiles = null;
     const cur = this.getCurrentPlayer();
     if (
       !cur ||
@@ -1314,11 +1427,23 @@ class MonopolyGame {
     )
       return null;
 
-    const d1 = Math.floor(Math.random() * 6) + 1;
-    const d2 = Math.floor(Math.random() * 6) + 1;
-    const coin = Math.random() < 0.5 ? 0 : -1;
-    this.dice = [d1, d2, coin];
+    // Validate paid dice override (1 or 3)
+    let numDice = 2;
+    if (diceCount === 1 && cur.money >= 500) {
+      cur.money -= 500;
+      numDice = 1;
+    } else if (diceCount === 3 && cur.money >= 1000) {
+      cur.money -= 1000;
+      numDice = 3;
+    }
+
+    const rolls = [];
+    for (let i = 0; i < numDice; i++) {
+      rolls.push(Math.floor(Math.random() * 6) + 1);
+    }
+    this.dice = rolls;
     this.diceRolled = true;
+    cur.hasRolled = true;
     this.petCoinFlip = null;
 
     // Tick pet cooldowns for all players (cooldown mode only)
@@ -1328,9 +1453,13 @@ class MonopolyGame {
       }
     }
 
+    const diceSum = rolls.reduce((a, b) => a + b, 0);
     const oldPos = cur.position;
-    cur.position = (cur.position + d1 + d2 + coin) % BOARD_SIZE;
+    cur.position = (cur.position + diceSum) % BOARD_SIZE;
     cur.revealedTiles.add(cur.position);
+
+    // Dice-match grow: if dice sum matches a farm label number you own, 100% grow
+    this._processDiceMatchGrow(cur, diceSum);
 
     // Collect own banana piles on crossed/landed tiles & steal opponent piles on landing
     this._collectBananasOnPath(cur, oldPos, cur.position);
@@ -1352,14 +1481,15 @@ class MonopolyGame {
     this._processLanding(cur);
 
     // Auto-end turn if no auction, vine swing, or poker was started
-    // 5s accounts for frontend dice animation + token walk + 2s visible pause
+    // Delay accounts for frontend dice animation (550ms) + token walk (steps*150ms) + post-walk pause (500ms) + buffer
+    const walkAnimMs = 550 + diceSum * 150 + 500;
     if (
       !this.auction &&
       !this.vineSwing &&
       !this.poker &&
       !this.mushroomPending
     ) {
-      this._scheduleAutoEnd(cur, 4000);
+      this._scheduleAutoEnd(cur, walkAnimMs + 3000, 3000);
     }
 
     return { dice: this.dice, moved: true };
@@ -1370,7 +1500,7 @@ class MonopolyGame {
     if (!cur || cur.id !== socketId || this.diceRolled || cur.bankrupt)
       return null;
     const pos = Math.max(0, Math.min(Math.floor(targetPos), BOARD_SIZE - 1));
-    this.dice = [0, 0, 0];
+    this.dice = [0, 0];
     this.diceRolled = true;
     const oldPos = cur.position;
     cur.position = pos;
@@ -1387,13 +1517,16 @@ class MonopolyGame {
       }
     }
     this._processLanding(cur);
+    const debugSteps =
+      (((pos - oldPos) % BOARD_SIZE) + BOARD_SIZE) % BOARD_SIZE || 1;
+    const debugWalkMs = 550 + debugSteps * 150 + 500;
     if (
       !this.auction &&
       !this.vineSwing &&
       !this.poker &&
       !this.mushroomPending
     ) {
-      this._scheduleAutoEnd(cur, 4000);
+      this._scheduleAutoEnd(cur, debugWalkMs + 3000, 3000);
     }
     return { dice: this.dice, moved: true };
   }
@@ -1403,9 +1536,17 @@ class MonopolyGame {
     if (!space) return;
 
     // GROW always fires first â€” even if an opponent is on the corner
-    if (space.type === "grow") {
-      const pct = GROW_PERCENTAGES[player.position] || 0;
+    if (space.type === "grow" || space.type === "easygrow") {
+      // Easy Grow: reveal to all players on first landing
+      if (space.type === "easygrow") {
+        for (const p of this.players) p.revealedTiles.add(player.position);
+      }
+      const pct =
+        space.type === "easygrow"
+          ? 0.1
+          : GROW_PERCENTAGES[player.position] || 0;
       const pctLabel = Math.round(pct * 100);
+      const easyGrowBase = space.type === "easygrow" ? 25 : 0;
 
       // 1) Collect all farm properties owned by this player (and teammates in team mode)
       const teamIds = new Set([player.id]);
@@ -1431,13 +1572,13 @@ class MonopolyGame {
       // 2) Side bonus based on which row/column the farm tile sits on
       const getSideBonus = (pos) => {
         if (pos >= 14 && pos <= 25) return 0.1; // left column
-        if (pos >= 27 && pos <= 38) return 0.2; // top row
-        if (pos >= 40 && pos <= 51) return 0.3; // right column
+        if (pos >= 27 && pos <= 38) return 0.25; // top row
+        if (pos >= 40 && pos <= 51) return 0.5; // right column
         return 0; // bottom row (1-12)
       };
 
-      // 3) Set bonus: each farm grows price × (1 + 10% per additional farm in set) × growPct × (1 + sideBonus)
-      //    Owning more farms in the same color set adds +10% per extra farm
+      // 3) Set bonus: each farm grows (price × (1 + sideBonus)) × setMultiplier × growPct
+      //    Side bonus is applied to the base yield first, then set bonus and grow %
       //    If an opponent is sitting on the farm, they collect the bananas instead
       let totalGrown = 0;
       let totalStolen = 0;
@@ -1448,7 +1589,8 @@ class MonopolyGame {
         const owned = groupCount[prop.group] || 1;
         const setMultiplier = 1 + (owned - 1) * 0.1;
         const amount = Math.floor(
-          prop.price * setMultiplier * pct * (1 + getSideBonus(propId)),
+          easyGrowBase +
+            prop.price * (1 + getSideBonus(propId)) * setMultiplier * pct,
         );
         if (amount > 0) {
           // Check if a non-teammate opponent is sitting on this tile
@@ -1503,8 +1645,8 @@ class MonopolyGame {
       return;
     }
 
-    // GROW already handled above â€” nothing else to do on corners
-    if (space.type === "grow") return;
+    // GROW/easygrow already handled above â€” nothing else to do on corners
+    if (space.type === "grow" || space.type === "easygrow") return;
 
     // Reveal non-buyable event tiles to all players immediately
     if (["bus", "tax", "tax10"].includes(space.type)) {
@@ -1557,29 +1699,46 @@ class MonopolyGame {
       prop.owner = player.id;
       player.properties.push(player.position);
       for (const p of this.players) p.revealedTiles.add(player.position);
-      this._log(
-        `\u2b50 ${player.name} bought the Super Banana for ${prop.price}\ud83c\udf4c!`,
-      );
-      this.state = "finished";
-      if (this.gameMode === "teams" && this.teams) {
-        const teamKey = this.getTeamOf(player.id);
-        const names = this.teams[teamKey]
-          .map((id) => this.players.find((p) => p.id === id)?.name || "?")
-          .join(" & ");
+
+      // Phase 1: "Found the Super Banana!" (4s)
+      this.superBananaWin = { phase: "found", playerId: player.id };
+      this._log(`\u2b50 ${player.name} found the Super Banana!`);
+      if (this.onUpdate) this.onUpdate();
+
+      setTimeout(() => {
+        // Phase 2: "Bought it! Became Monkey God!" (3s)
+        this.superBananaWin = { phase: "bought", playerId: player.id };
         this._log(
-          `\ud83c\udfc6 Team ${teamKey} (${names}) bought the Super Banana and won! \u2b50\ud83d\udc51`,
+          `\u2b50 ${player.name} bought the Super Banana for ${prop.price}\ud83c\udf4c and became Monkey God! \ud83d\udc51`,
         );
-        this._log(
-          `\u2728 ${names} found the Super Banana, they now have good luck for all eternity! \u2728`,
-        );
-      } else {
-        this._log(
-          `\ud83c\udfc6 ${player.name} bought the Super Banana and is the Banana King! \u2b50\ud83d\udc51`,
-        );
-        this._log(
-          `\u2728 ${player.name} found the Super Banana, ${player.name} now has good luck for all eternity! \u2728`,
-        );
-      }
+        if (this.onUpdate) this.onUpdate();
+
+        setTimeout(() => {
+          // Phase 3: Game over
+          this.superBananaWin = null;
+          this.state = "finished";
+          if (this.gameMode === "teams" && this.teams) {
+            const teamKey = this.getTeamOf(player.id);
+            const names = this.teams[teamKey]
+              .map((id) => this.players.find((p) => p.id === id)?.name || "?")
+              .join(" & ");
+            this._log(
+              `\ud83c\udfc6 Team ${teamKey} (${names}) bought the Super Banana and won! \u2b50\ud83d\udc51`,
+            );
+            this._log(
+              `\u2728 ${names} found the Super Banana, they now have good luck for all eternity! \u2728`,
+            );
+          } else {
+            this._log(
+              `\ud83c\udfc6 ${player.name} is the Monkey God! \u2b50\ud83d\udc51`,
+            );
+            this._log(
+              `\u2728 ${player.name} found the Super Banana, ${player.name} now has good luck for all eternity! \u2728`,
+            );
+          }
+          if (this.onUpdate) this.onUpdate();
+        }, 3000);
+      }, 4000);
       return;
     }
 
@@ -1696,9 +1855,17 @@ class MonopolyGame {
     if (!space) return;
 
     // GROW fires passively
-    if (space.type === "grow") {
-      const pct = GROW_PERCENTAGES[player.position] || 0;
+    if (space.type === "grow" || space.type === "easygrow") {
+      // Easy Grow: reveal to all players on first landing
+      if (space.type === "easygrow") {
+        for (const p of this.players) p.revealedTiles.add(player.position);
+      }
+      const pct =
+        space.type === "easygrow"
+          ? 0.1
+          : GROW_PERCENTAGES[player.position] || 0;
       const pctLabel = Math.round(pct * 100);
+      const easyGrowBase = space.type === "easygrow" ? 25 : 0;
       const teamIds = new Set([player.id]);
       if (this.gameMode === "teams" && this.teams) {
         const teamKey = this.getTeamOf(player.id);
@@ -1719,8 +1886,8 @@ class MonopolyGame {
       }
       const getSideBonus = (pos) => {
         if (pos >= 14 && pos <= 25) return 0.1;
-        if (pos >= 27 && pos <= 38) return 0.2;
-        if (pos >= 40 && pos <= 51) return 0.3;
+        if (pos >= 27 && pos <= 38) return 0.25;
+        if (pos >= 40 && pos <= 51) return 0.5;
         return 0;
       };
       let totalGrown = 0;
@@ -1730,7 +1897,8 @@ class MonopolyGame {
         const owned = groupCount[prop.group] || 1;
         const setMultiplier = 1 + (owned - 1) * 0.1;
         const amount = Math.floor(
-          prop.price * setMultiplier * pct * (1 + getSideBonus(propId)),
+          easyGrowBase +
+            prop.price * (1 + getSideBonus(propId)) * setMultiplier * pct,
         );
         if (amount > 0) {
           prop.bananaPile += amount;
@@ -1905,6 +2073,9 @@ class MonopolyGame {
           this._log(
             `${player.name} slipped on ${newSpace.name}: ${taxAmount}\ud83c\udf4c (10%).`,
           );
+        } else if (newSpace.type === "easygrow") {
+          for (const p of this.players) p.revealedTiles.add(mushroomPos);
+          this._processEasyGrow(player);
         }
       }
       // Non-buyable tile swapped in, or player left — schedule auto-end
@@ -2500,6 +2671,143 @@ class MonopolyGame {
 
   // -- Banana Pile Collection -------------------------------------
 
+  // Returns a map: position -> label number (e.g. CV6 -> 6)
+  _getTileLabelNumbers() {
+    const groupLetters = {
+      pink: "LF",
+      lightblue: "BJ",
+      red: "RD",
+      yellow: "CV",
+      orange: "GF",
+      darkblue: "GM",
+    };
+    const groupCounters = {};
+    const labelNumbers = new Map();
+    for (let i = 0; i < this.board.length; i++) {
+      const space = this.board[i];
+      if (space.buyable) {
+        const g = space.buyable.group;
+        if (g && groupLetters[g]) {
+          groupCounters[g] = (groupCounters[g] || 0) + 1;
+          labelNumbers.set(i, groupCounters[g]);
+        }
+      }
+    }
+    return labelNumbers;
+  }
+
+  _processDiceMatchGrow(player, diceSum) {
+    const labelNumbers = this._getTileLabelNumbers();
+    const teamIds = new Set([player.id]);
+    if (this.gameMode === "teams" && this.teams) {
+      const teamKey = this.getTeamOf(player.id);
+      if (teamKey && this.teams[teamKey]) {
+        for (const id of this.teams[teamKey]) teamIds.add(id);
+      }
+    }
+
+    const getSideBonus = (pos) => {
+      if (pos >= 14 && pos <= 25) return 0.1;
+      if (pos >= 27 && pos <= 38) return 0.25;
+      if (pos >= 40 && pos <= 51) return 0.5;
+      return 0;
+    };
+
+    // Find all owned farms where the label number matches the dice sum
+    const matchedTiles = [];
+    for (const p of this.players) {
+      if (!teamIds.has(p.id)) continue;
+      for (const propId of p.properties) {
+        const num = labelNumbers.get(propId);
+        if (num === diceSum) {
+          matchedTiles.push(propId);
+        }
+      }
+    }
+
+    if (matchedTiles.length === 0) return;
+
+    // Apply 100% grow to each matched tile
+    let totalGrown = 0;
+    const tileNames = [];
+    for (const propId of matchedTiles) {
+      const prop = this.properties.get(propId);
+      if (!prop || !prop.group || prop.group === "desert") continue;
+      const amount = Math.floor(prop.price * (1 + getSideBonus(propId)));
+      if (amount > 0) {
+        prop.bananaPile += amount;
+        totalGrown += amount;
+        // Build label for log
+        const groupLetters = {
+          pink: "LF",
+          lightblue: "BJ",
+          red: "RD",
+          yellow: "CV",
+          orange: "GF",
+          darkblue: "GM",
+        };
+        const prefix = groupLetters[prop.group] || "";
+        tileNames.push(prefix + diceSum);
+      }
+    }
+
+    if (totalGrown > 0) {
+      this.diceMatchTiles = matchedTiles;
+      this._log(
+        `\ud83c\udfb2 ${player.name} rolled ${diceSum} and owns ${tileNames.join(", ")}! 100% grow \u2014 ${totalGrown}\ud83c\udf4c sprouted! \ud83c\udf31`,
+      );
+    }
+  }
+
+  _processEasyGrow(player) {
+    const pct = 0.1;
+    const easyGrowBase = 25;
+    const teamIds = new Set([player.id]);
+    if (this.gameMode === "teams" && this.teams) {
+      const teamKey = this.getTeamOf(player.id);
+      if (teamKey && this.teams[teamKey]) {
+        for (const id of this.teams[teamKey]) teamIds.add(id);
+      }
+    }
+    const teamProps = [];
+    const groupCount = {};
+    for (const p of this.players) {
+      if (!teamIds.has(p.id)) continue;
+      for (const propId of p.properties) {
+        const prop = this.properties.get(propId);
+        if (!prop || !prop.group || prop.group === "desert") continue;
+        teamProps.push(propId);
+        groupCount[prop.group] = (groupCount[prop.group] || 0) + 1;
+      }
+    }
+    const getSideBonus = (pos) => {
+      if (pos >= 14 && pos <= 25) return 0.1;
+      if (pos >= 27 && pos <= 38) return 0.25;
+      if (pos >= 40 && pos <= 51) return 0.5;
+      return 0;
+    };
+    let totalGrown = 0;
+    for (const propId of teamProps) {
+      const prop = this.properties.get(propId);
+      if (!prop) continue;
+      const owned = groupCount[prop.group] || 1;
+      const setMultiplier = 1 + (owned - 1) * 0.1;
+      const amount = Math.floor(
+        easyGrowBase +
+          prop.price * (1 + getSideBonus(propId)) * setMultiplier * pct,
+      );
+      if (amount > 0) {
+        prop.bananaPile += amount;
+        totalGrown += amount;
+      }
+    }
+    if (totalGrown > 0) {
+      this._log(
+        `${player.name} crossed Easy Grow +10% \u2014 ${totalGrown}\ud83c\udf4c grew on their farms! \ud83c\udf31`,
+      );
+    }
+  }
+
   _collectBananasOnPath(player, oldPos, newPos) {
     // Walk every tile from oldPos+1 to newPos (wrapping around the board)
     const steps = (newPos - oldPos + BOARD_SIZE) % BOARD_SIZE;
@@ -2510,6 +2818,7 @@ class MonopolyGame {
 
     for (let s = 1; s <= steps; s++) {
       const pos = (oldPos + s) % BOARD_SIZE;
+
       const prop = this.properties.get(pos);
       if (!prop || prop.bananaPile <= 0) continue;
 
@@ -2963,8 +3272,9 @@ class MonopolyGame {
     if (player.bomb) return false; // already holding a bomb
     player.money -= 5000;
     player.bomb = true;
+    player.bombBoughtTurn = this.turn;
     this._log(
-      `${player.name} bought a bomb for 5000\ud83c\udf4c! \ud83d\udca3`,
+      `${player.name} bought a pineapple bomb for 5000\ud83c\udf4c! \ud83c\udf4d`,
     );
     return true;
   }
@@ -2978,13 +3288,14 @@ class MonopolyGame {
     // Can't place on a tile that already has a bomb
     if (this.bombs.some((b) => b.position === idx)) return false;
     player.bomb = false;
+    player.bombBoughtTurn = null;
     this.bombs.push({
       placedBy: player.id,
       position: idx,
-      turnsLeft: 3,
+      turnsLeft: 5,
     });
     this._log(
-      `${player.name} planted a bomb! \ud83d\udca3 (arms after your next turn, detonates in 3!)`,
+      `${player.name} planted a pineapple bomb! \ud83c\udf4d (arms after your next turn, detonates in 5!)`,
     );
     return true;
   }
@@ -3009,7 +3320,7 @@ class MonopolyGame {
     );
     if (victims.length === 0) return false;
     this._log(
-      `\ud83d\udca5 BOOM! ${player.name} landed on a bomb! \ud83d\udca3`,
+      `\ud83d\udca5 BOOM! ${player.name} landed on a pineapple bomb! \ud83c\udf4d`,
     );
     for (const v of victims) {
       if (v.id === bomb.placedBy) {
@@ -3040,7 +3351,7 @@ class MonopolyGame {
         );
         if (victims.length > 0) {
           this._log(
-            `\ud83d\udca5 BOOM! A bomb exploded on tile ${bomb.position}! \ud83d\udca3`,
+            `\ud83d\udca5 BOOM! A pineapple bomb exploded on tile ${bomb.position}! \ud83c\udf4d`,
           );
           const placer = this.players.find((p) => p.id === bomb.placedBy);
           for (const v of victims) {
@@ -3053,7 +3364,7 @@ class MonopolyGame {
           this._checkBombWin();
         } else {
           this._log(
-            `\ud83d\udca5 A bomb exploded on tile ${bomb.position} but no one was nearby! \ud83d\udca3`,
+            `\ud83d\udca5 A pineapple bomb exploded on tile ${bomb.position} but no one was nearby! \ud83c\udf4d`,
           );
         }
         anyExploded = true;
@@ -3116,8 +3427,12 @@ class MonopolyGame {
     const cur = this.getCurrentPlayer();
     if (!cur || cur.id !== socketId || !this.diceRolled) return false;
     if (this.mushroomPending) return false;
+    if (this.superBananaWin) return false;
     this._cancelAutoEnd();
     this.petCoinFlip = null;
+    this.petUsedThisTurn = false;
+    this.diceMatchTiles = null;
+    this.lastPetUsed = null;
 
     // Clamp all players to 0 minimum (no negatives, no bankruptcy)
     for (const p of this.players) {
@@ -3130,6 +3445,22 @@ class MonopolyGame {
 
     this.turn++;
     this.diceRolled = false;
+
+    // Cancel held bomb if the player has had a full round to place it
+    const newCurBomb = this.players[this.currentPlayerIndex];
+    if (
+      newCurBomb &&
+      newCurBomb.bomb &&
+      newCurBomb.bombBoughtTurn != null &&
+      this.turn - newCurBomb.bombBoughtTurn >= this.players.length
+    ) {
+      newCurBomb.bomb = false;
+      newCurBomb.bombBoughtTurn = null;
+      newCurBomb.money += 5000;
+      this._log(
+        `${newCurBomb.name}'s pineapple bomb expired \u2014 5000\ud83c\udf4c refunded! \ud83c\udf4d`,
+      );
+    }
 
     // Tick bomb timers (explosion happens after next roll in rollDice)
     for (let i = this.bombs.length - 1; i >= 0; i--) {
@@ -3452,6 +3783,9 @@ class MonopolyGame {
       autoEndDelayMs: this.autoEndDelayMs || 0,
       petCoinFlip: this.petCoinFlip || null,
       petResolving: this.petResolving || false,
+      petTurnDelay: this.petTurnDelay || false,
+      petUsedThisTurn: this.petUsedThisTurn || false,
+      lastPetUsed: this.lastPetUsed || null,
       poker: this.poker ? this._getPokerState(viewerId) : null,
       revealAccepted: this.revealAccepted ? [...this.revealAccepted] : [],
       log: this.log.slice(-20),
@@ -3461,12 +3795,16 @@ class MonopolyGame {
       teamCoinFlip: this.teamCoinFlip || null,
       bombWinner: this.bombWinner || null,
       bananaLoser: this.bananaLoser || null,
-      bombs: this.bombs.map((b) => ({
-        position: b.position,
-        turnsLeft: b.turnsLeft,
-      })),
+      bombs: this.bombs
+        .filter((b) => b.placedBy === viewerId)
+        .map((b) => ({
+          position: b.position,
+          turnsLeft: b.turnsLeft,
+        })),
       lastExplosion: this.lastExplosion || null,
       bombSelfDamage: this.bombSelfDamage || null,
+      diceMatchTiles: this.diceMatchTiles || null,
+      superBananaWin: this.superBananaWin || null,
     };
   }
 

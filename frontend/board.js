@@ -32,38 +32,37 @@ const SPACE_DATA = {
   29: { name: "Indiana Ave", group: "yellow", price: 50 },
   30: { name: "Illinois Ave", group: "yellow", price: 50 },
   31: { name: "Sunset Strip", group: "yellow", price: 50 },
-  // Goldfinger (4)
-  33: { name: "Atlantic Ave", group: "orange", price: 300 },
-  34: { name: "Ventnor Ave", group: "orange", price: 300 },
-  36: { name: "Marvin Gdns", group: "orange", price: 300 },
-  37: { name: "Lakeshore Dr", group: "orange", price: 300 },
+  // Gros Michel (4)
+  33: { name: "Atlantic Ave", group: "darkblue", price: 360 },
+  34: { name: "Ventnor Ave", group: "darkblue", price: 360 },
+  36: { name: "Marvin Gdns", group: "darkblue", price: 360 },
+  37: { name: "Lakeshore Dr", group: "darkblue", price: 360 },
   // Red Dacca (5th)
   40: { name: "Red Dacca Ln", group: "red", price: 200 },
   // Lady Finger (5th)
   41: { name: "Cavendish Dr", group: "pink", price: 200 },
-  // Gros Michel (3)
-  48: { name: "Park Place", group: "darkblue", price: 500 },
-  49: { name: "Fifth Avenue", group: "darkblue", price: 500 },
-  51: { name: "Boardwalk", group: "darkblue", price: 500 },
+  // Goldfinger (3)
+  48: { name: "Park Place", group: "orange", price: 500 },
+  49: { name: "Fifth Avenue", group: "orange", price: 500 },
+  51: { name: "Boardwalk", group: "orange", price: 500 },
 };
 
 const SPECIAL_SPACES = {
   // Corners
   0: { name: "GROW\n100%", type: "corner" },
-  13: { name: "GROW\n25%", type: "corner" },
+  13: { name: "GROW\n75%", type: "corner" },
   26: { name: "GROW\n50%", type: "corner" },
-  39: { name: "GROW\n75%", type: "corner" },
+  39: { name: "GROW\n25%", type: "corner" },
   // Community Chest
   2: { name: "\ud83c\udf4c\n-10%", type: "tax10" },
   21: { name: "\u2b50", type: "special" },
-  42: { name: "\ud83c\udf4c\n-10%", type: "tax10" },
+  42: { name: "\ud83c\udf31", type: "easygrow" },
   // Desert
   8: { name: "\ud83c\udf35", type: "desert" },
   28: { name: "\ud83c\udf35", type: "desert" },
   46: { name: "\ud83c\udf35", type: "desert" },
   // Tax
   5: { name: "\ud83c\udf4c\n-15%", type: "tax" },
-  50: { name: "\ud83c\udf4c\n-15%", type: "tax" },
   // Mega specials
   12: { name: "\ud83c\udf35", type: "desert" },
   25: { name: "Vine\nSwing", type: "bus" },
@@ -71,7 +70,16 @@ const SPECIAL_SPACES = {
   43: { name: "\ud83c\udf35", type: "desert" },
   44: { name: "\ud83c\udf35", type: "desert" },
   45: { name: "\ud83c\udf35", type: "desert" },
+  50: { name: "\ud83c\udf35", type: "desert" },
 };
+
+// ——— Side bonus based on board position ————————————————————————————
+function getSideBonus(pos) {
+  if (pos >= 14 && pos <= 25) return 0.1; // left column
+  if (pos >= 27 && pos <= 38) return 0.25; // top row
+  if (pos >= 40 && pos <= 51) return 0.5; // right column
+  return 0; // bottom row (1-12) and corners
+}
 
 // ——— Layout calculation (52 spaces, 14×14 grid) ———————————————————
 
@@ -276,11 +284,12 @@ function renderBoard(gs) {
             `<path d="M36 10 C38 6 41 3 44 2 C46 1 47 3 46 5 C45 7 42 9 39 10Z" fill="#5a3a1a" stroke="#3d2510" stroke-width="0.8" stroke-linejoin="round"/>` +
             `<path d="M24 38 C22 42 21 46 22 50" fill="none" stroke="rgba(255,255,255,0.5)" stroke-width="1.5" stroke-linecap="round"/>` +
             `</g></svg></span>` +
-            `<span class="sprice">${tile.price}\ud83c\udf4c</span>`;
+            `<span class="sprice">${Math.round(tile.price * (1 + getSideBonus(i)))}\ud83c\udf4c</span>`;
         } else {
           el.classList.add("g-" + (tile.group || "railroad"));
-          // Show effective yield with set bonus if tile is owned
-          let priceDisplay = `${tile.price}\ud83c\udf4c`;
+          // Show effective yield with side bonus and set bonus if tile is owned
+          const baseYield = Math.round(tile.price * (1 + getSideBonus(i)));
+          let priceDisplay = `${baseYield}\ud83c\udf4c`;
           if (gs && gs.properties) {
             const prop = gs.properties.find((p) => p.id === i);
             if (
@@ -292,7 +301,7 @@ function renderBoard(gs) {
               const count = _ownerGroupCount[prop.owner][prop.group] || 1;
               if (count > 1) {
                 const mult = 1 + (count - 1) * 0.1;
-                priceDisplay = `${Math.round(tile.price * mult)}\ud83c\udf4c`;
+                priceDisplay = `${Math.round(tile.price * (1 + getSideBonus(i)) * mult)}\ud83c\udf4c`;
               }
             }
           }
@@ -402,29 +411,36 @@ function renderBoard(gs) {
     if (r.side === "bottom") {
       pileEl.style.left = r.l + r.w / 2 + "%";
       pileEl.style.top = r.t - 0.3 + "%";
-      pileEl.style.transform = "translate(-50%, -100%)";
+      pileEl.style.setProperty("--pile-transform", "translate(-50%, -100%)");
     } else if (r.side === "top") {
       pileEl.style.left = r.l + r.w / 2 + "%";
       pileEl.style.top = r.t + r.h + 0.3 + "%";
-      pileEl.style.transform = "translate(-50%, 0)";
+      pileEl.style.setProperty("--pile-transform", "translate(-50%, 0)");
     } else if (r.side === "left") {
       pileEl.style.left = r.l + r.w + 0.3 + "%";
       pileEl.style.top = r.t + r.h / 2 + "%";
-      pileEl.style.transform = "translate(0, -50%)";
+      pileEl.style.setProperty("--pile-transform", "translate(0, -50%)");
     } else if (r.side === "right") {
       pileEl.style.left = r.l - 0.3 + "%";
       pileEl.style.top = r.t + r.h / 2 + "%";
-      pileEl.style.transform = "translate(-100%, -50%)";
+      pileEl.style.setProperty("--pile-transform", "translate(-100%, -50%)");
     } else {
       // Corner — place toward center
       const cx = r.l + r.w / 2;
       const cy = r.t + r.h / 2;
       pileEl.style.left = (cx < 50 ? r.l + r.w + 0.3 : r.l - 0.3) + "%";
       pileEl.style.top = (cy < 50 ? r.t + r.h + 0.3 : r.t - 0.3) + "%";
-      pileEl.style.transform =
+      pileEl.style.setProperty(
+        "--pile-transform",
         (cx < 50 ? "translateX(0)" : "translateX(-100%)") +
-        " " +
-        (cy < 50 ? "translateY(0)" : "translateY(-100%)");
+          " " +
+          (cy < 50 ? "translateY(0)" : "translateY(-100%)"),
+      );
+    }
+
+    // Dice-match grow bounce animation
+    if (gs && gs.diceMatchTiles && gs.diceMatchTiles.includes(pile.tileIndex)) {
+      pileEl.classList.add("dice-match-grow");
     }
 
     board.appendChild(pileEl);
@@ -469,8 +485,8 @@ function renderBoard(gs) {
   // Side bonus labels
   const sideBonuses = [
     { label: "+10%", l: "14%", t: "50%" },
-    { label: "+20%", l: "50%", t: "14%" },
-    { label: "+30%", l: "86%", t: "50%" },
+    { label: "+25%", l: "50%", t: "14%" },
+    { label: "+50%", l: "86%", t: "50%" },
   ];
   sideBonuses.forEach((b) => {
     const lbl = document.createElement("div");
@@ -500,13 +516,13 @@ function renderBoard(gs) {
     for (const bomb of gs.bombs) {
       const r = spaceRect(bomb.position);
       const bombEl = document.createElement("div");
-      const isArming = bomb.turnsLeft > 3;
+      const isArming = bomb.turnsLeft > 5;
       bombEl.className = "bomb-indicator" + (isArming ? " bomb-arming" : "");
-      bombEl.textContent = "\ud83d\udca3";
+      bombEl.textContent = "\uD83C\uDF4D";
       const activeTurns = isArming ? 0 : bomb.turnsLeft;
       bombEl.title = isArming
-        ? "Bomb (arming...)"
-        : `Bomb (${activeTurns} turn${activeTurns !== 1 ? "s" : ""} until detonation)`;
+        ? "Pineapple Bomb (arming...)"
+        : `Pineapple Bomb (${activeTurns} turn${activeTurns !== 1 ? "s" : ""} until detonation)`;
       bombEl.style.left = r.l + r.w - 2 + "%";
       bombEl.style.top = r.t + r.h - 2 + "%";
       const timerBadge = document.createElement("span");
@@ -880,7 +896,7 @@ function renderPreviewBoard(layout) {
         el.innerHTML =
           `<span class="sname desert-icon">${tile.tileName}</span>` +
           (tile.price > 0
-            ? `<span class="sprice desert-price">${tile.price}\ud83c\udf4c</span>`
+            ? `<span class="sprice desert-price">${Math.round(tile.price * (1 + getSideBonus(i)))}\ud83c\udf4c</span>`
             : "");
       } else if (tile.group === "mushroom") {
         el.classList.add("g-mushroom");
@@ -899,12 +915,12 @@ function renderPreviewBoard(layout) {
           `<path d="M36 10 C38 6 41 3 44 2 C46 1 47 3 46 5 C45 7 42 9 39 10Z" fill="#5a3a1a" stroke="#3d2510" stroke-width="0.8" stroke-linejoin="round"/>` +
           `<path d="M24 38 C22 42 21 46 22 50" fill="none" stroke="rgba(255,255,255,0.5)" stroke-width="1.5" stroke-linecap="round"/>` +
           `</g></svg></span>` +
-          `<span class="sprice">${tile.price}\ud83c\udf4c</span>`;
+          `<span class="sprice">${Math.round(tile.price * (1 + getSideBonus(i)))}\ud83c\udf4c</span>`;
       } else {
         el.classList.add("g-" + (tile.group || "railroad"));
         el.innerHTML =
           `<span class="sname">${label}</span>` +
-          `<span class="sprice">${tile.price}\ud83c\udf4c</span>`;
+          `<span class="sprice">${Math.round(tile.price * (1 + getSideBonus(i)))}\ud83c\udf4c</span>`;
       }
     } else {
       el.classList.add("type-" + tile.type);
