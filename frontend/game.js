@@ -616,6 +616,7 @@ function hideReveal() {
 function showLobby() {
   showScreen("screen-lobby");
   _prevLogLen = 0;
+  resetBoardAnimationState();
 
   // Game code (click to copy)
   const codeEl = document.getElementById("lobby-code");
@@ -1191,6 +1192,7 @@ function showGame() {
       window._lastDiceKey = diceKey;
       // Freeze token positions and tile reveals at pre-roll state during animation
       window._diceRollingPositions = window._prevPlayerPositions || null;
+      window._walkStartPositions = window._prevPlayerPositions ? Object.assign({}, window._prevPlayerPositions) : null;
       window._diceRollingRevealed = window._prevRevealedTiles || null;
       // Freeze banana piles and track which tiles the token has visited
       window._frozenBananaPiles = window._prevBananaPileState || null;
@@ -1244,6 +1246,13 @@ function showGame() {
             playMoveTickSound();
             if (step >= steps) {
               clearInterval(walkInterval);
+              // Fire freebananas popup if landing directly on the tile (it is never
+              // an intermediate step so the board.js walk-through check can't catch it)
+              const _landingSpace = gs.boardLayout && gs.boardLayout[cur.position];
+              if (_landingSpace && _landingSpace.type === "freebananas") {
+                const _wasHidden = window._diceRollingRevealed && !window._diceRollingRevealed.has(cur.position);
+                setTimeout(() => showPopupAtBananaBox("+500\uD83C\uDF4C", "free-bananas-popup-player"), _wasHidden ? 1100 : 100);
+              }
               // Fully unfreeze positions and reveals
               window._diceRollingPositions = null;
               window._diceRollingRevealed = null;

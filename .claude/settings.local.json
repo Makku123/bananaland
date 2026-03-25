@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(grep -r \"password\\\\|secret\\\\|token\\\\|key\" c:UsersYouCodebananaland --include=*.json --include=*.js)",
+      "Bash(find c:UsersYouCodebananaland -name *.env* -o -name .env)",
+      "Bash(find c:UsersYouCodebananaland -name *.test.js -o -name *.spec.js -o -name test -type d)"
+    ]
+  }
+}

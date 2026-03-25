@@ -123,6 +123,13 @@ let _freeBananasShown = new Set(); // positions already shown this walk
 // ——— Banana pile tracking for collection animation ————————————————
 let _prevBananaPiles = {}; // { tileIndex: amount }
 
+// ——— Reset all between-game animation state (call when returning to lobby) ———
+function resetBoardAnimationState() {
+  _prevBananaPiles = {};
+  _prevFreeBananasTiles = new Set();
+  _freeBananasShown = new Set();
+}
+
 // ——— Shared helper: show a floating popup at the "Your Bananas" box ——
 function showPopupAtBananaBox(text, cssClass) {
   const moneyEl = document.getElementById("info-money");
@@ -551,11 +558,33 @@ function renderBoard(gs) {
       board.appendChild(floater);
       floater.addEventListener("animationend", () => floater.remove());
 
-      // Also show +X at the Your Bananas box
-      showPopupAtBananaBox(
-        "+" + collected + "\uD83C\uDF4C",
-        "pile-collect-popup-player",
-      );
+      // Show +X at the collector's profile (theirs, not always mine)
+      const collectorProp =
+        gs.properties && gs.properties.find((p) => p.position === Number(idx));
+      const collectorId = collectorProp && collectorProp.owner;
+      const collectorIsMe =
+        typeof myId !== "undefined" && collectorId === myId;
+      if (collectorIsMe || !collectorId) {
+        showPopupAtBananaBox("+" + collected + "\uD83C\uDF4C", "pile-collect-popup-player");
+      } else {
+        const pstat = document.querySelector(
+          `.pstat[data-player-id="${collectorId}"]`,
+        );
+        const anchor = pstat && pstat.querySelector(".pstat-money");
+        if (anchor) {
+          const rect = anchor.getBoundingClientRect();
+          const floater2 = document.createElement("div");
+          floater2.className = "pile-collect-popup-player";
+          floater2.textContent = "+" + collected + "\uD83C\uDF4C";
+          floater2.style.position = "fixed";
+          floater2.style.left = rect.left + rect.width / 2 + "px";
+          floater2.style.top = rect.top + "px";
+          floater2.style.pointerEvents = "none";
+          floater2.style.zIndex = "1000";
+          document.body.appendChild(floater2);
+          floater2.addEventListener("animationend", () => floater2.remove());
+        }
+      }
     }
   }
   _prevBananaPiles = currentPiles;
@@ -579,6 +608,13 @@ function renderBoard(gs) {
       for (const [playerId, pos] of Object.entries(
         window._diceRollingPositions,
       )) {
+        // Skip if this is still the pre-walk starting position — the player is
+        // leaving, not passing through.  The landing case is handled separately
+        // in game.js at the end of the walk interval.
+        const isStartPos =
+          window._walkStartPositions &&
+          window._walkStartPositions[playerId] === pos;
+        if (isStartPos) continue;
         const tileRevealed = !myRevealed || myRevealed.has(pos);
         if (currentFB.has(pos) && !_freeBananasShown.has(pos) && tileRevealed) {
           _freeBananasShown.add(pos);

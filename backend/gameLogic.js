@@ -2724,13 +2724,49 @@ class MonopolyGame {
 
     if (matchedTiles.length === 0) return;
 
+    // Build chain multipliers for all team-owned farms (same logic as frontend board.js)
+    // Adjacent same-group farms form a chain; each tile's multiplier = chain length.
+    const allTeamProps = [];
+    for (const p of this.players) {
+      if (!teamIds.has(p.id)) continue;
+      for (const propId of p.properties) {
+        const prop = this.properties.get(propId);
+        if (prop && prop.group && prop.group !== "desert" && prop.group !== "mushroom") {
+          allTeamProps.push(prop);
+        }
+      }
+    }
+    const teamPosSet = new Set(allTeamProps.map((p) => p.id));
+    const chainMultipliers = {};
+    const visitedChain = new Set();
+    for (const prop of allTeamProps) {
+      if (visitedChain.has(prop.id)) continue;
+      const chain = [];
+      const queue = [prop.id];
+      visitedChain.add(prop.id);
+      while (queue.length > 0) {
+        const cur = queue.shift();
+        chain.push(cur);
+        const neighbors = [(cur - 1 + 52) % 52, (cur + 1) % 52];
+        for (const n of neighbors) {
+          if (visitedChain.has(n) || !teamPosSet.has(n) || CORNER_POSITIONS.has(n)) continue;
+          const nProp = allTeamProps.find((p) => p.id === n);
+          if (!nProp || nProp.group !== prop.group) continue;
+          visitedChain.add(n);
+          queue.push(n);
+        }
+      }
+      for (const c of chain) chainMultipliers[c] = chain.length;
+    }
+
     // Apply 100% grow to each matched tile
     let totalGrown = 0;
     const tileNames = [];
     for (const propId of matchedTiles) {
       const prop = this.properties.get(propId);
       if (!prop || !prop.group || prop.group === "desert") continue;
-      const amount = Math.floor(prop.price * (1 + getSideBonus(propId)));
+      const chainMult = chainMultipliers[propId] || 1;
+      const amount = Math.floor(prop.price * (1 + getSideBonus(propId)) * chainMult);
       if (amount > 0) {
         prop.bananaPile += amount;
         totalGrown += amount;
