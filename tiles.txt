@@ -1,4 +1,4 @@
-MONKEY BUSINESS BOARD — ALL 52 TILES
+MONKEY BIDNIZ BOARD — ALL 52 TILES
 =================================
 
 ── CORNERS (4) ──────────────────────────────────
@@ -70,8 +70,8 @@ MONKEY BUSINESS BOARD — ALL 52 TILES
 ── BANANA PEEL / -10% (1) ──────────────────────
  2  🍌 -10%  (dark grey tile)
 
-── EASY GROW / +10% (1) ───────────────────────
-42  🌱 +10%  (green tile, triggers on cross or land)
+── FREE BANANAS / +500 (1) ─────────────────────
+42  🍌 +500  (free bananas bonus tile)
 
 ── SPECIAL (1) ─────────────────────────────────
 21  ⭐ Special  (white tile)
@@ -86,7 +86,7 @@ TOTALS
   Deserts:      8
   Peel -20%:    2
   Peel -10%:    1
-  Easy Grow:    1
+  Free Bananas: 1
   Special:      1
   Vine Swing:   1
   ─────────────

@@ -89,13 +89,13 @@ io.on("connection", (socket) => {
       code,
       data.maxPlayers,
       data.startingMoney,
-      data.scouting,
       data.gameMode,
       data.teamTarget,
       data.petMode,
       data.simpleAuction,
       data.bombMode,
       data.monkeyPoker,
+      data.sideBonuses,
     );
     games.set(code, game);
     game.onUpdate = () => emitGameUpdate(code, game);
@@ -165,15 +165,6 @@ io.on("connection", (socket) => {
           emitGameUpdate(data.gameId, game);
         }
       }, 5000);
-    }
-  });
-
-  // ── Pick tile (scouting phase) ────────────────────────────────
-  socket.on("pick_tile", (data) => {
-    const game = games.get(data.gameId);
-    if (!game) return;
-    if (game.pickTile(socket.id, data.position)) {
-      emitGameUpdate(data.gameId, game);
     }
   });
 
@@ -343,18 +334,34 @@ io.on("connection", (socket) => {
     }
   });
 
-  // ── Trade property ───────────────────────────────────────────
-  socket.on("trade_property", (data) => {
+  // ── Sell property (list for sale) ─────────────────────────────
+  socket.on("sell_property", (data) => {
     const game = games.get(data.gameId);
     if (!game) return;
-    if (
-      game.tradeProperty(
-        socket.id,
-        data.recipientId,
-        data.propertyPos,
-        data.theirPropertyPos,
-      )
-    ) {
+    if (game.sellProperty(socket.id, data.propPos, data.price)) {
+      emitGameUpdate(data.gameId, game);
+    }
+  });
+
+  // ── Buy a listed sale ───────────────────────────────────────
+  socket.on("buy_sale", (data) => {
+    const game = games.get(data.gameId);
+    if (!game) return;
+    const result = game.buySale(socket.id, data.saleId);
+    if (result) {
+      io.to(data.gameId).emit("sale_completed", {
+        propPos: result.propPos,
+        buyerColor: result.buyerColor,
+      });
+      emitGameUpdate(data.gameId, game);
+    }
+  });
+
+  // ── Cancel a sale listing ───────────────────────────────────
+  socket.on("cancel_sale", (data) => {
+    const game = games.get(data.gameId);
+    if (!game) return;
+    if (game.cancelSale(socket.id, data.saleId)) {
       emitGameUpdate(data.gameId, game);
     }
   });
@@ -364,6 +371,15 @@ io.on("connection", (socket) => {
     const game = games.get(data.gameId);
     if (!game) return;
     if (game.swapFarm(socket.id, data.myFarmPos, data.mateFarmPos)) {
+      emitGameUpdate(data.gameId, game);
+    }
+  });
+
+  // ── Give farm to teammate ─────────────────────────────────
+  socket.on("give_farm", (data) => {
+    const game = games.get(data.gameId);
+    if (!game) return;
+    if (game.giveFarm(socket.id, data.propPos)) {
       emitGameUpdate(data.gameId, game);
     }
   });

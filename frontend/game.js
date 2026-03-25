@@ -218,6 +218,11 @@ function initSocket() {
       // Snapshot money before state update
       const meSnap = gs.players.find((p) => p.id === socket.id);
       if (meSnap) window._prevMoney = meSnap.money;
+      // Snapshot all players' money for deduction popups
+      window._prevPlayerMoney = {};
+      for (const p of gs.players) {
+        window._prevPlayerMoney[p.id] = p.money;
+      }
     }
     gs = state;
     gameId = state.gameId;
@@ -254,6 +259,16 @@ function initSocket() {
   });
 
   socket.on("dev:reload", () => location.reload());
+
+  socket.on("sale_completed", (data) => {
+    // Store pending flash — renderBoard (triggered by the game_update that
+    // follows immediately) will destroy the current DOM element, so we apply
+    // the flash AFTER the board is re-rendered.
+    window._pendingSaleFlash = {
+      propPos: data.propPos,
+      buyerColor: data.buyerColor,
+    };
+  });
 }
 
 // ── Routing: pick correct screen based on state ────────────────────
@@ -265,13 +280,6 @@ function route() {
   } else if (gs.state === "revealing") {
     showReveal();
     updateRevealAcceptStatus();
-  } else if (gs.state === "picking") {
-    hideReveal();
-    if (!_shufflePlayed) {
-      _shufflePlayed = true;
-      playShuffleSound();
-    }
-    showGame();
   } else {
     hideReveal();
     if (!_shufflePlayed) {
@@ -629,11 +637,11 @@ function showLobby() {
     <div class="lobby-setting">\ud83c\udfae <span class="lobby-setting-val">${modeLabel}</span></div>
     <div class="lobby-setting">\ud83d\udc3e <span class="lobby-setting-val">${petModeLabel}</span></div>
     ${gs.gameMode === "teams" ? `<div class="lobby-setting">\u2b50 <span class="lobby-setting-val">Win: Buy the Super Banana (7777\ud83c\udf4c)</span></div>` : ""}
-    ${gs.scouting ? '<div class="lobby-setting">\ud83d\udd0d <span class="lobby-setting-val">Scouting</span></div>' : ""}
     ${gs.simpleAuction ? '<div class="lobby-setting">\ud83c\udff7\ufe0f <span class="lobby-setting-val">Simple Auction</span></div>' : ""}
     ${gs.bombMode ? '<div class="lobby-setting">\ud83c\udf4d <span class="lobby-setting-val">Pineapple Bomb Mode</span></div>' : ""}
     ${gs.monkeyPoker ? '<div class="lobby-setting">\ud83d\udc35 <span class="lobby-setting-val">Monkey Poker</span></div>' : ""}
     ${!gs.monkeyPoker ? '<div class="lobby-setting">\ud83c\udccf <span class="lobby-setting-val">Real Poker</span></div>' : ""}
+    ${gs.sideBonuses ? '<div class="lobby-setting">\ud83d\udccd <span class="lobby-setting-val">Side Bonuses</span></div>' : ""}
   `;
 
   // Host settings controls
@@ -857,14 +865,14 @@ function updateLobbyPets() {
   });
 }
 
-function updatePetAbilityBox(me, isMyTurn, isPicking) {
+function updatePetAbilityBox(me, isMyTurn) {
   const box = document.getElementById("pet-ability-box");
   if (!box || !me) {
     if (box) box.style.display = "none";
     return;
   }
 
-  if (!me.pet || isPicking || gs.state === "finished") {
+  if (!me.pet || gs.state === "finished") {
     box.style.display = "none";
     return;
   }
@@ -881,7 +889,7 @@ function updatePetAbilityBox(me, isMyTurn, isPicking) {
 
   const isLimited = gs.petMode === "limited";
   const petUsable = isLimited ? (me.petUses || 0) > 0 : me.petCooldown <= 0;
-  const canAffordPet = me.money >= 100;
+  const canAffordPet = true;
 
   // Show last coin flip result near toggle (delayed until coin animation finishes)
   const flipResultEl = document.getElementById("pet-flip-result");
@@ -965,9 +973,11 @@ function updatePetAbilityBox(me, isMyTurn, isPicking) {
         toggleText.textContent = "\u26D4 Roll dice first";
       } else {
         toggleText.innerHTML =
-          me.pet === "energy" || me.pet === "strong" || me.pet === "devil"
-            ? "Use Pet<br>100\uD83C\uDF4C"
-            : "Use Pet Next Turn<br>100\uD83C\uDF4C";
+          me.pet === "devil"
+            ? "Use Pet (100🍌)"
+            : me.pet === "energy" || me.pet === "strong"
+              ? "Use Pet"
+              : "Use Pet Next Turn";
       }
     }
 
@@ -998,6 +1008,29 @@ function updatePetAbilityBox(me, isMyTurn, isPicking) {
   }
 }
 
+// ── Money Deduction Popup ──────────────────────────────────────────
+function _showMoneyDeduction(playerId, amount) {
+  // Show on the player's own bank box if it's "me", or on their pstat row
+  const isMe = playerId === myId;
+  let anchor;
+  if (isMe) {
+    anchor = document.getElementById("info-money");
+  } else {
+    const pstat = document.querySelector(
+      `.pstat[data-player-id="${playerId}"]`,
+    );
+    if (pstat) anchor = pstat.querySelector(".pstat-money");
+  }
+  if (!anchor) return;
+
+  const popup = document.createElement("span");
+  popup.className = "money-deduction-popup";
+  popup.textContent = `-${amount}🍌`;
+  anchor.style.position = anchor.style.position || "relative";
+  anchor.appendChild(popup);
+  setTimeout(() => popup.remove(), 2400);
+}
+
 // ── Game Screen ────────────────────────────────────────────────────
 
 function showGame() {
@@ -1016,29 +1049,19 @@ function showGame() {
       nameSpan.textContent = "🍌";
       const textSpan = document.createElement("span");
       textSpan.className = "board-chat-text";
-      textSpan.textContent = "Welcome To Monkey Business!";
+      textSpan.textContent = "Welcome To Monkey Bidniz!";
       msg.appendChild(nameSpan);
       msg.appendChild(textSpan);
       container.appendChild(msg);
     }
   }
 
-  const isPicking = gs.state === "picking";
   const cur = gs.currentPlayer;
   const me = gs.players.find((p) => p.id === myId);
-  const isMyTurn = !isPicking && cur && cur.id === myId;
+  const isMyTurn = cur && cur.id === myId;
 
   // Turn info
-  if (isPicking) {
-    const picker = gs.currentPicker;
-    const isMyPick = picker && picker.id === myId;
-    document.getElementById("turn-name").textContent = isMyPick
-      ? "Your turn to scout!"
-      : `${picker?.name || "..."} is scouting`;
-    document.getElementById("turn-name").style.color = isMyPick
-      ? "#ffe135"
-      : "#aaa";
-  } else {
+  {
     const isMyTurnLabel = cur && cur.id === myId;
     document.getElementById("turn-name").textContent = cur
       ? isMyTurnLabel
@@ -1082,7 +1105,6 @@ function showGame() {
   }
   const rollDelayDone = window._rollReady || gs.diceRolled;
   const canRoll =
-    !isPicking &&
     isMyTurn &&
     !gs.diceRolled &&
     !gs.mushroomPending &&
@@ -1105,10 +1127,10 @@ function showGame() {
     roll1Btn.style.display = me && !isMyTurn ? "" : "none";
     roll1Btn.disabled =
       myMoney < 500 || !!petIsArmedForDice || isFirstRound || armedDice === 3;
-    roll1Btn.textContent =
+    roll1Btn.innerHTML =
       armedDice === 1
-        ? "\uD83C\uDFB2\u00d71 Armed \u2713"
-        : "\uD83C\uDFB2\u00d71 500\uD83C\uDF4C";
+        ? '<span style="font-size:1.2em;line-height:1">\uD83D\uDC22</span><span>\uD83C\uDFB2\u00d71 Armed \u2713</span>'
+        : '<span style="font-size:1.2em;line-height:1">\uD83D\uDC22</span><span>\uD83C\uDFB2\u00d71 500\uD83C\uDF4C</span>';
     if (armedDice === 1) roll1Btn.classList.add("btn-armed");
     else roll1Btn.classList.remove("btn-armed");
   }
@@ -1116,10 +1138,10 @@ function showGame() {
     roll3Btn.style.display = me && !isMyTurn ? "" : "none";
     roll3Btn.disabled =
       myMoney < 1000 || !!petIsArmedForDice || isFirstRound || armedDice === 1;
-    roll3Btn.textContent =
+    roll3Btn.innerHTML =
       armedDice === 3
-        ? "\uD83C\uDFB2\u00d73 Armed \u2713"
-        : "\uD83C\uDFB2\u00d73 1000\uD83C\uDF4C";
+        ? '<span style="font-size:1.2em;line-height:1">\uD83D\uDC07</span><span>\uD83C\uDFB2\u00d73 Armed \u2713</span>'
+        : '<span style="font-size:1.2em;line-height:1">\uD83D\uDC07</span><span>\uD83C\uDFB2\u00d73 1000\uD83C\uDF4C</span>';
     if (armedDice === 3) roll3Btn.classList.add("btn-armed");
     else roll3Btn.classList.remove("btn-armed");
   }
@@ -1375,6 +1397,21 @@ function showGame() {
         const name = buyer ? buyer.name : "Someone";
         if (textEl)
           textEl.textContent = `\u2b50 ${name} can afford it! ${name} bought the Super Banana and became Monkey God! \ud83d\udc51`;
+      } else if (
+        gs.superBananaWin.phase === "cantafford" &&
+        !window._superBananaCantAffordShown
+      ) {
+        window._superBananaCantAffordShown = true;
+        const loser = gs.players.find(
+          (p) => p.id === gs.superBananaWin.playerId,
+        );
+        const winner = gs.superBananaWin.winnerId
+          ? gs.players.find((p) => p.id === gs.superBananaWin.winnerId)
+          : null;
+        const loserName = loser ? loser.name : "Someone";
+        const winnerName = winner ? winner.name : "the richest monkey";
+        if (textEl)
+          textEl.textContent = `\u2b50 ${loserName} can't afford it! Nowhere to hide it! ${winnerName} is the richest monkey and wins! \ud83d\udc51`;
       }
     } else if (
       gs.mushroomPending &&
@@ -1398,6 +1435,7 @@ function showGame() {
       window._mushNotifShown = false;
       window._superBananaFoundShown = false;
       window._superBananaBoughtShown = false;
+      window._superBananaCantAffordShown = false;
       mushNotif.classList.remove("show");
       clearTimeout(window._mushPhase2Timer);
     }
@@ -1522,7 +1560,36 @@ function showGame() {
         // Lost the auction — play loss sound
         playAuctionLoss();
       }
+      // Show red deduction popup for whoever bought the farm
+      if (window._prevPlayerMoney) {
+        for (const p of gs.players) {
+          const prev = window._prevPlayerMoney[p.id];
+          if (prev != null && p.money < prev) {
+            const diff = prev - p.money;
+            _showMoneyDeduction(p.id, diff);
+          }
+        }
+      }
       window._lastAuctionPos = null;
+    }
+  }
+
+  // Silent auction tied notification
+  const tiedNotif = document.getElementById("auction-tied-notification");
+  if (tiedNotif && gs.silentAuctionTied) {
+    const tiedKey = `tied-${gs.turn}`;
+    if (tiedKey !== window._lastTiedNotifKey) {
+      window._lastTiedNotifKey = tiedKey;
+      tiedNotif.textContent =
+        "🐒 Silent auction was tied! The monkeys kept fighting over the farm so the lander gets it for his price.";
+      tiedNotif.classList.remove("show");
+      void tiedNotif.offsetWidth;
+      tiedNotif.classList.add("show");
+      clearTimeout(window._tiedNotifTimer);
+      window._tiedNotifTimer = setTimeout(
+        () => tiedNotif.classList.remove("show"),
+        4000,
+      );
     }
   }
 
@@ -1545,7 +1612,6 @@ function showGame() {
 
   // End turn (disabled during auction, vine swing, poker, mushroom pending, or auction end delay)
   const canEnd =
-    !isPicking &&
     !gs.auction &&
     !gs.vineSwing &&
     !gs.poker &&
@@ -1556,7 +1622,6 @@ function showGame() {
   // Like canEnd but ignores autoEndDelay — pet can fire during the delay
   // (server's usePetAbility cancels the auto-end timer)
   const canPetFire =
-    !isPicking &&
     !gs.auction &&
     !gs.vineSwing &&
     !gs.poker &&
@@ -1776,18 +1841,23 @@ function showGame() {
   }
 
   // Pet ability panel
-  updatePetAbilityBox(me, isMyTurn, isPicking);
+  updatePetAbilityBox(me, isMyTurn);
 
   // Trade button: visible but disabled when it's your turn
-  const tradeBtn = document.getElementById("btn-trade");
-  if (tradeBtn) {
-    tradeBtn.style.display = "";
-    if (isMyTurn) {
-      tradeBtn.disabled = true;
-      closeTradePanel();
-    } else {
-      tradeBtn.disabled = false;
+  const sellBtn = document.getElementById("btn-sell");
+  if (sellBtn) {
+    sellBtn.style.display = "";
+    sellBtn.disabled = false;
+    const isTeams = gs.gameMode === "teams";
+    if (!isSellMode()) {
+      sellBtn.innerHTML = isTeams ? "🎁 Give" : "🏷️ Sell";
     }
+  }
+
+  // Send Bananas button (teams only)
+  const sendBananasBtn = document.getElementById("btn-send-bananas");
+  if (sendBananasBtn) {
+    sendBananasBtn.style.display = gs.gameMode === "teams" ? "" : "none";
   }
 
   // Bomb buttons
@@ -1820,6 +1890,16 @@ function showGame() {
 
   // Auction panel
   updateAuctionPanel();
+
+  // Trade deals panel / notification badge
+  updateSellListingsNotification();
+  const tradeDealsPanel = document.getElementById("board-trade-deals");
+  if (
+    tradeDealsPanel &&
+    !tradeDealsPanel.classList.contains("board-trade-deals-hidden")
+  ) {
+    renderSellListings();
+  }
 
   // Players list
   // Compute per-player uncollected banana piles
@@ -1871,6 +1951,7 @@ function showGame() {
       const div = document.createElement("div");
       const isMe = p.id === myId;
       div.className = "pstat" + (isMe ? " pstat-me" : "");
+      div.setAttribute("data-player-id", p.id);
       const petTag = p.pet
         ? `<span class="pstat-pet">${PET_EMOJIS[p.pet] || ""}${p.petCooldown > 0 ? p.petCooldown : "✓"}</span>`
         : "";
@@ -1919,6 +2000,21 @@ function showGame() {
   // Board
   renderBoard(gs);
 
+  // Apply pending sale flash (stored before renderBoard rebuilds DOM)
+  if (window._pendingSaleFlash) {
+    const flash = window._pendingSaleFlash;
+    window._pendingSaleFlash = null;
+    const el = document.getElementById("space-" + flash.propPos);
+    if (el) {
+      el.classList.add("sale-flash-" + flash.buyerColor);
+      el.addEventListener(
+        "animationend",
+        () => el.classList.remove("sale-flash-" + flash.buyerColor),
+        { once: true },
+      );
+    }
+  }
+
   // Poker table
   updatePokerTable();
 }
@@ -1936,6 +2032,14 @@ function updateOwnerPanel() {
     pink: "Lady Finger",
     darkblue: "Gros Michel",
     orange: "Goldfinger",
+  };
+  const GROUP_ACRONYMS = {
+    yellow: "CV",
+    lightblue: "BJ",
+    red: "RD",
+    pink: "LF",
+    darkblue: "GM",
+    orange: "GF",
   };
   gs.players.forEach((player) => {
     const section = document.createElement("div");
@@ -1972,19 +2076,55 @@ function updateOwnerPanel() {
           }
         }
       }
+      // Compute chain multipliers for this player's farms
+      const _playerChainMults = {};
+      {
+        const ownedProps = ownedIds
+          .map((id) => {
+            const tile = gs.boardLayout && gs.boardLayout[id];
+            return tile && tile.group ? { id, group: tile.group } : null;
+          })
+          .filter(Boolean);
+        const posSet = new Set(ownedProps.map((p) => p.id));
+        const visited = new Set();
+        const CORNERS = new Set([0, 13, 26, 39]);
+        for (const prop of ownedProps) {
+          if (visited.has(prop.id)) continue;
+          const chain = [];
+          const queue = [prop.id];
+          visited.add(prop.id);
+          while (queue.length > 0) {
+            const cur = queue.shift();
+            chain.push(cur);
+            const neighbors = [(cur - 1 + 52) % 52, (cur + 1) % 52];
+            for (const n of neighbors) {
+              if (visited.has(n) || !posSet.has(n) || CORNERS.has(n)) continue;
+              const nProp = ownedProps.find((p) => p.id === n);
+              if (!nProp || nProp.group !== prop.group) continue;
+              visited.add(n);
+              queue.push(n);
+            }
+          }
+          for (const c of chain) {
+            _playerChainMults[c] = chain.length;
+          }
+        }
+      }
       propsHTML = '<div class="owner-props">';
       Object.keys(GROUP_NAMES).forEach((g) => {
         if (!counts[g]) return;
-        const bonusPct = (counts[g] - 1) * 10;
-        const bonusLabel = bonusPct > 0 ? `+${bonusPct}%` : "";
         const countLabel = `${counts[g]}/${groupTotals[g] || "?"}`;
         propsHTML += `<div class="owner-set-group">`;
-        propsHTML += `<div class="owner-set-header"><span class="owner-prop-dot g-${g}"></span><span class="owner-set-name">${GROUP_NAMES[g]}</span> <span class="owner-set-count">${countLabel}</span>${bonusLabel ? ` <span class="owner-prop-bonus">${bonusLabel}</span>` : ""}</div>`;
+        propsHTML += `<div class="owner-set-header"><span class="owner-prop-dot g-${g}"></span><span class="owner-set-name">${GROUP_ACRONYMS[g]} — ${GROUP_NAMES[g]}</span> <span class="owner-set-count">${countLabel}</span></div>`;
         const farms = farmsByGroup[g] || [];
         farms.forEach((f) => {
-          const mult = 1 + (counts[g] - 1) * 0.1;
-          const effectivePrice = Math.round(f.price * mult);
-          propsHTML += `<div class="owner-set-farm"><span class="owner-farm-name">${f.tileName || f.name}</span><span class="owner-prop-price">${effectivePrice}🍌</span></div>`;
+          const chainMult = _playerChainMults[f.id] || 1;
+          const effectivePrice = Math.round(f.price * chainMult);
+          const chainLabel =
+            chainMult > 1
+              ? ` <span class="owner-prop-bonus">${chainMult}x</span>`
+              : "";
+          propsHTML += `<div class="owner-set-farm"><span class="owner-farm-name">${f.tileName || f.name}</span><span class="owner-prop-price">${effectivePrice}🍌${chainLabel}</span></div>`;
         });
         propsHTML += `</div>`;
       });
@@ -2019,18 +2159,26 @@ function updatePropertyChart() {
   const grouped = {};
   CHART_GROUPS.forEach((g) => (grouped[g.key] = []));
 
+  // Build set of tiles revealed to current player
+  const me = gs.players.find((p) => p.id === socket.id);
+  const myRevealed = me && me.revealedTiles ? new Set(me.revealedTiles) : null;
+
   gs.boardLayout.forEach((tile, pos) => {
     if (!tile.tileName || !tile.group) return;
     const prop = gs.properties.find((p) => p.id === pos);
     const ownerPlayer =
       prop && prop.owner ? gs.players.find((pl) => pl.id === prop.owner) : null;
     if (!grouped[tile.group]) grouped[tile.group] = [];
+    const revealed = !myRevealed || myRevealed.has(pos);
     grouped[tile.group].push({
       pos,
       name: tile.tileName,
       label: tile.tileLabel || null,
-      price: Math.round(tile.price * (1 + getSideBonus(pos))),
+      price: revealed
+        ? Math.round(tile.price * (1 + getSideBonus(pos)))
+        : tile.price,
       owner: ownerPlayer,
+      revealed,
     });
   });
 
@@ -2058,7 +2206,8 @@ function updatePropertyChart() {
         gs.diceMatchTiles && gs.diceMatchTiles.includes(item.pos)
           ? " dice-match-glow"
           : "";
-      html += `<div class="chart-item${owned}${diceGlow}"><span class="chart-item-name">${displayName}</span><span class="chart-item-price">${item.price}🍌 yield</span>${ownerDot}</div>`;
+      const priceText = `${item.price}🍌 yield`;
+      html += `<div class="chart-item${owned}${diceGlow}"><span class="chart-item-name">${displayName}</span><span class="chart-item-price">${priceText}</span>${ownerDot}</div>`;
     });
     div.innerHTML = html;
     el.appendChild(div);
@@ -2075,9 +2224,8 @@ function updateTileLegend() {
   const counts = {
     grow: 0,
     bus: 0,
-    tax: 0,
     tax10: 0,
-    easygrow: 0,
+    freebananas: 0,
     desert: 0,
     special: 0,
   };
@@ -2089,12 +2237,12 @@ function updateTileLegend() {
     { icon: "🌴", name: "GROW", count: counts.grow },
     { icon: "🌿", name: "Vine Swing", count: counts.bus },
     {
-      icon: "🌱",
-      name: "Easy Grow 25🍌 + 10% each tile",
-      count: counts.easygrow,
+      icon: "+🍌",
+      name: "Free Bananas +500🍌",
+      count: counts.freebananas,
     },
     { icon: "🍌", name: "-10% Peel", count: counts.tax10 },
-    { icon: "🍌", name: "-15% Peel", count: counts.tax },
+
     { icon: "🌵", name: "Desert", count: counts.desert },
     { icon: "\u2b50", name: "Super Banana", count: counts.special },
   ];
@@ -2115,7 +2263,6 @@ function createGame() {
   const max = parseInt(document.getElementById("create-max").value);
   const bananas =
     parseInt(document.getElementById("create-bananas").value) || 2222;
-  const scouting = document.getElementById("create-scouting").checked;
   const gameMode = document.getElementById("create-mode").value;
   const petMode = document.getElementById("create-petmode").value;
   const simpleAuction = document.getElementById(
@@ -2123,18 +2270,19 @@ function createGame() {
   ).checked;
   const bombMode = document.getElementById("create-bomb-mode").checked;
   const monkeyPoker = document.getElementById("create-monkey-poker").checked;
+  const sideBonuses = document.getElementById("create-side-bonuses").checked;
   if (!socket.connected)
     return alert("Connecting to server, please try again.");
   socket.emit("create_game", {
     playerName: name,
     maxPlayers: max,
     startingMoney: bananas,
-    scouting,
     gameMode,
     petMode,
     simpleAuction,
     bombMode,
     monkeyPoker,
+    sideBonuses,
   });
 }
 
@@ -2183,7 +2331,7 @@ function armDiceOverride(count) {
     if (petBtn && petBtn.dataset.armed === "true") {
       petBtn.dataset.armed = "false";
       const txt = document.getElementById("pet-toggle-text");
-      if (txt) txt.innerHTML = "Use Pet Next Turn<br>100\uD83C\uDF4C";
+      if (txt) txt.innerHTML = "Use Pet Next Turn";
     }
   }
   route();
@@ -2370,9 +2518,14 @@ function updateAuctionPanel() {
   // Update auction title
   const titleEl = document.getElementById("auction-title");
   if (titleEl)
-    titleEl.textContent = a.simple
-      ? "\uD83C\uDFF7\uFE0F PRICE IT \uD83C\uDFF7\uFE0F"
-      : "\uD83C\uDF4C BANANA BID \uD83C\uDF4C";
+    titleEl.textContent =
+      a.phase === "simple-tiebreak"
+        ? "\uD83D\uDD07 SILENT AUCTION \uD83D\uDD07"
+        : a.teamAuction
+          ? "\uD83C\uDFF7\uFE0F PRICE IT \uD83C\uDFF7\uFE0F"
+          : a.simple
+            ? "\uD83C\uDFF7\uFE0F PRICE IT \uD83C\uDFF7\uFE0F"
+            : "\uD83C\uDF4C BANANA BID \uD83C\uDF4C";
 
   // Challenger reveal delay: show lander's bid for 2s before showing controls
   if (isChallenger && !window._challengerRevealDone) {
@@ -2419,7 +2572,22 @@ function updateAuctionPanel() {
   const simpleControls = document.getElementById("simple-auction-controls");
   if (simpleControls) simpleControls.style.display = "none";
 
-  if (a.phase === "simple-bid") {
+  if (a.phase === "team-bid") {
+    highEl.textContent =
+      myId === a.landingPlayer
+        ? "You landed here \u2014 name your price! \uD83C\uDF4C"
+        : "Waiting for lander to name a price...";
+  } else if (a.phase === "team-respond") {
+    if (myId === a.landingPlayer) {
+      highEl.textContent = `You priced it at ${a.landerOpenBid}\uD83C\uDF4C \u2014 waiting for votes...`;
+    } else {
+      highEl.textContent = `Lander priced it at ${a.landerOpenBid}\uD83C\uDF4C \u2014 accept or reject?`;
+      const ob = a.bids[myId];
+      if (simpleControls && ob && !ob.placed && !ob.passed) {
+        simpleControls.style.display = "flex";
+      }
+    }
+  } else if (a.phase === "simple-bid") {
     highEl.textContent =
       myId === a.landingPlayer
         ? "You landed here \u2014 name your price! \uD83C\uDF4C"
@@ -2437,10 +2605,10 @@ function updateAuctionPanel() {
   } else if (a.phase === "simple-tiebreak") {
     const isTiebreaker = (a.tiebreakBidders || []).includes(myId);
     if (isTiebreaker) {
-      highEl.textContent = `Tie! Silent bid tiebreaker \u2014 highest bid wins the right to buy at ${a.landerOpenBid}\uD83C\uDF4C`;
+      highEl.textContent = `Tie! Silent auction \u2014 bid at least ${a.landerOpenBid}\uD83C\uDF4C. Highest bid wins and pays their bid!`;
     } else {
       highEl.textContent =
-        "Tiebreaker in progress \u2014 waiting for silent bids...";
+        "Silent auction in progress \u2014 waiting for bids...";
     }
   } else if (a.phase === "lander-bid") {
     highEl.textContent =
@@ -2462,15 +2630,20 @@ function updateAuctionPanel() {
 
   document.getElementById("auction-turn").textContent = "";
 
-  // Update bid button text for simple auction
+  // Update bid button text for simple/team auction
   const bidBtn = document.getElementById("btn-bid");
   if (bidBtn)
     bidBtn.textContent =
-      a.simple && a.phase === "simple-bid" ? "Set Price" : "Bid";
+      (a.simple && a.phase === "simple-bid") ||
+      (a.teamAuction && a.phase === "team-bid")
+        ? "Set Price"
+        : "Bid";
 
   // Show bid controls if I haven't bid/passed yet (and I'm allowed to in this phase)
   const controls = document.getElementById("auction-controls");
   let canBid = myBid && !myBid.placed && !myBid.passed;
+  if (a.phase === "team-bid" && myId !== a.landingPlayer) canBid = false;
+  if (a.phase === "team-respond") canBid = false; // uses accept/decline buttons
   if (a.phase === "simple-bid" && myId !== a.landingPlayer) canBid = false;
   if (a.phase === "simple-respond") canBid = false; // uses accept/decline buttons
   if (
@@ -2497,9 +2670,9 @@ function updateAuctionPanel() {
     }
   }
 
-  // Auto-accept debug toggle: automatically accept in simple-respond phase
+  // Auto-accept debug toggle: automatically accept in simple-respond/team-respond phase
   if (
-    a.phase === "simple-respond" &&
+    (a.phase === "simple-respond" || a.phase === "team-respond") &&
     myId !== a.landingPlayer &&
     document.getElementById("chk-auto-accept").checked
   ) {
@@ -2552,10 +2725,20 @@ function updateAuctionPanel() {
       const prefill = Math.min(a.landerOpenBid + 1, maxBid);
       bidInput.value = String(prefill);
       window._bidAutoFilled = true;
+    } else if (
+      a.phase === "simple-tiebreak" &&
+      (a.tiebreakBidders || []).includes(myId) &&
+      a.landerOpenBid != null
+    ) {
+      const prefill = Math.min(a.landerOpenBid, maxBid);
+      bidInput.value = String(prefill);
+      window._bidAutoFilled = true;
     } else {
       // Default to 1 for opening bids (or 0 if player is broke)
       const defaultBid =
-        a.phase === "simple-bid" || a.phase === "lander-bid"
+        a.phase === "simple-bid" ||
+        a.phase === "lander-bid" ||
+        a.phase === "team-bid"
           ? Math.min(1, maxBid)
           : 0;
       bidInput.value = String(defaultBid);
@@ -2568,7 +2751,7 @@ function updateAuctionPanel() {
   // Show "You bid X" after placing a bid (persists across phases)
   const myBidDisplay = document.getElementById("auction-turn");
   if (myBid && myBid.passed) {
-    myBidDisplay.textContent = "You passed";
+    myBidDisplay.textContent = a.teamAuction ? "You rejected" : "You passed";
   } else if (window._myLastBid != null) {
     myBidDisplay.textContent = `You bid ${window._myLastBid}\uD83C\uDF4C`;
   } else {
@@ -2584,21 +2767,30 @@ function updateAuctionPanel() {
     const label = isLanding ? " (landed)" : "";
     if (b.passed) {
       d.className = "bid-passed";
-      d.textContent = `${player?.name || "?"}${label}: ${a.phase === "simple-respond" || a.simple ? "Declined" : "Passed"}`;
+      d.textContent = `${player?.name || "?"}${label}: ${a.phase === "simple-respond" || a.phase === "team-respond" || a.simple || a.teamAuction ? "Rejected" : "Passed"}`;
     } else if (b.placed) {
       // Show the lander's bid amount to everyone (visible in all phases)
       if (isLanding && a.landerOpenBid != null) {
-        d.textContent = `${player?.name || "?"}${label}: ${a.simple ? "Priced" : "Bid"} ${a.landerOpenBid}\uD83C\uDF4C`;
-      } else if (a.simple && !isLanding) {
+        d.textContent = `${player?.name || "?"}${label}: ${a.simple || a.teamAuction ? "Priced" : "Bid"} ${a.landerOpenBid}\uD83C\uDF4C`;
+      } else if ((a.simple || a.teamAuction) && !isLanding) {
         d.textContent = `${player?.name || "?"}${label}: Accepted`;
       } else {
         d.textContent = `${player?.name || "?"}${label}: Bid placed \u2713`;
       }
-    } else if (a.phase === "simple-bid" && !isLanding) {
+    } else if (
+      (a.phase === "simple-bid" || a.phase === "team-bid") &&
+      !isLanding
+    ) {
       d.textContent = `${player?.name || "?"}${label}: Waiting...`;
-    } else if (a.phase === "simple-respond" && isLanding) {
+    } else if (
+      (a.phase === "simple-respond" || a.phase === "team-respond") &&
+      isLanding
+    ) {
       d.textContent = `${player?.name || "?"}${label}: Priced ${a.landerOpenBid}\uD83C\uDF4C`;
-    } else if (a.phase === "simple-respond" && !isLanding) {
+    } else if (
+      (a.phase === "simple-respond" || a.phase === "team-respond") &&
+      !isLanding
+    ) {
       d.textContent = `${player?.name || "?"}${label}: Deciding...`;
     } else if (a.phase === "lander-bid" && !isLanding) {
       d.textContent = `${player?.name || "?"}${label}: Waiting...`;
@@ -3000,15 +3192,45 @@ function updatePokerTable() {
     callBtn.style.display = toCall > 0 ? "" : "none";
     callBtn.textContent = `Call ${toCall}🍌`;
 
-    // Raise slider
-    const slider = document.getElementById("poker-raise-slider");
-    const minRaise = pk.currentBet + 1;
-    const maxRaise = me ? me.money + myPoker.bet : pk.currentBet + 1;
-    slider.min = minRaise;
-    slider.max = Math.max(minRaise, maxRaise);
-    if (parseInt(slider.value) < minRaise) {
-      slider.value = minRaise;
-      document.getElementById("poker-raise-display").textContent = minRaise;
+    // Raise controls
+    const raiseRow = document.querySelector(".poker-raise-row");
+    if (isMk) {
+      // Monkey poker: fixed 100🍌 raise only
+      const raiseNeeded = pk.currentBet + 100 - myPoker.bet;
+      const canRaise = me && me.money >= raiseNeeded;
+      const slider = document.getElementById("poker-raise-slider");
+      slider.style.display = "none";
+      const raiseWrap = document.getElementById("poker-raise-wrap");
+      raiseWrap.style.display = "none";
+      const allInBtn = raiseRow.querySelector(".btn-preset");
+      if (allInBtn) allInBtn.style.display = "none";
+      const raiseBtn = raiseRow.querySelector(".poker-btn-raise");
+      raiseBtn.textContent = "Raise 100🍌";
+      raiseBtn.disabled = !canRaise;
+      raiseBtn.onclick = function () {
+        pokerRaise();
+      };
+    } else {
+      const slider = document.getElementById("poker-raise-slider");
+      slider.style.display = "";
+      const raiseWrap = document.getElementById("poker-raise-wrap");
+      raiseWrap.style.display = "";
+      const allInBtn = raiseRow.querySelector(".btn-preset");
+      if (allInBtn) allInBtn.style.display = "";
+      const raiseBtn = raiseRow.querySelector(".poker-btn-raise");
+      raiseBtn.textContent = "Raise";
+      raiseBtn.disabled = false;
+      raiseBtn.onclick = function () {
+        pokerRaise();
+      };
+      const minRaise = pk.currentBet + 1;
+      const maxRaise = me ? me.money + myPoker.bet : pk.currentBet + 1;
+      slider.min = minRaise;
+      slider.max = Math.max(minRaise, maxRaise);
+      if (parseInt(slider.value) < minRaise) {
+        slider.value = minRaise;
+        document.getElementById("poker-raise-display").textContent = minRaise;
+      }
     }
   } else {
     actionsEl.style.display = "none";
@@ -3030,7 +3252,13 @@ function pokerCall() {
 }
 
 function pokerRaise() {
-  const amount = parseInt(document.getElementById("poker-raise-slider").value);
+  const pk = gs?.poker;
+  let amount;
+  if (pk && pk.monkeyPoker) {
+    amount = pk.currentBet + 100;
+  } else {
+    amount = parseInt(document.getElementById("poker-raise-slider").value);
+  }
   if (socket && gameId && !isNaN(amount))
     socket.emit("poker_action", { gameId, action: "raise", amount });
 }
@@ -3137,194 +3365,325 @@ function closeBombPlacement() {
   renderBoard(gs);
 }
 
-// ── Trade ──────────────────────────────────────────────────────────
+// ── Sell ───────────────────────────────────────────────────────────
 
-function openTradePanel() {
+// Sell state: { selectedTile: number | null }
+window._sellState = null;
+
+function isSellMode() {
+  return window._sellState !== null;
+}
+
+function openSellPanel() {
   if (!gs || gs.state !== "playing") return;
-  // Can't trade on your own turn
-  const cur = gs.currentPlayer;
-  if (cur && cur.id === myId) return;
   const panel = document.getElementById("trade-panel");
-  // If already open, close it
   if (panel.style.display !== "none" && panel.style.display !== "") {
-    closeTradePanel();
+    closeSellPanel();
     return;
   }
 
   const isTeams = gs.gameMode === "teams";
 
-  // Show/hide sections based on game mode
   const bananasSection = document.getElementById("trade-bananas-section");
   const swapSection = document.getElementById("trade-swap-section");
-  if (bananasSection) bananasSection.style.display = isTeams ? "" : "none";
-  if (swapSection) swapSection.style.display = isTeams ? "" : "none";
+  if (bananasSection) bananasSection.style.display = "none";
+  if (swapSection) swapSection.style.display = "none";
 
-  // Property trade section — available in all modes
-  populatePropertyTrade();
-
+  // In teams mode: hide price section, change header/button labels
+  const panelHeader = panel.querySelector(".trade-panel-header");
+  const priceSection = document.getElementById("sell-price-label");
+  const confirmBtn = document.getElementById("btn-sell-confirm");
   if (isTeams) {
-    // Populate banana send recipients (teammates only)
-    const sel = document.getElementById("trade-recipient");
-    sel.innerHTML = "";
-    let teammates = [];
-    if (gs.teams) {
-      const myTeam = gs.teams.A.includes(myId) ? "A" : "B";
-      teammates = gs.teams[myTeam].filter((id) => id !== myId);
-    }
-    const others = gs.players.filter(
-      (p) => teammates.includes(p.id) && !p.bankrupt,
-    );
-    others.forEach((p) => {
-      const opt = document.createElement("option");
-      opt.value = p.id;
-      opt.textContent = `${MONKEY_EMOJI[p.color] || "🐵"} ${p.name}`;
-      sel.appendChild(opt);
-    });
-    const me = gs.players.find((p) => p.id === myId);
-    const maxSend = Math.max(0, (me ? me.money : 0) - 50);
-    const slider = document.getElementById("trade-amount");
-    slider.max = maxSend;
-    slider.value = Math.min(50, maxSend);
-    document.getElementById("trade-amount-display").textContent = slider.value;
-    updateTradeTotal();
-    slider.oninput = function () {
-      document.getElementById("trade-amount-display").textContent = this.value;
-      updateTradeTotal();
-    };
-    // Populate farm swap dropdowns
-    populateFarmSwap();
+    if (panelHeader) panelHeader.firstChild.textContent = "🎁 Give Farm ";
+    if (priceSection) priceSection.style.display = "none";
+    if (confirmBtn) confirmBtn.textContent = "Give to Teammate (300🍌)";
+  } else {
+    if (panelHeader) panelHeader.firstChild.textContent = "🏷️ Sell Farm ";
+    if (confirmBtn) confirmBtn.textContent = "Confirm Listing";
   }
 
+  resetSellSelection();
+
   panel.style.display = "flex";
-  // Change button text to Close and hide X
-  const tradeBtn = document.getElementById("btn-trade");
-  if (tradeBtn) tradeBtn.innerHTML = "✕ Close";
+  const sellBtn = document.getElementById("btn-sell");
+  if (sellBtn) sellBtn.innerHTML = "✕ Close";
   const closeX = document.querySelector(".trade-panel-close");
   if (closeX) closeX.style.display = "none";
 }
 
-function closeTradePanel() {
+function closeSellPanel() {
+  window._sellState = null;
   document.getElementById("trade-panel").style.display = "none";
-  // Restore button text
-  const tradeBtn = document.getElementById("btn-trade");
-  if (tradeBtn) tradeBtn.innerHTML = "🔄 Trade";
+  const sellBtn = document.getElementById("btn-sell");
+  if (sellBtn) {
+    const isTeams = gs && gs.gameMode === "teams";
+    sellBtn.innerHTML = isTeams ? "🎁 Give" : "🏷️ Sell";
+  }
   const closeX = document.querySelector(".trade-panel-close");
   if (closeX) closeX.style.display = "";
+  updateSellHighlights();
 }
 
-function populatePropertyTrade() {
-  const myPropSel = document.getElementById("trade-prop-mine");
-  const recipientSel = document.getElementById("trade-prop-recipient");
-  if (!myPropSel || !recipientSel) return;
-  myPropSel.innerHTML = "";
-  recipientSel.innerHTML = "";
+function resetSellSelection() {
+  window._sellState = { selectedTile: null };
+  updateSellUI();
+  updateSellHighlights();
+}
 
-  const me = gs.players.find((p) => p.id === myId);
-  if (!me) return;
+function getTileName(pos) {
+  if (!gs || !gs.boardLayout) return "Tile #" + pos;
+  const tile = gs.boardLayout[pos];
+  return tile && tile.tileLabel ? tile.tileLabel : "Tile #" + pos;
+}
 
-  // My farms
-  me.properties.forEach((pos) => {
-    const tile = gs.boardLayout && gs.boardLayout[pos];
-    if (!tile || !tile.tileLabel) return;
-    const opt = document.createElement("option");
-    opt.value = pos;
-    opt.textContent = `${tile.tileLabel} (${Math.round(tile.price * (1 + getSideBonus(pos)))}🍌 yield)`;
-    myPropSel.appendChild(opt);
-  });
+function updateSellUI() {
+  const state = window._sellState;
+  if (!state) return;
 
-  // All other non-bankrupt players who own properties
-  const others = gs.players.filter(
-    (p) => p.id !== myId && !p.bankrupt && p.properties.length > 0,
+  const isTeams = gs && gs.gameMode === "teams";
+  const hint = document.getElementById("sell-phase-hint");
+  const selectedItem = document.getElementById("sell-selected-item");
+  const confirmBtn = document.getElementById("btn-sell-confirm");
+  const priceLabel = document.getElementById("sell-price-label");
+  const selectedLabel = document.querySelector(
+    "#sell-selected-display .trade-selected-label",
   );
-  others.forEach((p) => {
-    const opt = document.createElement("option");
-    opt.value = p.id;
-    opt.textContent = `${MONKEY_EMOJI[p.color] || "🐵"} ${p.name}`;
-    recipientSel.appendChild(opt);
-  });
+  if (selectedLabel)
+    selectedLabel.textContent = isTeams ? "Farm to give:" : "Farm to sell:";
 
-  // Populate their farms for the first selected player
-  populateTheirFarms();
-
-  // Update button state
-  updateTradePropertyBtn();
+  if (state.selectedTile === null) {
+    hint.textContent = "Click one of your farms on the board to select it";
+    hint.className = "trade-phase-hint phase-mine";
+    selectedItem.textContent = "None selected";
+    confirmBtn.disabled = true;
+    if (priceLabel && !isTeams) priceLabel.style.display = "none";
+  } else {
+    hint.textContent = isTeams
+      ? "Confirm to give this farm to your teammate"
+      : "Set your asking price and confirm the listing";
+    hint.className = "trade-phase-hint phase-mine";
+    selectedItem.innerHTML = `<span class="trade-chip trade-chip-mine">${getTileName(state.selectedTile)} ✕</span>`;
+    selectedItem.querySelector(".trade-chip-mine").onclick = () => {
+      state.selectedTile = null;
+      updateSellUI();
+      updateSellHighlights();
+    };
+    confirmBtn.disabled = false;
+    if (priceLabel && !isTeams) priceLabel.style.display = "";
+  }
 }
 
-function populateTheirFarms() {
-  const recipientSel = document.getElementById("trade-prop-recipient");
-  const theirPropSel = document.getElementById("trade-prop-theirs");
-  if (!recipientSel || !theirPropSel) return;
-  theirPropSel.innerHTML = "";
+function handleSellTileClick(tilePos) {
+  const state = window._sellState;
+  if (!state || !gs) return;
 
-  const recipientId = recipientSel.value;
-  if (!recipientId) {
-    updateTradePropertyBtn();
+  const prop = gs.properties && gs.properties.find((p) => p.id === tilePos);
+  if (!prop || prop.owner !== myId) return;
+
+  if (state.selectedTile === tilePos) {
+    state.selectedTile = null;
+  } else {
+    state.selectedTile = tilePos;
+  }
+
+  updateSellUI();
+  updateSellHighlights();
+}
+
+function updateSellPrice(val) {
+  val = Math.max(1, Math.min(100000, Math.round(Number(val) || 0)));
+  const display = document.getElementById("sell-price-display");
+  const slider = document.getElementById("sell-price-slider");
+  const hidden = document.getElementById("sell-price-input");
+  if (display) display.textContent = val.toLocaleString() + "\uD83C\uDF4C";
+  if (slider) slider.value = Math.min(val, Number(slider.max));
+  if (hidden) hidden.value = val;
+  // highlight matching keypad button
+  document
+    .querySelectorAll(".sell-key")
+    .forEach((k) => k.classList.remove("sell-key-active"));
+  const presets = [50, 100, 250, 500, 1000, 2500, 5000, 10000];
+  const idx = presets.indexOf(val);
+  if (idx >= 0) {
+    const keys = document.querySelectorAll(".sell-keypad .sell-key");
+    if (keys[idx]) keys[idx].classList.add("sell-key-active");
+  }
+}
+
+function setSellPrice(val) {
+  updateSellPrice(val);
+}
+
+function adjustSellPrice(factor) {
+  const hidden = document.getElementById("sell-price-input");
+  const cur = parseInt(hidden.value) || 100;
+  updateSellPrice(Math.round(cur * factor));
+}
+
+function confirmSell() {
+  const state = window._sellState;
+  if (!state || state.selectedTile === null) return;
+
+  if (gs && gs.gameMode === "teams") {
+    // Teams mode: give farm directly to teammate
+    socket.emit("give_farm", {
+      gameId,
+      propPos: state.selectedTile,
+    });
+    closeSellPanel();
     return;
   }
 
-  const recipient = gs.players.find((p) => p.id === recipientId);
-  if (!recipient) {
-    updateTradePropertyBtn();
-    return;
-  }
+  const priceInput = document.getElementById("sell-price-input");
+  const price = parseInt(priceInput.value) || 0;
+  if (price <= 0) return;
 
-  recipient.properties.forEach((pos) => {
-    const tile = gs.boardLayout && gs.boardLayout[pos];
-    if (!tile || !tile.tileLabel) return;
-    const opt = document.createElement("option");
-    opt.value = pos;
-    opt.textContent = `${tile.tileLabel} (${Math.round(tile.price * (1 + getSideBonus(pos)))}🍌 yield)`;
-    theirPropSel.appendChild(opt);
-  });
-
-  updateTradePropertyBtn();
-}
-
-function updateTradePropertyBtn() {
-  const btn = document.getElementById("btn-trade-prop");
-  if (!btn) return;
-  const myPropSel = document.getElementById("trade-prop-mine");
-  const theirPropSel = document.getElementById("trade-prop-theirs");
-  const recipientSel = document.getElementById("trade-prop-recipient");
-  btn.disabled =
-    !myPropSel ||
-    myPropSel.options.length === 0 ||
-    !recipientSel ||
-    recipientSel.options.length === 0 ||
-    !theirPropSel ||
-    theirPropSel.options.length === 0;
-}
-
-function sendPropertyTrade() {
-  const propertyPos = parseInt(
-    document.getElementById("trade-prop-mine").value,
-  );
-  const theirPropertyPos = parseInt(
-    document.getElementById("trade-prop-theirs").value,
-  );
-  const recipientId = document.getElementById("trade-prop-recipient").value;
-  if (isNaN(propertyPos) || isNaN(theirPropertyPos) || !recipientId) return;
-  socket.emit("trade_property", {
+  socket.emit("sell_property", {
     gameId,
-    recipientId,
-    propertyPos,
-    theirPropertyPos,
+    propPos: state.selectedTile,
+    price,
   });
-  closeTradePanel();
+  closeSellPanel();
 }
 
-function updateTradeTotal() {
-  const amount = parseInt(document.getElementById("trade-amount").value) || 0;
-  document.getElementById("trade-total").textContent =
-    `Total cost: ${amount + 50}🍌`;
+function buySaleListing(saleId) {
+  if (!socket || !gameId) return;
+  socket.emit("buy_sale", { gameId, saleId });
+}
+
+function cancelSaleListing(saleId) {
+  if (!socket || !gameId) return;
+  socket.emit("cancel_sale", { gameId, saleId });
+}
+
+// ── Sell Listings Panel ────────────────────────────────────────────
+
+function toggleSellListingsPanel() {
+  const panel = document.getElementById("board-trade-deals");
+  if (!panel) return;
+  panel.classList.toggle("board-trade-deals-hidden");
+  if (!panel.classList.contains("board-trade-deals-hidden")) {
+    renderSellListings();
+  }
+}
+
+function renderSellListings() {
+  const container = document.getElementById("trade-deals-messages");
+  if (!container || !gs) return;
+  const listings = gs.sellListings || [];
+
+  if (listings.length === 0) {
+    container.innerHTML =
+      '<div class="trade-deals-empty">No farms for sale</div>';
+    return;
+  }
+
+  container.innerHTML = listings
+    .map((listing) => {
+      const isMine = listing.sellerId === myId;
+      const me = gs.players.find((p) => p.id === myId);
+      const canAfford = me && me.money >= listing.price;
+      const dirClass = isMine ? "deal-sent" : "deal-received";
+
+      let actions;
+      if (isMine) {
+        actions = `<button class="btn-deal btn-deal-cancel" onclick="cancelSaleListing(${listing.id})">Cancel</button>`;
+      } else {
+        actions = `<button class="btn-deal btn-deal-accept" onclick="buySaleListing(${listing.id})" ${canAfford ? "" : "disabled"}>Buy${canAfford ? "" : " (can't afford)"}</button>`;
+      }
+
+      return (
+        `<div class="trade-deal-card ${dirClass}">` +
+        `<div class="trade-deal-header">${isMine ? "Your listing" : `<strong>${listing.sellerName}</strong> is selling`}</div>` +
+        `<div class="trade-deal-body">` +
+        `<div class="trade-deal-side"><span class="trade-deal-label">Farm:</span> ${listing.propName}</div>` +
+        `<div class="trade-deal-arrow">💰</div>` +
+        `<div class="trade-deal-side"><span class="trade-deal-label">Price:</span> ${listing.price}🍌</div>` +
+        `</div>` +
+        `<div class="trade-deal-actions">${actions}</div>` +
+        `</div>`
+      );
+    })
+    .join("");
+}
+
+function updateSellListingsNotification() {
+  const badge = document.getElementById("trade-deals-badge");
+  if (!badge || !gs) return;
+  const listings = gs.sellListings || [];
+  const available = listings.filter((l) => l.sellerId !== myId).length;
+  if (available > 0) {
+    badge.textContent = available;
+    badge.style.display = "flex";
+  } else {
+    badge.style.display = "none";
+  }
+}
+
+function updateSendBananaAmount(val) {
+  val = Math.max(1, Math.round(Number(val) || 0));
+  const me = gs && gs.players && gs.players.find((p) => p.id === myId);
+  const maxSend = Math.max(1, (me ? me.money : 0) - 150);
+  val = Math.min(val, maxSend);
+  const display = document.getElementById("send-banana-display");
+  const slider = document.getElementById("send-banana-slider");
+  const hidden = document.getElementById("send-banana-input");
+  const numpad = document.getElementById("send-banana-numpad");
+  if (display) display.textContent = val.toLocaleString() + "🍌";
+  if (slider) {
+    slider.max = maxSend;
+    slider.value = Math.min(val, maxSend);
+  }
+  if (numpad && numpad !== document.activeElement) numpad.value = val;
+  if (hidden) hidden.value = val;
+  const total = document.getElementById("send-banana-total");
+  if (total)
+    total.textContent = `Total cost: ${(val + 150).toLocaleString()}🍌`;
+}
+
+function setSendBananaAmount(val) {
+  updateSendBananaAmount(val);
+}
+
+function adjustSendBananaAmount(factor) {
+  const hidden = document.getElementById("send-banana-input");
+  const cur = parseInt(hidden.value) || 50;
+  updateSendBananaAmount(Math.round(cur * factor));
 }
 
 function sendTrade() {
-  const recipientId = document.getElementById("trade-recipient").value;
-  const amount = parseInt(document.getElementById("trade-amount").value) || 0;
-  if (!recipientId || amount <= 0) return;
-  socket.emit("trade_bananas", { gameId, recipientId, amount });
-  closeTradePanel();
+  if (!gs || !gs.teams) return;
+  const myTeam = gs.teams.A.includes(myId) ? "A" : "B";
+  const mateId = gs.teams[myTeam].find((id) => id !== myId);
+  if (!mateId) return;
+  const amount =
+    parseInt(document.getElementById("send-banana-input").value) || 0;
+  if (amount <= 0) return;
+  socket.emit("trade_bananas", { gameId, recipientId: mateId, amount });
+  closeSendBananas();
+}
+
+function toggleSendBananas() {
+  const panel = document.getElementById("send-bananas-panel");
+  if (!panel || !gs) return;
+  if (panel.style.display !== "none" && panel.style.display !== "") {
+    closeSendBananas();
+    return;
+  }
+  // Close sell panel if open
+  if (isSellMode()) closeSellPanel();
+  // Set up slider
+  updateSendBananaAmount(50);
+  panel.style.display = "flex";
+  const btn = document.getElementById("btn-send-bananas");
+  if (btn) btn.innerHTML = "✕ Close";
+}
+
+function closeSendBananas() {
+  const panel = document.getElementById("send-bananas-panel");
+  if (panel) panel.style.display = "none";
+  const btn = document.getElementById("btn-send-bananas");
+  if (btn) btn.innerHTML = "🍌 Send Bananas";
 }
 
 // ── Farm Swap ──────────────────────────────────────────────────────
@@ -3457,7 +3816,7 @@ function checkBananaBurstTrigger() {
       if (!m) continue;
       const amount = parseInt(m[1], 10);
       if (
-        /won the banana bid|bought the (?:farm|desert)|claimed .* for free|paid .* yield|landed on GROW|slipped on|Chain bonus/i.test(
+        /won the banana bid|bought the (?:farm|desert)|paid .* yield|landed on GROW|slipped on/i.test(
           msg,
         )
       ) {
@@ -3508,7 +3867,7 @@ window.addEventListener("DOMContentLoaded", () => {
         if (now) {
           txt.textContent = "\ud83d\udc3e Pet acting next turn!";
         } else {
-          txt.innerHTML = "Use Pet Next Turn<br>100\uD83C\uDF4C";
+          txt.innerHTML = "Use Pet Next Turn";
         }
       }
       // Disarm dice override when pet is armed
@@ -3695,5 +4054,18 @@ function switchPreviewTab(tab) {
     rulesView.style.display = "none";
     tabVar.classList.add("bp-tab-active");
     tabRules.classList.remove("bp-tab-active");
+  }
+}
+
+function scrollToRule(id) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  // Ensure we're on the rules tab first
+  switchPreviewTab("rules");
+  // Scroll within the rules panel
+  const panel = document.querySelector(".rules-panel");
+  if (panel) {
+    const offset = el.offsetTop - panel.offsetTop - 10;
+    panel.scrollTo({ top: offset, behavior: "smooth" });
   }
 }

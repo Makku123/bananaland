@@ -226,9 +226,9 @@
       <div id="screen-menu" class="screen active">
         <div class="card menu-card">
           <div class="menu-logo">🐒</div>
-          <h1>🍍 MONKEY BUSINESS 💰</h1>
+          <h1>🍍💣 MONKEY BUSINESS 💰</h1>
           <p class="menu-tagline">
-            🌴 To buy farms. To grow bananas. To bomb monkeys. To achieve the
+            🌴 Buy farms. Grow bananas. Bomb monkeys. Achieve the
             <span class="rainbow-text">super banana</span>. 🌴
           </p>
           <div class="menu-monkeys">🙈🙉🙊</div>
@@ -270,7 +270,7 @@
               🔐 Sign In / Register
             </button>
           </div>
-          <p class="menu-footer">A game of bidding and bluffing</p>
+          <p class="menu-footer">A game of buying and selling</p>
         </div>
       </div>
 
@@ -347,10 +347,6 @@
             <div class="form-section" style="grid-column: 1 / -1">
               <div class="form-section-title">🔧 Options</div>
               <div style="display: flex; gap: 18px; flex-wrap: wrap">
-                <label class="toggle-label">
-                  <input type="checkbox" id="create-scouting" />
-                  <span>Enable Scouting 🔍</span>
-                </label>
                 <label class="toggle-label" id="simple-auction-label">
                   <input type="checkbox" id="create-simple-auction" checked />
                   <span>Simple Auction 🏷️</span>
@@ -362,6 +358,10 @@
                 <label class="toggle-label">
                   <input type="checkbox" id="create-monkey-poker" checked />
                   <span>Monkey Poker 🐵</span>
+                </label>
+                <label class="toggle-label">
+                  <input type="checkbox" id="create-side-bonuses" />
+                  <span>Side Bonuses 📍</span>
                 </label>
               </div>
             </div>
@@ -661,6 +661,10 @@
               class="dice-roll-notification"
             ></div>
             <div id="pet-used-notification" class="pet-used-notification"></div>
+            <div
+              id="auction-tied-notification"
+              class="auction-tied-notification"
+            ></div>
             <div id="board" class="board">
               <!-- Auction Overlay (rendered in board center) -->
               <div id="auction-box" class="auction-box" style="display: none">
@@ -954,9 +958,13 @@
                         ).textContent = this.value
                       "
                     />
-                    <span id="poker-raise-display" class="poker-raise-display"
-                      >0</span
-                    >🍌
+                    <span id="poker-raise-wrap"
+                      ><span
+                        id="poker-raise-display"
+                        class="poker-raise-display"
+                        >0</span
+                      >🍌</span
+                    >
                     <button
                       class="btn btn-sm poker-btn-raise"
                       onclick="pokerRaise()"
@@ -993,6 +1001,44 @@
               >
                 📜
               </button>
+              <button
+                id="board-trade-deals-toggle"
+                class="board-trade-deals-toggle"
+                title="Sell Listings"
+                onclick="toggleSellListingsPanel()"
+              >
+                🏷️
+                <span
+                  id="trade-deals-badge"
+                  class="trade-deals-badge"
+                  style="display: none"
+                  >0</span
+                >
+              </button>
+              <div
+                id="board-trade-deals"
+                class="board-trade-deals board-trade-deals-hidden"
+              >
+                <div
+                  class="board-trade-deals-header"
+                  id="board-trade-deals-header"
+                >
+                  <span class="board-trade-deals-header-title"
+                    >🏷️ Sell Listings</span
+                  >
+                  <button
+                    class="board-trade-deals-close"
+                    title="Close"
+                    onclick="toggleSellListingsPanel()"
+                  >
+                    ✕
+                  </button>
+                </div>
+                <div
+                  id="trade-deals-messages"
+                  class="trade-deals-messages"
+                ></div>
+              </div>
               <div id="board-log" class="board-log board-log-hidden">
                 <div class="board-log-header" id="board-log-header">
                   <span class="board-log-header-title">📜 Jungle Log</span>
@@ -1215,26 +1261,237 @@
                   class="btn btn-alt"
                   id="btn-roll-1"
                   onclick="armDiceOverride(1)"
-                  style="flex: 1"
+                  style="
+                    flex: 1;
+                    display: flex;
+                    flex-direction: column;
+                    align-items: center;
+                  "
                 >
-                  🎲 500🍌
+                  <span style="font-size: 1.2em; line-height: 1">🐢</span>
+                  <span>🎲 500🍌</span>
                 </button>
                 <button
                   class="btn btn-alt"
                   id="btn-roll-3"
                   onclick="armDiceOverride(3)"
-                  style="flex: 1"
+                  style="
+                    flex: 1;
+                    display: flex;
+                    flex-direction: column;
+                    align-items: center;
+                  "
                 >
-                  🎲🎲🎲 1000🍌
+                  <span style="font-size: 1.2em; line-height: 1">🐇</span>
+                  <span>🎲🎲🎲 1000🍌</span>
                 </button>
               </div>
               <button
                 class="btn btn-alt"
-                id="btn-trade"
-                onclick="openTradePanel()"
+                id="btn-sell"
+                onclick="openSellPanel()"
               >
-                🔄 Trade
+                🏷️ Sell
               </button>
+              <button
+                class="btn btn-alt"
+                id="btn-send-bananas"
+                onclick="toggleSendBananas()"
+                style="display: none"
+              >
+                🍌 Send Bananas
+              </button>
+
+              <!-- Send Bananas Panel (teams only) -->
+              <div
+                id="send-bananas-panel"
+                class="trade-panel"
+                style="display: none"
+              >
+                <div class="trade-panel-header">
+                  🍌 Send Bananas
+                  <button
+                    class="trade-panel-close"
+                    onclick="closeSendBananas()"
+                  >
+                    ✕
+                  </button>
+                </div>
+                <div class="trade-section">
+                  <div class="trade-fee-notice">Transfer fee: 150🍌</div>
+                  <div class="sell-price-header">Amount to Send</div>
+                  <div class="sell-price-display" id="send-banana-display">
+                    50🍌
+                  </div>
+                  <div class="sell-slider-row">
+                    <input
+                      type="range"
+                      id="send-banana-slider"
+                      min="1"
+                      max="1000"
+                      value="50"
+                      step="1"
+                      oninput="updateSendBananaAmount(this.value)"
+                    />
+                  </div>
+                  <div class="sell-keypad">
+                    <input
+                      type="number"
+                      id="send-banana-numpad"
+                      class="send-banana-numpad"
+                      min="1"
+                      max="99999"
+                      value="50"
+                      placeholder="Enter amount"
+                      oninput="updateSendBananaAmount(this.value)"
+                    />
+                    <button
+                      class="sell-key sell-key-half"
+                      onclick="adjustSendBananaAmount(0.5)"
+                    >
+                      ½
+                    </button>
+                    <button
+                      class="sell-key sell-key-double"
+                      onclick="adjustSendBananaAmount(2)"
+                    >
+                      2×
+                    </button>
+                  </div>
+                  <input type="hidden" id="send-banana-input" value="50" />
+                  <div class="trade-total" id="send-banana-total">
+                    Total cost: 200🍌
+                  </div>
+                  <button
+                    class="btn btn-glow"
+                    id="btn-send-trade"
+                    onclick="sendTrade()"
+                  >
+                    Send to Teammate
+                  </button>
+                </div>
+              </div>
+
+              <!-- Sell Panel -->
+              <div id="trade-panel" class="trade-panel" style="display: none">
+                <div class="trade-panel-header">
+                  🏷️ Sell Farm
+                  <button class="trade-panel-close" onclick="closeSellPanel()">
+                    ✕
+                  </button>
+                </div>
+
+                <div class="trade-section" id="sell-property-section">
+                  <div class="trade-phase-hint" id="sell-phase-hint">
+                    Click one of your farms on the board to select it
+                  </div>
+                  <div class="trade-selected-list" id="sell-selected-display">
+                    <div class="trade-selected-label">Farm to sell:</div>
+                    <div class="trade-selected-items" id="sell-selected-item">
+                      None selected
+                    </div>
+                  </div>
+                  <div
+                    class="sell-price-section"
+                    id="sell-price-label"
+                    style="display: none"
+                  >
+                    <div class="sell-price-header">Asking Price</div>
+                    <div class="sell-price-display" id="sell-price-display">
+                      100🍌
+                    </div>
+                    <div class="sell-slider-row">
+                      <input
+                        type="range"
+                        id="sell-price-slider"
+                        min="10"
+                        max="5000"
+                        value="100"
+                        step="10"
+                        oninput="updateSellPrice(this.value)"
+                      />
+                    </div>
+                    <div class="sell-keypad" id="sell-keypad">
+                      <button class="sell-key" onclick="setSellPrice(50)">
+                        50
+                      </button>
+                      <button class="sell-key" onclick="setSellPrice(100)">
+                        100
+                      </button>
+                      <button class="sell-key" onclick="setSellPrice(250)">
+                        250
+                      </button>
+                      <button class="sell-key" onclick="setSellPrice(500)">
+                        500
+                      </button>
+                      <button class="sell-key" onclick="setSellPrice(1000)">
+                        1K
+                      </button>
+                      <button class="sell-key" onclick="setSellPrice(2500)">
+                        2.5K
+                      </button>
+                      <button class="sell-key" onclick="setSellPrice(5000)">
+                        5K
+                      </button>
+                      <button class="sell-key" onclick="setSellPrice(10000)">
+                        10K
+                      </button>
+                      <button
+                        class="sell-key sell-key-half"
+                        onclick="adjustSellPrice(0.5)"
+                      >
+                        ½
+                      </button>
+                      <button
+                        class="sell-key sell-key-double"
+                        onclick="adjustSellPrice(2)"
+                      >
+                        2×
+                      </button>
+                    </div>
+                    <input type="hidden" id="sell-price-input" value="100" />
+                  </div>
+                  <div class="trade-prop-actions">
+                    <button
+                      class="btn btn-glow"
+                      id="btn-sell-confirm"
+                      onclick="confirmSell()"
+                      disabled
+                    >
+                      Confirm Listing
+                    </button>
+                    <button
+                      class="btn btn-alt"
+                      id="btn-sell-reset"
+                      onclick="resetSellSelection()"
+                    >
+                      Reset
+                    </button>
+                  </div>
+                </div>
+
+                <!-- Farm Swap Section (teams only) -->
+                <div class="trade-section" id="trade-swap-section">
+                  <div class="trade-section-title">🔄 Swap Farms</div>
+                  <div class="trade-fee-notice">Swap fee: 100🍌 per trade</div>
+                  <label class="trade-label"
+                    >Your Farm
+                    <select id="swap-my-farm"></select>
+                  </label>
+                  <label class="trade-label"
+                    >Teammate's Farm
+                    <select id="swap-mate-farm"></select>
+                  </label>
+                  <button
+                    class="btn btn-glow"
+                    id="btn-swap-farm"
+                    onclick="swapFarm()"
+                  >
+                    Swap (100🍌)
+                  </button>
+                </div>
+              </div>
+
               <button
                 class="btn btn-bomb"
                 id="btn-buy-bomb"
@@ -1263,104 +1520,6 @@
                 <input type="checkbox" id="chk-auto-end" />
                 Auto End
               </label>
-            </div>
-
-            <!-- Trade Panel -->
-            <div id="trade-panel" class="trade-panel" style="display: none">
-              <div class="trade-panel-header">
-                🔄 Trade
-                <button class="trade-panel-close" onclick="closeTradePanel()">
-                  ✕
-                </button>
-              </div>
-
-              <!-- Trade Property Section (all modes) -->
-              <div class="trade-section" id="trade-property-section">
-                <div class="trade-section-title">🤝 Trade Property</div>
-                <label class="trade-label"
-                  >Trade with
-                  <select
-                    id="trade-prop-recipient"
-                    onchange="populateTheirFarms()"
-                  ></select>
-                </label>
-                <label class="trade-label"
-                  >Your Farm (give)
-                  <select id="trade-prop-mine"></select>
-                </label>
-                <label class="trade-label"
-                  >Their Farm (take)
-                  <select id="trade-prop-theirs"></select>
-                </label>
-                <button
-                  class="btn btn-glow"
-                  id="btn-trade-prop"
-                  onclick="sendPropertyTrade()"
-                >
-                  Swap Farms
-                </button>
-              </div>
-
-              <!-- Send Bananas Section (teams only) -->
-              <div class="trade-section" id="trade-bananas-section">
-                <div class="trade-section-title">🍌 Send Bananas</div>
-                <div class="trade-fee-notice">Transfer fee: 50🍌</div>
-                <label class="trade-label"
-                  >Recipient
-                  <select id="trade-recipient"></select>
-                </label>
-                <label class="trade-label"
-                  >Amount
-                  <div class="trade-amount-row">
-                    <input
-                      type="range"
-                      id="trade-amount"
-                      min="1"
-                      max="100"
-                      value="50"
-                      oninput="
-                        document.getElementById(
-                          'trade-amount-display',
-                        ).textContent = this.value
-                      "
-                    />
-                    <span id="trade-amount-display" class="trade-amount-display"
-                      >50</span
-                    >🍌
-                  </div>
-                </label>
-                <div class="trade-total" id="trade-total">
-                  Total cost: 100🍌
-                </div>
-                <button
-                  class="btn btn-glow"
-                  id="btn-send-trade"
-                  onclick="sendTrade()"
-                >
-                  Send
-                </button>
-              </div>
-
-              <!-- Farm Swap Section (teams only) -->
-              <div class="trade-section" id="trade-swap-section">
-                <div class="trade-section-title">🔄 Swap Farms</div>
-                <div class="trade-fee-notice">Swap fee: 100🍌 per trade</div>
-                <label class="trade-label"
-                  >Your Farm
-                  <select id="swap-my-farm"></select>
-                </label>
-                <label class="trade-label"
-                  >Teammate's Farm
-                  <select id="swap-mate-farm"></select>
-                </label>
-                <button
-                  class="btn btn-glow"
-                  id="btn-swap-farm"
-                  onclick="swapFarm()"
-                >
-                  Swap (100🍌)
-                </button>
-              </div>
             </div>
 
             <label class="toggle-reveal"
@@ -1453,8 +1612,55 @@
         <!-- Rules Tab -->
         <div id="bp-view-rules" class="bp-view" style="display: none">
           <div class="rules-panel">
+            <!-- ═══ TABLE OF CONTENTS ═══ -->
+            <nav class="rules-toc">
+              <div class="rules-toc-title">📑 Jump to Section</div>
+              <div class="rules-toc-grid">
+                <a
+                  class="rules-toc-link"
+                  onclick="scrollToRule('rules-sec-quickref')"
+                  >⚡ Quick Reference</a
+                >
+                <a
+                  class="rules-toc-link"
+                  onclick="scrollToRule('rules-sec-howtoplay')"
+                  >🎮 How to Play</a
+                >
+                <a
+                  class="rules-toc-link"
+                  onclick="scrollToRule('rules-sec-board')"
+                  >🗺️ The Board</a
+                >
+                <a
+                  class="rules-toc-link"
+                  onclick="scrollToRule('rules-sec-auctions')"
+                  >🔨 Auctions</a
+                >
+                <a
+                  class="rules-toc-link"
+                  onclick="scrollToRule('rules-sec-encounters')"
+                  >⚔️ Encounters</a
+                >
+                <a
+                  class="rules-toc-link"
+                  onclick="scrollToRule('rules-sec-trading')"
+                  >🏪 Trading & Selling</a
+                >
+                <a
+                  class="rules-toc-link"
+                  onclick="scrollToRule('rules-sec-abilities')"
+                  >🐾 Abilities</a
+                >
+                <a
+                  class="rules-toc-link"
+                  onclick="scrollToRule('rules-sec-settings')"
+                  >⚙️ Game Modes</a
+                >
+              </div>
+            </nav>
+
             <!-- ═══ QUICK REFERENCE ═══ -->
-            <div class="rules-quickref">
+            <div class="rules-quickref" id="rules-sec-quickref">
               <h3>⚡ Quick Reference</h3>
               <div class="rules-quickref-grid">
                 <div class="rules-qr-item">
@@ -1466,7 +1672,7 @@
                 </div>
                 <div class="rules-qr-item">
                   <span class="rules-qr-icon">🎲</span>
-                  <span><b>Movement:</b> 2 dice + coin flip = 1–12 spaces</span>
+                  <span><b>Movement:</b> 2 dice = 2–12 spaces</span>
                 </div>
                 <div class="rules-qr-item">
                   <span class="rules-qr-icon">🗺️</span>
@@ -1476,7 +1682,7 @@
                 </div>
                 <div class="rules-qr-item">
                   <span class="rules-qr-icon">💰</span>
-                  <span><b>Start:</b> 1,000🍌 (configurable 100–4,000)</span>
+                  <span><b>Start:</b> 2,222🍌 (configurable)</span>
                 </div>
                 <div class="rules-qr-item">
                   <span class="rules-qr-icon">🏠</span>
@@ -1486,11 +1692,21 @@
                   <span class="rules-qr-icon">🚫</span>
                   <span><b>No bankruptcy</b> — you can't go below 0🍌</span>
                 </div>
+                <div class="rules-qr-item">
+                  <span class="rules-qr-icon">🏪</span>
+                  <span
+                    ><b>Sell farms</b> to other players via marketplace</span
+                  >
+                </div>
+                <div class="rules-qr-item">
+                  <span class="rules-qr-icon">🔄</span>
+                  <span><b>Swap farms</b> 1-for-1 with any player</span>
+                </div>
               </div>
             </div>
 
             <!-- ═══ CATEGORY: HOW TO PLAY ═══ -->
-            <div class="rules-category-header">
+            <div class="rules-category-header" id="rules-sec-howtoplay">
               <span class="rules-cat-line"></span>
               <span class="rules-cat-label">🎮 How to Play</span>
               <span class="rules-cat-line"></span>
@@ -1512,24 +1728,33 @@
                 In <b>Teams mode (2v2)</b>, your team wins when either teammate
                 buys the Magic Banana. A <b>coin flip</b> decides which team
                 goes first (seats 1 & 3) and which goes second (seats 2 & 4).
-                One random player from the second team gets a free
-                <b>scout pick</b> for balance.
               </p>
             </div>
 
             <div class="rules-section">
               <h3>🎲 Turns & Dice</h3>
               <p>
-                Each turn you roll <b>2 dice</b> (1–6 each) plus a
-                <b>coin flip</b> that adds 0 or −1. Your total move = die₁ +
-                die₂ + coin, giving you <b>1 to 12 spaces</b> clockwise around
+                Each turn you roll <b>2 dice</b> (1–6 each). Your total move =
+                die₁ + die₂, giving you <b>2 to 12 spaces</b> clockwise around
                 the 52-tile board.
               </p>
+              <p>
+                <b>🎲 Dice Overrides:</b> You can pay to change your dice count:
+              </p>
+              <ul>
+                <li><b>1 die</b> — costs 500🍌 (move 1–6 spaces)</li>
+                <li><b>3 dice</b> — costs 1,000🍌 (move 3–18 spaces)</li>
+              </ul>
               <div class="rules-callout rules-callout-tip">
                 <b>🍌 Banana Piles:</b> As you move, you automatically
                 <b>collect banana piles</b> from your own farms along the path.
                 When you land on an <b>opponent's</b> farm, you <b>steal</b>
                 their banana pile!
+              </div>
+              <div class="rules-callout rules-callout-tip">
+                <b>🎲 Dice-Match Grow:</b> If your dice total matches the
+                <b>label number</b> of a farm you own (e.g. roll 5 and own CV5),
+                that farm gets an instant <b>100% grow</b>!
               </div>
             </div>
 
@@ -1544,7 +1769,7 @@
             </div>
 
             <!-- ═══ CATEGORY: THE BOARD ═══ -->
-            <div class="rules-category-header">
+            <div class="rules-category-header" id="rules-sec-board">
               <span class="rules-cat-line"></span>
               <span class="rules-cat-label">🗺️ The Board</span>
               <span class="rules-cat-line"></span>
@@ -1585,7 +1810,7 @@
                   <tr>
                     <td>🟡 Cavendish</td>
                     <td>50🍌</td>
-                    <td>11</td>
+                    <td>12</td>
                     <td class="rules-rarity rules-rarity-common">Common</td>
                   </tr>
                   <tr>
@@ -1607,7 +1832,7 @@
                     <td class="rules-rarity rules-rarity-uncommon">Uncommon</td>
                   </tr>
                   <tr>
-                    <td>� Gros Michel</td>
+                    <td>🟤 Gros Michel</td>
                     <td>360🍌</td>
                     <td>4</td>
                     <td class="rules-rarity rules-rarity-rare">Rare</td>
@@ -1622,11 +1847,6 @@
                   </tr>
                 </tbody>
               </table>
-              <p>
-                <b>Chain bonus:</b> When you win an auction, any
-                <b>adjacent unowned farms of the same color</b> are claimed for
-                free! Position your bids strategically.
-              </p>
             </div>
 
             <div class="rules-section">
@@ -1671,17 +1891,25 @@
 
               <div class="rules-formula">
                 <b>📐 Growth Formula:</b><br />
-                Growth = Yield × Set Multiplier × GROW% × (1 + Side Bonus)
+                Growth = Yield × GROW% × Chain Multiplier × (1 + Side Bonus)
               </div>
-
               <p>
-                <b>Set Multiplier:</b> Based on how many farms you own in that
-                color group. Own 1 = 1× multiplier. Own 3 of 5 Red Dacca = each
-                grows at <b>3×</b>. Own all 5 = <b>5×</b> each! Completing color
-                sets is extremely powerful.
+                <b>🔗 Chain Multiplier:</b> If you own adjacent farms of the
+                <b>same color group</b>, they form a chain. Each farm in a chain
+                gets its yield multiplied by the chain length:
+              </p>
+              <ul>
+                <li>2 connected same-color farms = <b>2×</b> yield each</li>
+                <li>3 connected = <b>3×</b>, 4 connected = <b>4×</b>, etc.</li>
+              </ul>
+              <p>
+                Corners break chains. Only adjacently connected farms count —
+                owning farms of the same color on opposite sides of the board
+                won't form a chain.
               </p>
               <p>
-                <b>Side Bonus</b> (based on which board edge the farm sits on):
+                <b>Side Bonus</b> (optional — off by default, enable in game
+                options):
               </p>
               <ul>
                 <li>Bottom row: <b>+0%</b></li>
@@ -1690,10 +1918,10 @@
                 <li>Right column: <b>+50%</b></li>
               </ul>
               <div class="rules-callout rules-callout-example">
-                <b>📝 Example:</b> You own 3 Red Dacca farms (yield 200🍌). One
-                sits on the top row. You land on GROW 50%. Growth = 200 × 3 ×
-                0.50 × (1 + 0.20) = <b>360🍌</b> added to that farm's banana
-                pile.
+                <b>📝 Example:</b> You own 2 adjacent Red Dacca farms (yield
+                200🍌 each) on the top row. You land on GROW 50%. Growth per
+                farm = 200 × 0.50 × (1 + 0.25) × 2 = <b>250🍌</b> added to each
+                farm's banana pile.
               </div>
               <div class="rules-callout rules-callout-warn">
                 <b>🐒 Squatter Rule:</b> If an opponent is sitting on your farm
@@ -1707,8 +1935,7 @@
               <p>
                 <b>8 desert tiles</b> that cost 0🍌. They produce no yield and
                 are excluded from GROW. Won through auctions like normal farms —
-                but since they cost nothing, the winning bid is always 0. Useful
-                for chain bonus positioning!
+                but since they cost nothing, the winning bid is always 0.
               </p>
             </div>
 
@@ -1717,16 +1944,14 @@
               <p>Landing on a tax tile takes a percentage of your bananas:</p>
               <ul>
                 <li><b>🍌 Tax −10%</b> — Lose 10% of your bananas (1 tile)</li>
-                <li><b>🍌 Tax −15%</b> — Lose 15% of your bananas (1 tile)</li>
               </ul>
             </div>
 
             <div class="rules-section">
-              <h3>🌱 Easy Grow</h3>
+              <h3>� Free Bananas</h3>
               <p>
-                A mini grow tile that triggers when you
-                <b>cross it or land on it</b>. Grows bananas on all your farms
-                at <b>+10%</b> rate. This tile shuffles with the rest of the
+                Landing on or crossing this tile gives you
+                <b>+500🍌</b> instantly! This tile shuffles with the rest of the
                 board.
               </p>
             </div>
@@ -1744,9 +1969,11 @@
             <div class="rules-section">
               <h3>⭐ Super Banana</h3>
               <p>
-                The legendary hidden ⭐ tile. Landing on it with
+                The legendary hidden ⭐ tile.
+                <b>Crossing or landing on it</b> with
                 <b>7,777🍌 or more</b> means you buy it and
-                <b>win the game instantly</b>!
+                <b>win the game instantly</b>! Once all tiles are revealed, the
+                Super Banana is exposed — the first player to reach it wins.
               </p>
               <div class="rules-callout rules-callout-tip">
                 <b>Can't afford it?</b> The tile is revealed to all players for
@@ -1755,14 +1982,14 @@
                 farm that gets auctioned.
               </div>
               <div class="rules-callout rules-callout-warn">
-                <b>No hidden tiles left?</b> If you can't afford it and there
-                are no hidden tiles to swap to — you are <b>eliminated</b> and
-                the richest remaining player wins!
+                <b>No hidden tiles left?</b> If you can't afford it and the
+                Super Banana is fully revealed — the
+                <b>richest remaining player wins</b>!
               </div>
             </div>
 
             <!-- ═══ CATEGORY: AUCTIONS ═══ -->
-            <div class="rules-category-header">
+            <div class="rules-category-header" id="rules-sec-auctions">
               <span class="rules-cat-line"></span>
               <span class="rules-cat-label">🔨 Auctions</span>
               <span class="rules-cat-line"></span>
@@ -1855,7 +2082,7 @@
             </div>
 
             <!-- ═══ CATEGORY: ENCOUNTERS ═══ -->
-            <div class="rules-category-header">
+            <div class="rules-category-header" id="rules-sec-encounters">
               <span class="rules-cat-line"></span>
               <span class="rules-cat-label">⚔️ Encounters</span>
               <span class="rules-cat-line"></span>
@@ -1923,21 +2150,90 @@
                 <div class="rules-step">
                   <span class="rules-step-num">3</span>
                   <span
-                    ><b>Wait...</b> if an opponent lands on it — 💥 BOOM! You
-                    win!</span
+                    ><b>Wait...</b> The bomb arms after a few turns. If an
+                    opponent lands on or near it — 💥 BOOM!</span
                   >
                 </div>
               </div>
               <div class="rules-callout rules-callout-warn">
-                <b>⏳ Bombs expire!</b> Each bomb lasts for 2 × (active players)
-                turns. If no one triggers it in time, it fizzles out and your
-                5,000🍌 is gone. You can only hold one bomb at a time, and you
-                <b>can't trigger your own bomb</b>.
+                <b>⏳ Timer:</b> Bombs last <b>5 turns</b>. They arm partway
+                through and explode when the timer runs out.
+                <b>Blast radius</b> hits the bomb tile
+                <b>plus 1 tile on each side</b>
+                (3 tiles total).
+              </div>
+              <div class="rules-callout rules-callout-tip">
+                <b>💥 Self-damage:</b> If you're caught in your own bomb's
+                blast, you lose <b>50% of your bananas</b> (but aren't
+                eliminated). Opponents in the blast are eliminated and you claim
+                their bananas and farms.
+              </div>
+            </div>
+
+            <!-- ═══ CATEGORY: TRADING & SELLING ═══ -->
+            <div class="rules-category-header" id="rules-sec-trading">
+              <span class="rules-cat-line"></span>
+              <span class="rules-cat-label">🏪 Trading & Selling</span>
+              <span class="rules-cat-line"></span>
+            </div>
+
+            <div class="rules-section">
+              <h3>🏷️ Sell Listings (Marketplace)</h3>
+              <p>
+                Any player can list their farms for sale on a shared
+                <b>marketplace</b>. Other players can browse and buy at the
+                listed price — first come, first served.
+              </p>
+              <div class="rules-steps">
+                <div class="rules-step">
+                  <span class="rules-step-num">1</span>
+                  <span
+                    ><b>List a farm</b> — Set your asking price
+                    (1–100,000🍌)</span
+                  >
+                </div>
+                <div class="rules-step">
+                  <span class="rules-step-num">2</span>
+                  <span
+                    ><b>Wait for a buyer</b> — Other players see the listing and
+                    can purchase instantly</span
+                  >
+                </div>
+                <div class="rules-step">
+                  <span class="rules-step-num">3</span>
+                  <span
+                    ><b>Sale completes</b> — Buyer pays the listed price,
+                    ownership transfers immediately</span
+                  >
+                </div>
+              </div>
+              <div class="rules-callout rules-callout-tip">
+                <b>📋 Limits:</b> You can have up to <b>5 active listings</b>
+                at once. You can cancel a listing at any time before someone
+                buys it.
+              </div>
+              <div class="rules-callout rules-callout-warn">
+                <b>⚠️ No self-buys:</b> You can't purchase your own listing. If
+                you lose the farm before someone buys it (e.g. via bomb), the
+                listing is automatically cancelled.
+              </div>
+            </div>
+
+            <div class="rules-section">
+              <h3>🔄 Farm Swapping (1-for-1)</h3>
+              <p>
+                Any two players can arrange a <b>1-for-1 farm trade</b> — you
+                give one of your farms and receive one of theirs in return.
+                <b>No fee</b> is charged for mutual swaps.
+              </p>
+              <div class="rules-callout rules-callout-tip">
+                <b>⏰ Timing:</b> Swaps can only happen when it's
+                <b>not your turn</b>. Both farms change ownership instantly.
               </div>
             </div>
 
             <!-- ═══ CATEGORY: ABILITIES ═══ -->
-            <div class="rules-category-header">
+            <div class="rules-category-header" id="rules-sec-abilities">
               <span class="rules-cat-line"></span>
               <span class="rules-cat-label">🐾 Abilities & Tools</span>
               <span class="rules-cat-line"></span>
@@ -1946,8 +2242,9 @@
             <div class="rules-section">
               <h3>🐾 Pets</h3>
               <p>
-                Choose a pet in the lobby. Each pet has a unique ability you can
-                use <b>after rolling</b> on your turn:
+                Choose a pet in the lobby. Each pet has a unique ability you
+                activate <b>between turns</b> (when it's not your turn). The
+                effect resolves at the start of your next turn.
               </p>
               <table class="rules-table">
                 <thead>
@@ -1962,23 +2259,28 @@
                   <tr>
                     <td>🦁 Strong</td>
                     <td>Move forward 1 space (guaranteed)</td>
-                    <td>20 rolls</td>
+                    <td>15 rolls</td>
                     <td>1 use</td>
                   </tr>
                   <tr>
                     <td>🐆 Energy</td>
-                    <td>50% chance to move forward 1 space</td>
+                    <td>Coin flip: heads = move forward 1 space</td>
                     <td>7 rolls</td>
                     <td>3 uses</td>
                   </tr>
                   <tr>
                     <td>🦄 Magic</td>
-                    <td>50% chance to push an opponent forward 1</td>
+                    <td>Coin flip: heads = forward 1, tails = backward 1</td>
                     <td>10 rolls</td>
                     <td>2 uses</td>
                   </tr>
                 </tbody>
               </table>
+              <p>
+                <b>🦄 Magic Pet</b> can also target an opponent — on their next
+                turn, a coin flip decides: heads pushes them forward 1, tails
+                does nothing.
+              </p>
               <p>
                 <b>Cooldown mode:</b> Pet recharges after N rolls (counting
                 <i>all</i> players' rolls). <b>Limited mode:</b> Fixed number of
@@ -1986,19 +2288,8 @@
               </p>
             </div>
 
-            <div class="rules-section">
-              <h3>🔭 Scouting</h3>
-              <p>
-                Optional pre-game ability. When enabled, each player picks
-                <b>one hidden tile</b> to secretly reveal to themselves before
-                the game begins. The tile stays hidden to everyone else until
-                normally discovered. In Teams mode, one player scouts for both
-                teammates.
-              </p>
-            </div>
-
             <!-- ═══ CATEGORY: GAME MODES ═══ -->
-            <div class="rules-category-header">
+            <div class="rules-category-header" id="rules-sec-settings">
               <span class="rules-cat-line"></span>
               <span class="rules-cat-label">⚙️ Game Modes & Settings</span>
               <span class="rules-cat-line"></span>
@@ -2008,19 +2299,51 @@
               <h3>👥 Teams Mode (2v2)</h3>
               <p>
                 4 players split into 2 teams. Either teammate buying the ⭐
-                Magic Banana wins it for the whole team.
+                Magic Banana wins it for the whole team. A <b>coin flip</b>
+                decides which team moves first.
               </p>
               <ul>
                 <li>
                   <b>No yield</b> between teammates — landing on your teammate's
                   farm is safe
                 </li>
-                <li><b>Trade bananas</b> with your teammate (50🍌 fee)</li>
-                <li><b>Swap farms</b> with your teammate (100🍌 fee)</li>
-                <li>GROW counts <b>teammate farms</b> for set multiplier</li>
                 <li>Teammate banana piles are <b>collected, not stolen</b></li>
                 <li>Auctions are <b>1v1</b> against closest opponent</li>
               </ul>
+
+              <h4 class="rules-sub-heading">🤝 Team Actions</h4>
+              <table class="rules-table">
+                <thead>
+                  <tr>
+                    <th>Action</th>
+                    <th>Fee</th>
+                    <th>Description</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>📦 Send Bananas</td>
+                    <td>150🍌</td>
+                    <td>Transfer any amount of 🍌 to your teammate</td>
+                  </tr>
+                  <tr>
+                    <td>🔄 Swap Farms</td>
+                    <td>100🍌</td>
+                    <td>
+                      Exchange one of your farms for one of your teammate's
+                    </td>
+                  </tr>
+                  <tr>
+                    <td>🎁 Give Farm</td>
+                    <td>300🍌</td>
+                    <td>Gift a farm to your teammate (one-way transfer)</td>
+                  </tr>
+                </tbody>
+              </table>
+              <div class="rules-callout rules-callout-tip">
+                <b>⏰ Timing:</b> Team actions can only be performed when it's
+                <b>not your turn</b>. Plan your coordination between rounds!
+              </div>
             </div>
 
             <div class="rules-section">
@@ -2037,18 +2360,13 @@
                 <tbody>
                   <tr>
                     <td>💰 Starting Bananas</td>
-                    <td>1,000🍌</td>
-                    <td>Range: 100–4,000🍌</td>
+                    <td>2,222🍌</td>
+                    <td>Range: 100–99,999🍌</td>
                   </tr>
                   <tr>
                     <td>👥 Max Players</td>
                     <td>4</td>
                     <td>2–4 players (locked to 4 in Teams)</td>
-                  </tr>
-                  <tr>
-                    <td>🔍 Scouting</td>
-                    <td>Off</td>
-                    <td>Pre-game tile reveal pick</td>
                   </tr>
                   <tr>
                     <td>🏷️ Simple Auction</td>
@@ -2066,12 +2384,22 @@
                     <td>Simplified poker (1–10 cards, sum wins)</td>
                   </tr>
                   <tr>
+                    <td>📍 Side Bonuses</td>
+                    <td>Off</td>
+                    <td>Board edges give +10%/+25%/+50% yield bonus</td>
+                  </tr>
+                  <tr>
                     <td>🐾 Pet Mode</td>
                     <td>Cooldown</td>
                     <td>Cooldown (recharges) or Limited (fixed uses)</td>
                   </tr>
                 </tbody>
               </table>
+            </div>
+
+            <!-- Back to top -->
+            <div class="rules-back-to-top">
+              <a onclick="scrollToRule('rules-sec-quickref')">⬆️ Back to Top</a>
             </div>
           </div>
         </div>

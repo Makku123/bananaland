@@ -3,10 +3,11 @@
 const BOARD_SIZE = 52;
 
 const SPACE_DATA = {
-  // Cavendish (10)
+  // Cavendish (12)
   1: { name: "Mediterranean", group: "yellow", price: 50 },
   3: { name: "Baltic Ave", group: "yellow", price: 50 },
   4: { name: "Vine Street", group: "yellow", price: 50 },
+  5: { name: "CV12", group: "yellow", price: 50 },
   15: { name: "Lady Finger Ln", group: "yellow", price: 50 },
   35: { name: "Banana Bend", group: "yellow", price: 50 },
   47: { name: "Monkey Trail", group: "yellow", price: 50 },
@@ -50,19 +51,17 @@ const SPACE_DATA = {
 const SPECIAL_SPACES = {
   // Corners
   0: { name: "GROW\n100%", type: "corner" },
-  13: { name: "GROW\n75%", type: "corner" },
+  13: { name: "GROW\n25%", type: "corner" },
   26: { name: "GROW\n50%", type: "corner" },
-  39: { name: "GROW\n25%", type: "corner" },
+  39: { name: "GROW\n75%", type: "corner" },
   // Community Chest
   2: { name: "\ud83c\udf4c\n-10%", type: "tax10" },
   21: { name: "\u2b50", type: "special" },
-  42: { name: "\ud83c\udf31", type: "easygrow" },
+  42: { name: "+500", type: "freebananas" },
   // Desert
   8: { name: "\ud83c\udf35", type: "desert" },
   28: { name: "\ud83c\udf35", type: "desert" },
   46: { name: "\ud83c\udf35", type: "desert" },
-  // Tax
-  5: { name: "\ud83c\udf4c\n-15%", type: "tax" },
   // Mega specials
   12: { name: "\ud83c\udf35", type: "desert" },
   25: { name: "Vine\nSwing", type: "bus" },
@@ -75,6 +74,7 @@ const SPECIAL_SPACES = {
 
 // ——— Side bonus based on board position ————————————————————————————
 function getSideBonus(pos) {
+  if (!window._gs || !window._gs.sideBonuses) return 0;
   if (pos >= 14 && pos <= 25) return 0.1; // left column
   if (pos >= 27 && pos <= 38) return 0.25; // top row
   if (pos >= 40 && pos <= 51) return 0.5; // right column
@@ -116,8 +116,29 @@ function spaceRect(i) {
   return { l: 0, t: 0, w: 0, h: 0 };
 }
 
+// ——— Free Bananas popup tracking ——————————————————————————————————
+let _prevFreeBananasTiles = new Set(); // positions where freebananas is known
+let _freeBananasShown = new Set(); // positions already shown this walk
+
 // ——— Banana pile tracking for collection animation ————————————————
 let _prevBananaPiles = {}; // { tileIndex: amount }
+
+// ——— Shared helper: show a floating popup at the "Your Bananas" box ——
+function showPopupAtBananaBox(text, cssClass) {
+  const moneyEl = document.getElementById("info-money");
+  if (!moneyEl) return;
+  const rect = moneyEl.getBoundingClientRect();
+  const floater = document.createElement("div");
+  floater.className = cssClass;
+  floater.textContent = text;
+  floater.style.position = "fixed";
+  floater.style.left = rect.left + rect.width / 2 + "px";
+  floater.style.top = rect.top + "px";
+  floater.style.pointerEvents = "none";
+  floater.style.zIndex = "1000";
+  document.body.appendChild(floater);
+  floater.addEventListener("animationend", () => floater.remove());
+}
 
 // ——— Persistent token elements for smooth animation ———————————————
 const _tokenElements = {}; // { playerId: HTMLElement }
@@ -125,18 +146,23 @@ const _tokenElements = {}; // { playerId: HTMLElement }
 // ——— Render Board ——————————————————————————————————————————————————
 
 function renderBoard(gs) {
+  window._gs = gs;
   const board = document.getElementById("board");
   // Preserve overlays across re-renders
   const chat = document.getElementById("board-chat");
   const chatToggle = document.getElementById("board-chat-toggle");
   const logPanel = document.getElementById("board-log");
   const logToggle = document.getElementById("board-log-toggle");
+  const tradeDealsPanel = document.getElementById("board-trade-deals");
+  const tradeDealsToggle = document.getElementById("board-trade-deals-toggle");
   const pokerTable = document.getElementById("poker-table");
   const auctionBox = document.getElementById("auction-box");
   if (chat) chat.remove();
   if (chatToggle) chatToggle.remove();
   if (logPanel) logPanel.remove();
   if (logToggle) logToggle.remove();
+  if (tradeDealsPanel) tradeDealsPanel.remove();
+  if (tradeDealsToggle) tradeDealsToggle.remove();
   if (pokerTable) pokerTable.remove();
   if (auctionBox) auctionBox.remove();
   // Detach persistent token layer before clearing
@@ -152,6 +178,8 @@ function renderBoard(gs) {
   if (chat) board.appendChild(chat);
   if (logToggle) board.appendChild(logToggle);
   if (logPanel) board.appendChild(logPanel);
+  if (tradeDealsToggle) board.appendChild(tradeDealsToggle);
+  if (tradeDealsPanel) board.appendChild(tradeDealsPanel);
   if (pokerTable) board.appendChild(pokerTable);
   if (auctionBox) board.appendChild(auctionBox);
 
@@ -172,9 +200,12 @@ function renderBoard(gs) {
 
   const _bananaPiles = [];
 
-  // Compute per-owner group counts so tiles can display effective yield
-  const _ownerGroupCount = {}; // { ownerId: { group: count } }
+  // Compute chain multipliers for each owned tile
+  // Connected same-group farms owned by the same player get Nx multiplier (N = chain length)
+  const _chainMultipliers = {}; // { position: multiplier }
   if (gs && gs.properties) {
+    // Group owned positions by owner
+    const ownerPositions = {};
     for (const prop of gs.properties) {
       if (
         prop.owner &&
@@ -182,9 +213,35 @@ function renderBoard(gs) {
         prop.group !== "desert" &&
         prop.group !== "mushroom"
       ) {
-        if (!_ownerGroupCount[prop.owner]) _ownerGroupCount[prop.owner] = {};
-        _ownerGroupCount[prop.owner][prop.group] =
-          (_ownerGroupCount[prop.owner][prop.group] || 0) + 1;
+        if (!ownerPositions[prop.owner]) ownerPositions[prop.owner] = [];
+        ownerPositions[prop.owner].push(prop);
+      }
+    }
+    const CORNERS = new Set([0, 13, 26, 39]);
+    for (const ownerId of Object.keys(ownerPositions)) {
+      const props = ownerPositions[ownerId];
+      const posSet = new Set(props.map((p) => p.id));
+      const visited = new Set();
+      for (const prop of props) {
+        if (visited.has(prop.id)) continue;
+        const chain = [];
+        const queue = [prop.id];
+        visited.add(prop.id);
+        while (queue.length > 0) {
+          const cur = queue.shift();
+          chain.push(cur);
+          const neighbors = [(cur - 1 + 52) % 52, (cur + 1) % 52];
+          for (const n of neighbors) {
+            if (visited.has(n) || !posSet.has(n) || CORNERS.has(n)) continue;
+            const nProp = props.find((p) => p.id === n);
+            if (!nProp || nProp.group !== prop.group) continue;
+            visited.add(n);
+            queue.push(n);
+          }
+        }
+        for (const c of chain) {
+          _chainMultipliers[c] = chain.length;
+        }
       }
     }
   }
@@ -204,28 +261,17 @@ function renderBoard(gs) {
 
     // Fog of war: hide unrevealed non-corner tiles
     const isCornerPos = i === 0 || i === 13 || i === 26 || i === 39;
+    const tileType = layout ? layout[i].type : null;
     const isRevealed =
-      isCornerPos ||
-      !myRevealed ||
-      myRevealed.has(i) ||
-      (typeof revealAll !== "undefined" && revealAll);
+      tileType !== "hidden" &&
+      (isCornerPos ||
+        !myRevealed ||
+        myRevealed.has(i) ||
+        (typeof revealAll !== "undefined" && revealAll));
 
     if (!isRevealed) {
       el.classList.add("space-hidden");
       el.innerHTML = `<span class="sname">${i}</span>`;
-      // During picking phase, make hidden tiles clickable
-      if (
-        gs &&
-        gs.state === "picking" &&
-        gs.currentPicker &&
-        gs.currentPicker.id === myId
-      ) {
-        el.classList.add("space-pickable");
-        el.addEventListener("click", () => {
-          if (socket && gameId)
-            socket.emit("pick_tile", { gameId, position: i });
-        });
-      }
       // Vine Swing: hidden tiles are also clickable (only own properties)
       if (gs && gs.vineSwing && gs.vineSwing === myId && !isCornerPos) {
         const ownsProp =
@@ -248,6 +294,26 @@ function renderBoard(gs) {
             closeBombPlacement();
           }
         });
+      }
+      // Sell mode: make hidden owned tiles clickable too
+      if (
+        typeof isSellMode === "function" &&
+        isSellMode() &&
+        window._sellState &&
+        !isCornerPos
+      ) {
+        const sState = window._sellState;
+        const tProp =
+          gs && gs.properties && gs.properties.find((p) => p.id === i);
+        if (tProp && tProp.owner === myId) {
+          el.classList.add("trade-clickable");
+          el.classList.add("trade-clickable-mine");
+          el.addEventListener("click", () => handleSellTileClick(i));
+          if (sState.selectedTile === i) {
+            el.classList.add("trade-selected");
+            el.classList.add("trade-selected-mine");
+          }
+        }
       }
       board.appendChild(el);
       continue;
@@ -284,27 +350,17 @@ function renderBoard(gs) {
             `<path d="M36 10 C38 6 41 3 44 2 C46 1 47 3 46 5 C45 7 42 9 39 10Z" fill="#5a3a1a" stroke="#3d2510" stroke-width="0.8" stroke-linejoin="round"/>` +
             `<path d="M24 38 C22 42 21 46 22 50" fill="none" stroke="rgba(255,255,255,0.5)" stroke-width="1.5" stroke-linecap="round"/>` +
             `</g></svg></span>` +
-            `<span class="sprice">${Math.round(tile.price * (1 + getSideBonus(i)))}\ud83c\udf4c</span>`;
+            `<span class="sprice">${tile.price}\ud83c\udf4c</span>`;
         } else {
           el.classList.add("g-" + (tile.group || "railroad"));
-          // Show effective yield with side bonus and set bonus if tile is owned
+          // Show effective yield with side bonus and chain multiplier
           const baseYield = Math.round(tile.price * (1 + getSideBonus(i)));
-          let priceDisplay = `${baseYield}\ud83c\udf4c`;
-          if (gs && gs.properties) {
-            const prop = gs.properties.find((p) => p.id === i);
-            if (
-              prop &&
-              prop.owner &&
-              prop.group &&
-              _ownerGroupCount[prop.owner]
-            ) {
-              const count = _ownerGroupCount[prop.owner][prop.group] || 1;
-              if (count > 1) {
-                const mult = 1 + (count - 1) * 0.1;
-                priceDisplay = `${Math.round(tile.price * (1 + getSideBonus(i)) * mult)}\ud83c\udf4c`;
-              }
-            }
-          }
+          const chainMult = _chainMultipliers[i] || 1;
+          const effectiveYield = Math.round(baseYield * chainMult);
+          const priceDisplay =
+            chainMult > 1
+              ? `${effectiveYield}🍌 (${chainMult}x)`
+              : `${baseYield}🍌`;
           el.innerHTML =
             `<span class="sname">${label}</span>` +
             `<span class="sprice">${priceDisplay}</span>`;
@@ -396,6 +452,22 @@ function renderBoard(gs) {
       }
     }
 
+    // Sell mode: make own tiles clickable and highlight selected tile
+    if (typeof isSellMode === "function" && isSellMode() && window._sellState) {
+      const sState = window._sellState;
+      const tProp =
+        gs && gs.properties && gs.properties.find((p) => p.id === i);
+      if (tProp && tProp.owner === myId) {
+        el.classList.add("trade-clickable");
+        el.classList.add("trade-clickable-mine");
+        el.addEventListener("click", () => handleSellTileClick(i));
+        if (sState.selectedTile === i) {
+          el.classList.add("trade-selected");
+          el.classList.add("trade-selected-mine");
+        }
+      }
+    }
+
     board.appendChild(el);
   }
 
@@ -478,24 +550,78 @@ function renderBoard(gs) {
       }
       board.appendChild(floater);
       floater.addEventListener("animationend", () => floater.remove());
+
+      // Also show +X at the Your Bananas box
+      showPopupAtBananaBox(
+        "+" + collected + "\uD83C\uDF4C",
+        "pile-collect-popup-player",
+      );
     }
   }
   _prevBananaPiles = currentPiles;
 
-  // Side bonus labels
-  const sideBonuses = [
-    { label: "+10%", l: "14%", t: "50%" },
-    { label: "+25%", l: "50%", t: "14%" },
-    { label: "+50%", l: "86%", t: "50%" },
-  ];
-  sideBonuses.forEach((b) => {
-    const lbl = document.createElement("div");
-    lbl.className = "side-bonus-label";
-    lbl.textContent = b.label;
-    lbl.style.left = b.l;
-    lbl.style.top = b.t;
-    board.appendChild(lbl);
-  });
+  // Free Bananas +500 popup — show at player's banana score when triggered
+  if (layout) {
+    // Track known freebananas positions
+    const currentFB = new Set();
+    layout.forEach((tile, idx) => {
+      if (tile.type === "freebananas") currentFB.add(idx);
+    });
+
+    // Reset shown set when walk ends
+    if (!window._tokenWalking) {
+      _freeBananasShown = new Set();
+    }
+
+    // Check if any walking token is currently on a freebananas tile
+    // Only show popup if the tile is revealed (hidden tiles don't award bananas)
+    if (window._diceRollingPositions) {
+      for (const [playerId, pos] of Object.entries(
+        window._diceRollingPositions,
+      )) {
+        const tileRevealed = !myRevealed || myRevealed.has(pos);
+        if (currentFB.has(pos) && !_freeBananasShown.has(pos) && tileRevealed) {
+          _freeBananasShown.add(pos);
+          showPopupAtBananaBox("+500\uD83C\uDF4C", "free-bananas-popup-player");
+        }
+      }
+    }
+
+    // Also trigger for newly revealed tiles when no walk is happening (e.g. passive push)
+    if (!window._tokenWalking) {
+      for (const pos of currentFB) {
+        if (!_prevFreeBananasTiles.has(pos) && !_freeBananasShown.has(pos)) {
+          _freeBananasShown.add(pos);
+          // For passive reveal, try to show at current player's money
+          const currentPlayer = gs.players.find((p) => p.position === pos);
+          if (currentPlayer) {
+            showPopupAtBananaBox(
+              "+500\uD83C\uDF4C",
+              "free-bananas-popup-player",
+            );
+          }
+        }
+      }
+    }
+    _prevFreeBananasTiles = currentFB;
+  }
+
+  // Side bonus labels (only if side bonuses are enabled)
+  if (gs.sideBonuses) {
+    const sideBonuses = [
+      { label: "+10%", l: "14%", t: "50%" },
+      { label: "+25%", l: "50%", t: "14%" },
+      { label: "+50%", l: "86%", t: "50%" },
+    ];
+    sideBonuses.forEach((b) => {
+      const lbl = document.createElement("div");
+      lbl.className = "side-bonus-label";
+      lbl.textContent = b.label;
+      lbl.style.left = b.l;
+      lbl.style.top = b.t;
+      board.appendChild(lbl);
+    });
+  }
 
   // Center decoration: jungle scene
   const centerBg = document.createElement("div");
@@ -533,9 +659,36 @@ function renderBoard(gs) {
     }
   }
 
-  // Bomb explosion animation
-  if (gs && gs.lastExplosion && !window._explosionShown) {
+  // Bomb explosion animation (wait for token walk to finish)
+  if (
+    gs &&
+    gs.lastExplosion &&
+    !window._explosionShown &&
+    !window._tokenWalking &&
+    !window._diceRollingPositions
+  ) {
     window._explosionShown = gs.lastExplosion.position;
+
+    // Screen shake
+    board.classList.add("board-shake");
+    setTimeout(() => board.classList.remove("board-shake"), 800);
+
+    // Full-board flash overlay
+    const flash = document.createElement("div");
+    flash.className = "bomb-flash";
+    board.appendChild(flash);
+    flash.addEventListener("animationend", () => flash.remove());
+
+    // Shockwave ring from center tile
+    const cr = spaceRect(gs.lastExplosion.position);
+    const shockwave = document.createElement("div");
+    shockwave.className = "bomb-shockwave";
+    shockwave.style.left = cr.l + cr.w / 2 + "%";
+    shockwave.style.top = cr.t + cr.h / 2 + "%";
+    board.appendChild(shockwave);
+    shockwave.addEventListener("animationend", () => shockwave.remove());
+
+    // Tile overlays (existing behavior, enhanced)
     for (const tile of gs.lastExplosion.tiles) {
       const r = spaceRect(tile);
       const fx = document.createElement("div");
@@ -554,6 +707,32 @@ function renderBoard(gs) {
       fx.style.fontSize = tile === gs.lastExplosion.position ? "28px" : "18px";
       board.appendChild(fx);
       fx.addEventListener("animationend", () => fx.remove());
+    }
+
+    // Flying debris particles from the center
+    const cx = cr.l + cr.w / 2;
+    const cy = cr.t + cr.h / 2;
+    const debris = [
+      "\ud83c\udf4d",
+      "\ud83d\udca5",
+      "\ud83d\udd25",
+      "\u2728",
+      "\ud83c\udf4c",
+      "\ud83d\udca8",
+    ];
+    for (let i = 0; i < 18; i++) {
+      const particle = document.createElement("div");
+      particle.className = "bomb-particle";
+      particle.textContent = debris[i % debris.length];
+      const angle = (Math.PI * 2 * i) / 18 + (Math.random() - 0.5) * 0.4;
+      const dist = 12 + Math.random() * 20;
+      particle.style.left = cx + "%";
+      particle.style.top = cy + "%";
+      particle.style.setProperty("--fly-x", Math.cos(angle) * dist + "%");
+      particle.style.setProperty("--fly-y", Math.sin(angle) * dist + "%");
+      particle.style.animationDelay = Math.random() * 0.15 + "s";
+      board.appendChild(particle);
+      particle.addEventListener("animationend", () => particle.remove());
     }
   }
   if (gs && !gs.lastExplosion) {
@@ -627,6 +806,98 @@ function renderBoard(gs) {
     }
   }
 }
+
+// ——— Lightweight trade highlight updater (no full re-render) ——————
+// Toggles trade CSS classes on existing tile elements without rebuilding the board.
+function updateSellHighlights() {
+  const gs = window._gs;
+  if (!gs) return;
+  const sState = window._sellState;
+  const sellClasses = [
+    "trade-clickable",
+    "trade-clickable-mine",
+    "trade-selected",
+    "trade-selected-mine",
+  ];
+
+  for (let i = 0; i < BOARD_SIZE; i++) {
+    const el = document.getElementById("space-" + i);
+    if (!el) continue;
+
+    // Remove all sell classes first
+    sellClasses.forEach((c) => el.classList.remove(c));
+
+    // Remove any previously-attached sell click handler
+    if (el._tradeClickHandler) {
+      el.removeEventListener("click", el._tradeClickHandler);
+      el._tradeClickHandler = null;
+    }
+
+    if (!sState) continue;
+
+    const prop = gs.properties && gs.properties.find((p) => p.id === i);
+    if (!prop || prop.owner !== myId) continue;
+
+    el.classList.add("trade-clickable");
+    el.classList.add("trade-clickable-mine");
+    const handler = () => handleSellTileClick(i);
+    el._tradeClickHandler = handler;
+    el.addEventListener("click", handler);
+
+    if (sState.selectedTile === i) {
+      el.classList.add("trade-selected");
+      el.classList.add("trade-selected-mine");
+    }
+  }
+}
+
+// ——— Draggable sell-listings panel ———————————————————————————————
+(function initSellListingsDrag() {
+  let dragging = false,
+    startX,
+    startY,
+    startLeft,
+    startTop;
+  function onMouseDown(e) {
+    const panel = document.getElementById("board-trade-deals");
+    if (!panel) return;
+    dragging = true;
+    const rect = panel.getBoundingClientRect();
+    const boardRect = panel.offsetParent
+      ? panel.offsetParent.getBoundingClientRect()
+      : { left: 0, top: 0 };
+    startX = e.clientX;
+    startY = e.clientY;
+    startLeft = rect.left - boardRect.left;
+    startTop = rect.top - boardRect.top;
+    // Switch from right/bottom positioning to left/top for dragging
+    panel.style.left = startLeft + "px";
+    panel.style.top = startTop + "px";
+    panel.style.right = "auto";
+    panel.style.bottom = "auto";
+    e.preventDefault();
+  }
+  function onMouseMove(e) {
+    if (!dragging) return;
+    const panel = document.getElementById("board-trade-deals");
+    if (!panel) return;
+    panel.style.left = startLeft + e.clientX - startX + "px";
+    panel.style.top = startTop + e.clientY - startY + "px";
+  }
+  function onMouseUp() {
+    dragging = false;
+  }
+  document.addEventListener("mousedown", function (e) {
+    if (
+      e.target.closest("#board-trade-deals-header") &&
+      !e.target.closest(".board-trade-deals-close")
+    ) {
+      onMouseDown(e);
+    }
+  });
+  document.addEventListener("mousemove", onMouseMove);
+  document.addEventListener("mouseup", onMouseUp);
+})();
 
 // ——— Board Preview (client-side shuffle) ——————————————————————————
 
