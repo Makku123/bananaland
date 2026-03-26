@@ -1276,10 +1276,38 @@ class MonopolyGame {
   completeReveal() {
     if (this.state !== "revealing") return false;
     this._shuffleBoard();
+    this._initTileLabelNumbers();
     this._initProperties();
     this.state = "playing";
     this._log(`Tiles shuffled! Game started! \uD83C\uDF4C`);
     return true;
+  }
+
+  _initTileLabelNumbers() {
+    // Collect board positions per group
+    const groupPositions = {};
+    for (let i = 0; i < this.board.length; i++) {
+      const space = this.board[i];
+      if (space.buyable) {
+        const g = space.buyable.group;
+        if (g && g !== "desert" && g !== "mushroom") {
+          if (!groupPositions[g]) groupPositions[g] = [];
+          groupPositions[g].push(i);
+        }
+      }
+    }
+    // For each group, create [1..N], shuffle it, and assign to positions
+    this.tileLabelNumbers = new Map();
+    for (const [g, positions] of Object.entries(groupPositions)) {
+      const nums = positions.map((_, idx) => idx + 1);
+      for (let i = nums.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [nums[i], nums[j]] = [nums[j], nums[i]];
+      }
+      for (let i = 0; i < positions.length; i++) {
+        this.tileLabelNumbers.set(positions[i], nums[i]);
+      }
+    }
   }
 
   _shuffleBoard() {
@@ -1308,6 +1336,7 @@ class MonopolyGame {
   debugShuffle() {
     if (this.state !== "playing") return false;
     this._shuffleBoard();
+    this._initTileLabelNumbers();
     this._initProperties();
     // Clear player property lists since positions changed
     for (const p of this.players) p.properties = [];
@@ -1398,11 +1427,12 @@ class MonopolyGame {
     cur.position = (cur.position + diceSum) % BOARD_SIZE;
     cur.revealedTiles.add(cur.position);
 
-    // Dice-match grow: if dice sum matches a farm label number you own, 100% grow
-    this._processDiceMatchGrow(cur, diceSum);
-
     // Collect own banana piles on crossed/landed tiles & steal opponent piles on landing
     this._collectBananasOnPath(cur, oldPos, cur.position);
+
+    // Dice-match grow: if dice sum matches a farm label number you own, 100% grow
+    // (runs after collection so newly grown piles persist on the tile rather than being immediately swept up)
+    this._processDiceMatchGrow(cur, diceSum);
 
     // Check if player landed on a bomb (eliminates victims, placer takes loot)
     if (this._checkBombDetonation(cur)) {
@@ -1498,14 +1528,12 @@ class MonopolyGame {
       }
 
       const teamProps = [];
-      const groupCount = {}; // count of owned farms per color group
       for (const p of this.players) {
         if (!teamIds.has(p.id)) continue;
         for (const propId of p.properties) {
           const prop = this.properties.get(propId);
           if (!prop || !prop.group || prop.group === "desert") continue;
           teamProps.push(propId);
-          groupCount[prop.group] = (groupCount[prop.group] || 0) + 1;
         }
       }
 
@@ -1518,7 +1546,10 @@ class MonopolyGame {
         return 0; // bottom row (1-12)
       };
 
-      // 3) Set bonus: each farm grows (price � (1 + sideBonus)) � setMultiplier � growPct
+      // 3) Chain multiplier: adjacent same-group farms multiply yield by chain length
+      const chainMultipliers = this._computeChainMultipliers(teamIds);
+
+      // Each farm grows (price * (1 + sideBonus)) * chainMult * growPct� (1 + sideBonus)) � setMultiplier � growPct
       //    Side bonus is applied to the base yield first, then set bonus and grow %
       //    If an opponent is sitting on the farm, they collect the bananas instead
       let totalGrown = 0;
@@ -1527,11 +1558,10 @@ class MonopolyGame {
       for (const propId of teamProps) {
         const prop = this.properties.get(propId);
         if (!prop) continue;
-        const owned = groupCount[prop.group] || 1;
-        const setMultiplier = 1 + (owned - 1) * 0.1;
+        const chainMult = chainMultipliers[propId] || 1;
         const amount = Math.floor(
           easyGrowBase +
-            prop.price * (1 + getSideBonus(propId)) * setMultiplier * pct,
+            prop.price * (1 + getSideBonus(propId)) * chainMult * pct,
         );
         if (amount > 0) {
           // Check if a non-teammate opponent is sitting on this tile
@@ -1838,14 +1868,12 @@ class MonopolyGame {
         }
       }
       const teamProps = [];
-      const groupCount = {};
       for (const p of this.players) {
         if (!teamIds.has(p.id)) continue;
         for (const propId of p.properties) {
           const prop = this.properties.get(propId);
           if (!prop || !prop.group || prop.group === "desert") continue;
           teamProps.push(propId);
-          groupCount[prop.group] = (groupCount[prop.group] || 0) + 1;
         }
       }
       const getSideBonus = (pos) => {
@@ -1855,15 +1883,15 @@ class MonopolyGame {
         if (pos >= 40 && pos <= 51) return 0.5;
         return 0;
       };
+      const chainMultipliers = this._computeChainMultipliers(teamIds);
       let totalGrown = 0;
       for (const propId of teamProps) {
         const prop = this.properties.get(propId);
         if (!prop) continue;
-        const owned = groupCount[prop.group] || 1;
-        const setMultiplier = 1 + (owned - 1) * 0.1;
+        const chainMult = chainMultipliers[propId] || 1;
         const amount = Math.floor(
           easyGrowBase +
-            prop.price * (1 + getSideBonus(propId)) * setMultiplier * pct,
+            prop.price * (1 + getSideBonus(propId)) * chainMult * pct,
         );
         if (amount > 0) {
           prop.bananaPile += amount;
@@ -2204,12 +2232,42 @@ class MonopolyGame {
       a.highBid = lb.amount;
       a.highBidder = a.landingPlayer;
 
-      // Move to team response phase (all others accept/reject)
-      a.phase = "team-respond";
+      // Filter out players who can't afford the pitched price
+      const cantAffordIds = a.bidders.filter((id) => {
+        if (id === a.landingPlayer) return false;
+        const p = this.players.find((pl) => pl.id === id);
+        return !p || p.money < lb.amount;
+      });
+      if (cantAffordIds.length > 0) {
+        const names = cantAffordIds
+          .map((id) => this.players.find((p) => p.id === id)?.name || "?")
+          .join(", ");
+        this._log(
+          `${names} can't afford ${lb.amount}\ud83c\udf4c \u2014 excluded from the auction.`,
+        );
+        a.bidders = a.bidders.filter((id) => !cantAffordIds.includes(id));
+        for (const id of cantAffordIds) delete a.bids[id];
+      }
+
       const others = a.bidders.filter((id) => id !== a.landingPlayer);
+
+      if (others.length === 0) {
+        // No one else can afford it — lander buys automatically
+        this._log(`No one else can afford it \u2014 lander buys the farm!`);
+        this._resolveAuction();
+        return;
+      }
+
+      // Move to respond phase; 1 remaining other → simple 2-player format
       for (const id of others) {
         a.bids[id].placed = false;
         a.bids[id].passed = false;
+      }
+      if (others.length === 1) {
+        a.phase = "simple-respond";
+        a.simple = true;
+      } else {
+        a.phase = "team-respond";
       }
       this._log(
         `Lander priced it at ${lb.amount}\ud83c\udf4c \u2014 accept or reject?`,
@@ -2667,29 +2725,46 @@ class MonopolyGame {
 
   // -- Banana Pile Collection -------------------------------------
 
-  // Returns a map: position -> label number (e.g. CV6 -> 6)
-  _getTileLabelNumbers() {
-    const groupLetters = {
-      pink: "LF",
-      lightblue: "BJ",
-      red: "RD",
-      yellow: "CV",
-      orange: "GF",
-      darkblue: "GM",
-    };
-    const groupCounters = {};
-    const labelNumbers = new Map();
-    for (let i = 0; i < this.board.length; i++) {
-      const space = this.board[i];
-      if (space.buyable) {
-        const g = space.buyable.group;
-        if (g && groupLetters[g]) {
-          groupCounters[g] = (groupCounters[g] || 0) + 1;
-          labelNumbers.set(i, groupCounters[g]);
+  // Returns chainMultipliers: { boardPos: chainLength } for all non-desert team farms.
+  // Adjacent same-group owned farms form chains; each farm's multiplier = chain length.
+  _computeChainMultipliers(teamIds) {
+    // Build map: boardPos -> group (using map keys, not prop.id which is the pre-shuffle buyable id)
+    const posGroup = new Map();
+    for (const p of this.players) {
+      if (!teamIds.has(p.id)) continue;
+      for (const boardPos of p.properties) {
+        const prop = this.properties.get(boardPos);
+        if (prop && prop.group && prop.group !== "desert") {
+          posGroup.set(boardPos, prop.group);
         }
       }
     }
-    return labelNumbers;
+    const chainMultipliers = {};
+    const visited = new Set();
+    for (const [boardPos, group] of posGroup) {
+      if (visited.has(boardPos)) continue;
+      const chain = [];
+      const queue = [boardPos];
+      visited.add(boardPos);
+      while (queue.length > 0) {
+        const cur = queue.shift();
+        chain.push(cur);
+        const neighbors = [(cur - 1 + BOARD_SIZE) % BOARD_SIZE, (cur + 1) % BOARD_SIZE];
+        for (const n of neighbors) {
+          if (visited.has(n) || !posGroup.has(n) || CORNER_POSITIONS.has(n)) continue;
+          if (posGroup.get(n) !== group) continue;
+          visited.add(n);
+          queue.push(n);
+        }
+      }
+      for (const c of chain) chainMultipliers[c] = chain.length;
+    }
+    return chainMultipliers;
+  }
+
+  // Returns a map: position -> label number (e.g. CV6 -> 6)
+  _getTileLabelNumbers() {
+    return this.tileLabelNumbers || new Map();
   }
 
   _processDiceMatchGrow(player, diceSum) {
@@ -2724,40 +2799,8 @@ class MonopolyGame {
 
     if (matchedTiles.length === 0) return;
 
-    // Build chain multipliers for all team-owned farms (same logic as frontend board.js)
-    // Adjacent same-group farms form a chain; each tile's multiplier = chain length.
-    const allTeamProps = [];
-    for (const p of this.players) {
-      if (!teamIds.has(p.id)) continue;
-      for (const propId of p.properties) {
-        const prop = this.properties.get(propId);
-        if (prop && prop.group && prop.group !== "desert" && prop.group !== "mushroom") {
-          allTeamProps.push(prop);
-        }
-      }
-    }
-    const teamPosSet = new Set(allTeamProps.map((p) => p.id));
-    const chainMultipliers = {};
-    const visitedChain = new Set();
-    for (const prop of allTeamProps) {
-      if (visitedChain.has(prop.id)) continue;
-      const chain = [];
-      const queue = [prop.id];
-      visitedChain.add(prop.id);
-      while (queue.length > 0) {
-        const cur = queue.shift();
-        chain.push(cur);
-        const neighbors = [(cur - 1 + 52) % 52, (cur + 1) % 52];
-        for (const n of neighbors) {
-          if (visitedChain.has(n) || !teamPosSet.has(n) || CORNER_POSITIONS.has(n)) continue;
-          const nProp = allTeamProps.find((p) => p.id === n);
-          if (!nProp || nProp.group !== prop.group) continue;
-          visitedChain.add(n);
-          queue.push(n);
-        }
-      }
-      for (const c of chain) chainMultipliers[c] = chain.length;
-    }
+    // Chain multipliers: adjacent same-group farms multiply yield by chain length
+    const chainMultipliers = this._computeChainMultipliers(teamIds);
 
     // Apply 100% grow to each matched tile
     let totalGrown = 0;
@@ -2803,14 +2846,12 @@ class MonopolyGame {
       }
     }
     const teamProps = [];
-    const groupCount = {};
     for (const p of this.players) {
       if (!teamIds.has(p.id)) continue;
       for (const propId of p.properties) {
         const prop = this.properties.get(propId);
         if (!prop || !prop.group || prop.group === "desert") continue;
         teamProps.push(propId);
-        groupCount[prop.group] = (groupCount[prop.group] || 0) + 1;
       }
     }
     const getSideBonus = (pos) => {
@@ -2820,15 +2861,15 @@ class MonopolyGame {
       if (pos >= 40 && pos <= 51) return 0.5;
       return 0;
     };
+    const chainMultipliers = this._computeChainMultipliers(teamIds);
     let totalGrown = 0;
     for (const propId of teamProps) {
       const prop = this.properties.get(propId);
       if (!prop) continue;
-      const owned = groupCount[prop.group] || 1;
-      const setMultiplier = 1 + (owned - 1) * 0.1;
+      const chainMult = chainMultipliers[propId] || 1;
       const amount = Math.floor(
         easyGrowBase +
-          prop.price * (1 + getSideBonus(propId)) * setMultiplier * pct,
+          prop.price * (1 + getSideBonus(propId)) * chainMult * pct,
       );
       if (amount > 0) {
         prop.bananaPile += amount;
@@ -3788,28 +3829,14 @@ class MonopolyGame {
     if (sellerListings.length >= 5) return false;
 
     this._sellListingId++;
-    // Compute the tile label (e.g. "BJ2") using the same logic as getState/boardLayout
     const groupLetters = {
-      pink: "LF",
-      lightblue: "BJ",
-      red: "RD",
-      yellow: "CV",
-      orange: "GF",
-      darkblue: "GM",
+      pink: "LF", lightblue: "BJ", red: "RD",
+      yellow: "CV", orange: "GF", darkblue: "GM",
     };
-    const groupCounters = {};
     let tileLabel = prop.name;
-    for (let i = 0; i < this.board.length; i++) {
-      const sp = this.board[i];
-      if (sp.buyable && sp.buyable.group && groupLetters[sp.buyable.group]) {
-        groupCounters[sp.buyable.group] =
-          (groupCounters[sp.buyable.group] || 0) + 1;
-        if (i === propPos) {
-          tileLabel =
-            groupLetters[sp.buyable.group] + groupCounters[sp.buyable.group];
-          break;
-        }
-      }
+    if (this.tileLabelNumbers && prop.group && groupLetters[prop.group]) {
+      const num = this.tileLabelNumbers.get(propPos);
+      if (num !== undefined) tileLabel = groupLetters[prop.group] + num;
     }
     this.sellListings.push({
       id: this._sellListingId,
@@ -3937,7 +3964,6 @@ class MonopolyGame {
       orange: "GF",
       darkblue: "GM",
     };
-    const groupCounters = {};
     const boardLayout = this.board.map((space, i) => {
       const entry = { id: i, type: space.type };
       if (space.name) entry.name = space.name;
@@ -3947,9 +3973,9 @@ class MonopolyGame {
         entry.group = space.buyable.group || null;
         entry.price = space.buyable.price;
         const g = space.buyable.group;
-        if (g && groupLetters[g]) {
-          groupCounters[g] = (groupCounters[g] || 0) + 1;
-          entry.tileLabel = groupLetters[g] + groupCounters[g];
+        if (g && groupLetters[g] && this.tileLabelNumbers) {
+          const num = this.tileLabelNumbers.get(i);
+          if (num !== undefined) entry.tileLabel = groupLetters[g] + num;
         }
       }
       return entry;

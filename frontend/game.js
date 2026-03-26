@@ -1225,6 +1225,12 @@ function showGame() {
             die2El.style.setProperty("--die-final", DIE_TRANSFORMS[gs.dice[1]]);
           if (numDice >= 3)
             die3El.style.setProperty("--die-final", DIE_TRANSFORMS[gs.dice[2]]);
+          // Show dice-match pile grows immediately when dice settle
+          console.log("[diceMatch] diceMatchTiles:", gs.diceMatchTiles, "frozenPiles:", window._frozenBananaPiles);
+          if (gs.diceMatchTiles && gs.diceMatchTiles.length > 0) {
+            window._diceMatchUnfrozen = true;
+            renderBoard(gs);
+          }
           // Step-by-step token walk to final position
           const total = gs.dice.reduce((a, b) => a + b, 0);
           const rollText = `🎲 ${cur.name} rolled ${gs.dice.join("+")} = ${total}`;
@@ -1287,10 +1293,13 @@ function showGame() {
                 renderBoard(gs);
                 setTimeout(() => {
                   window._frozenBananaPiles = null;
+                  window._diceMatchUnfrozen = false;
+                  window._growUnfreezeRender = true;
                   renderBoard(gs);
                 }, 600);
               } else {
                 window._frozenBananaPiles = null;
+                window._diceMatchUnfrozen = false;
                 window._tokenVisitedTiles = null;
                 renderBoard(gs);
               }
