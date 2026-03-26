@@ -1260,6 +1260,21 @@ function showGame() {
               window._frozenMoney = null;
               window._walkingPlayerId = null;
               window._walkingLandingPos = null;
+              // Update all players' banana scores immediately on landing
+              if (gs && gs.players) {
+                const _landingMe = gs.players.find((p) => p.id === myId);
+                if (_landingMe) {
+                  const _moneyEl = document.getElementById("info-money");
+                  if (_moneyEl) _moneyEl.textContent = `${_landingMe.money}\uD83C\uDF4C`;
+                }
+                for (const _p of gs.players) {
+                  const _pstat = document.querySelector(`.pstat[data-player-id="${_p.id}"]`);
+                  if (_pstat) {
+                    const _pm = _pstat.querySelector(".pstat-money");
+                    if (_pm) _pm.textContent = `${_p.money}\uD83C\uDF4C`;
+                  }
+                }
+              }
               // Check if landing on a GROW tile — keep piles frozen briefly
               const landTile = gs.boardLayout && gs.boardLayout[cur.position];
               if (
