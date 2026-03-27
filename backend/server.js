@@ -427,6 +427,13 @@ io.on("connection", (socket) => {
     });
   }
 
+  socket.on("return_to_lobby", (data) => {
+    const game = games.get(data.gameId);
+    if (game && game.returnToLobby()) {
+      emitGameUpdate(data.gameId, game);
+    }
+  });
+
   socket.on("leave_game", (data) => {
     const game = games.get(data.gameId);
     if (game) {

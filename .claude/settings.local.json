@@ -3,7 +3,10 @@
     "allow": [
       "Bash(grep -r \"password\\\\|secret\\\\|token\\\\|key\" c:UsersYouCodebananaland --include=*.json --include=*.js)",
       "Bash(find c:UsersYouCodebananaland -name *.env* -o -name .env)",
-      "Bash(find c:UsersYouCodebananaland -name *.test.js -o -name *.spec.js -o -name test -type d)"
+      "Bash(find c:UsersYouCodebananaland -name *.test.js -o -name *.spec.js -o -name test -type d)",
+      "Bash(powershell.exe -Command \"Get-NetTCPConnection -LocalPort 3000 -State Listen -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess\")",
+      "Bash(powershell.exe -Command \"Stop-Process -Id 17720 -Force\")",
+      "Bash(node -c frontend/game.js)"
     ]
   }
 }

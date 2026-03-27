@@ -3072,9 +3072,77 @@ body {
 }
 .banana-pile.dice-match-grow {
   animation:
-    dice-match-bounce 0.6s ease-out,
-    pile-glow 2s ease-in-out infinite alternate 0.6s;
-  box-shadow: 0 0 10px rgba(255, 225, 53, 0.9);
+    pile-grow-bounce 0.8s ease-out,
+    pile-glow 2s ease-in-out infinite alternate 0.8s;
+  box-shadow: 0 0 12px rgba(127, 255, 0, 0.9);
+}
+@keyframes pile-grow-bounce {
+  0% {
+    transform: var(--pile-transform, translate(-50%, -100%)) scale(1);
+  }
+  25% {
+    transform: var(--pile-transform, translate(-50%, -100%)) scale(1.55);
+  }
+  55% {
+    transform: var(--pile-transform, translate(-50%, -100%)) scale(0.9);
+  }
+  80% {
+    transform: var(--pile-transform, translate(-50%, -100%)) scale(1.1);
+  }
+  100% {
+    transform: var(--pile-transform, translate(-50%, -100%)) scale(1);
+  }
+}
+.banana-pile.pile-grew {
+  animation:
+    pile-grow-bounce 0.8s ease-out,
+    pile-glow 2s ease-in-out infinite alternate 0.8s;
+  box-shadow: 0 0 12px rgba(127, 255, 0, 0.9);
+}
+@keyframes tile-grow-bounce {
+  0% {
+    transform: scale(1);
+  }
+  30% {
+    transform: scale(1.1);
+  }
+  60% {
+    transform: scale(0.95);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+.space.pile-grew-tile {
+  animation: tile-grow-bounce 0.8s ease-out;
+  z-index: 10;
+}
+.pile-grow-floater {
+  position: absolute;
+  color: #7fff00;
+  font-size: 13px;
+  font-weight: 900;
+  z-index: 50;
+  pointer-events: none;
+  white-space: nowrap;
+  text-shadow:
+    0 0 8px rgba(127, 255, 0, 0.95),
+    0 1px 3px rgba(0, 0, 0, 0.8);
+  animation: pile-grow-float 1.3s ease-out forwards;
+}
+@keyframes pile-grow-float {
+  0% {
+    opacity: 1;
+    transform: translate(-50%, 0) scale(1);
+  }
+  25% {
+    opacity: 1;
+    transform: translate(-50%, -70%) scale(1.35);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -220%) scale(0.8);
+  }
 }
 .has-banana-pile {
   box-shadow:
@@ -3110,6 +3178,39 @@ body {
     transform: translate(-50%, -250%) scale(0.8);
   }
 }
+/* Steal floater (red "Steal!" text near stolen pile) */
+.steal-floater {
+  position: absolute;
+  color: #ff3333;
+  font-size: 15px;
+  font-weight: 900;
+  z-index: 51;
+  pointer-events: none;
+  white-space: nowrap;
+  text-shadow:
+    0 0 8px rgba(255, 50, 50, 0.9),
+    0 1px 3px rgba(0, 0, 0, 0.8);
+  animation: steal-float 2s ease-out forwards;
+}
+@keyframes steal-float {
+  0% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(0.8);
+  }
+  15% {
+    opacity: 1;
+    transform: translate(-50%, -80%) scale(1.4);
+  }
+  40% {
+    opacity: 1;
+    transform: translate(-50%, -160%) scale(1.1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -300%) scale(0.7);
+  }
+}
+
 /* Money deduction popup (red negative number) */
 .money-deduction-popup {
   position: absolute;
@@ -3444,6 +3545,21 @@ body {
 .game-over-standings .standing-row:nth-child(2) {
   background: rgba(192, 192, 192, 0.1);
   color: #ddd;
+}
+
+.super-banana-icon {
+  vertical-align: middle;
+  margin-right: 4px;
+  filter: drop-shadow(0 0 4px rgba(255, 225, 53, 0.8));
+  animation: superBananaGlow 1.5s ease-in-out infinite alternate;
+}
+@keyframes superBananaGlow {
+  from {
+    filter: drop-shadow(0 0 3px rgba(255, 225, 53, 0.6));
+  }
+  to {
+    filter: drop-shadow(0 0 8px rgba(255, 225, 53, 1));
+  }
 }
 
 /* ── Bomb UI ───────────────────────────────────────────────── */
@@ -6068,19 +6184,15 @@ body {
   z-index: 2;
 }
 
-/* Phase 1 glow: select your own farms — cyan/blue */
+/* Phase 1 glow: select your own farms — yellow outline (vine swing style) */
 .space.trade-clickable-mine {
-  box-shadow:
-    0 0 0 2px rgba(80, 200, 255, 0.7) inset,
-    0 0 8px rgba(80, 200, 255, 0.4),
-    0 0 18px rgba(80, 200, 255, 0.2);
-  animation: tradeGlowMine 1.6s ease-in-out infinite;
+  outline: 2px solid #ffe135;
+  outline-offset: -2px;
+  animation: pickGlow 1.2s ease-in-out infinite alternate;
 }
 .space.trade-clickable-mine:hover {
-  box-shadow:
-    0 0 0 3px rgba(80, 200, 255, 1) inset,
-    0 0 14px rgba(80, 200, 255, 0.7),
-    0 0 28px rgba(80, 200, 255, 0.35);
+  outline: 3px solid #ffe135;
+  outline-offset: -3px;
   filter: brightness(1.35);
 }
 
@@ -6102,10 +6214,8 @@ body {
 
 /* Selected states (locked-in choices) */
 .space.trade-selected-mine {
-  box-shadow:
-    0 0 0 3px rgba(80, 200, 255, 1) inset,
-    0 0 14px rgba(80, 200, 255, 0.6),
-    0 0 24px rgba(80, 200, 255, 0.3) !important;
+  outline: 3px solid #ffe135;
+  outline-offset: -3px;
   filter: brightness(1.25);
   animation: none !important;
 }
@@ -6118,21 +6228,6 @@ body {
   animation: none !important;
 }
 
-@keyframes tradeGlowMine {
-  0%,
-  100% {
-    box-shadow:
-      0 0 0 2px rgba(80, 200, 255, 0.4) inset,
-      0 0 6px rgba(80, 200, 255, 0.2),
-      0 0 12px rgba(80, 200, 255, 0.1);
-  }
-  50% {
-    box-shadow:
-      0 0 0 2px rgba(80, 200, 255, 0.9) inset,
-      0 0 12px rgba(80, 200, 255, 0.6),
-      0 0 24px rgba(80, 200, 255, 0.3);
-  }
-}
 @keyframes tradeGlowTheirs {
   0%,
   100% {

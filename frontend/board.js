@@ -123,11 +123,14 @@ let _freeBananasShown = new Set(); // positions already shown this walk
 // ——— Banana pile tracking for collection animation ————————————————
 let _prevBananaPiles = {}; // { tileIndex: amount }
 
+// ——— Dice-match grow: track which tile set has already been animated ——
+
 // ——— Reset all between-game animation state (call when returning to lobby) ———
 function resetBoardAnimationState() {
   _prevBananaPiles = {};
   _prevFreeBananasTiles = new Set();
   _freeBananasShown = new Set();
+
 }
 
 // ——— Shared helper: show a floating popup at the "Your Bananas" box ——
@@ -364,10 +367,7 @@ function renderBoard(gs) {
           const baseYield = Math.round(tile.price * (1 + getSideBonus(i)));
           const chainMult = _chainMultipliers[i] || 1;
           const effectiveYield = Math.round(baseYield * chainMult);
-          const priceDisplay =
-            chainMult > 1
-              ? `${effectiveYield}🍌 (${chainMult}x)`
-              : `${baseYield}🍌`;
+          const priceDisplay = `${effectiveYield}🍌`;
           el.innerHTML =
             `<span class="sname">${label}</span>` +
             `<span class="sprice">${priceDisplay}</span>`;
@@ -429,8 +429,12 @@ function renderBoard(gs) {
       let pileAmount = prop ? prop.bananaPile : 0;
       if (window._frozenBananaPiles) {
         const frozenVal = window._frozenBananaPiles[i] || 0;
+        const isDiceMatchTile =
+          window._diceMatchUnfrozen &&
+          gs.diceMatchTiles &&
+          gs.diceMatchTiles.includes(i);
         if (window._tokenVisitedTiles && window._tokenVisitedTiles.has(i)) {
-          // Only visually collect own piles when crossing; all piles on landing tile
+          // Token walked past this tile — collect visually (overrides dice-match display)
           const isOwn = prop && prop.owner === window._walkingPlayerId;
           const isLanding = i === window._walkingLandingPos;
           if (isOwn || isLanding) {
@@ -438,6 +442,10 @@ function renderBoard(gs) {
           } else {
             pileAmount = frozenVal;
           }
+        } else if (isDiceMatchTile) {
+          // Show pre-roll pile + grown amount (pile may already be 0 if collected on path)
+          const grownAmount = gs.diceMatchGrownAmounts && gs.diceMatchGrownAmounts[i] || 0;
+          pileAmount = frozenVal + grownAmount;
         } else {
           pileAmount = frozenVal; // use frozen amount (0 if tile had no pile)
         }
@@ -476,6 +484,20 @@ function renderBoard(gs) {
     }
 
     board.appendChild(el);
+  }
+
+  const diceMatchSet = new Set(gs && gs.diceMatchTiles ? gs.diceMatchTiles : []);
+
+  // Detect which piles grew since last render
+  // _growUnfreezeRender: set when GROW corner unfreeze fires — treat all current piles as new
+  const isGrowUnfreeze = !!window._growUnfreezeRender;
+  window._growUnfreezeRender = false;
+  const grewTiles = new Map(); // tileIndex -> delta
+  for (const pile of _bananaPiles) {
+    const prev = isGrowUnfreeze ? 0 : (_prevBananaPiles[pile.tileIndex] || 0);
+    if (pile.amount > prev) {
+      grewTiles.set(pile.tileIndex, pile.amount - prev);
+    }
   }
 
   // Render banana pile indicators outside tiles, toward board interior
@@ -517,9 +539,37 @@ function renderBoard(gs) {
       );
     }
 
-    // Dice-match grow bounce animation
-    if (gs && gs.diceMatchTiles && gs.diceMatchTiles.includes(pile.tileIndex)) {
-      pileEl.classList.add("dice-match-grow");
+    // Pile-grew animation: pile amount increased since last render
+    if (grewTiles.has(pile.tileIndex)) {
+      const isDiceMatch = diceMatchSet.has(pile.tileIndex);
+      pileEl.classList.add(isDiceMatch ? "dice-match-grow" : "pile-grew");
+      const tileEl = document.getElementById("space-" + pile.tileIndex);
+      if (tileEl) tileEl.classList.add("pile-grew-tile");
+      const delta = grewTiles.get(pile.tileIndex);
+      const floater = document.createElement("div");
+      floater.className = "pile-grow-floater";
+      floater.textContent = "+" + delta + "\uD83C\uDF4C";
+      const r2 = spaceRect(pile.tileIndex);
+      if (r2.side === "bottom") {
+        floater.style.left = r2.l + r2.w / 2 + "%";
+        floater.style.top = r2.t - 0.3 + "%";
+      } else if (r2.side === "top") {
+        floater.style.left = r2.l + r2.w / 2 + "%";
+        floater.style.top = r2.t + r2.h + 0.3 + "%";
+      } else if (r2.side === "left") {
+        floater.style.left = r2.l + r2.w + 0.3 + "%";
+        floater.style.top = r2.t + r2.h / 2 + "%";
+      } else if (r2.side === "right") {
+        floater.style.left = r2.l - 0.3 + "%";
+        floater.style.top = r2.t + r2.h / 2 + "%";
+      } else {
+        const cx = r2.l + r2.w / 2;
+        const cy = r2.t + r2.h / 2;
+        floater.style.left = (cx < 50 ? r2.l + r2.w + 0.3 : r2.l - 0.3) + "%";
+        floater.style.top = (cy < 50 ? r2.t + r2.h + 0.3 : r2.t - 0.3) + "%";
+      }
+      board.appendChild(floater);
+      floater.addEventListener("animationend", () => floater.remove());
     }
 
     board.appendChild(pileEl);
@@ -558,10 +608,20 @@ function renderBoard(gs) {
       board.appendChild(floater);
       floater.addEventListener("animationend", () => floater.remove());
 
-      // Show +X at the collector's profile (theirs, not always mine)
-      const collectorProp =
-        gs.properties && gs.properties.find((p) => p.position === Number(idx));
-      const collectorId = collectorProp && collectorProp.owner;
+      // The collector is always the current player (they collect own piles and steal from others)
+      const collectorId = gs.currentPlayer && gs.currentPlayer.id;
+
+      // Show "Steal!" floater if the pile belonged to another player
+      const stolenProp = gs.properties && gs.properties.find((p) => p.id === Number(idx));
+      if (stolenProp && stolenProp.owner && stolenProp.owner !== collectorId) {
+        const stealFloater = document.createElement("div");
+        stealFloater.className = "steal-floater";
+        stealFloater.textContent = "Steal!";
+        stealFloater.style.left = floater.style.left;
+        stealFloater.style.top = floater.style.top;
+        board.appendChild(stealFloater);
+        stealFloater.addEventListener("animationend", () => stealFloater.remove());
+      }
       const collectorIsMe =
         typeof myId !== "undefined" && collectorId === myId;
       if (collectorIsMe || !collectorId) {

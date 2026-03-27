@@ -135,6 +135,42 @@ function playAuctionLoss() {
 }
 
 let _shuffleAudioCtx = null;
+function playVineSwing() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const t = ctx.currentTime;
+    // Swooping tone (high to low) — like swinging on a vine
+    const osc = ctx.createOscillator();
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(1400, t);
+    osc.frequency.exponentialRampToValueAtTime(300, t + 0.25);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.15, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.3);
+    osc.connect(g).connect(ctx.destination);
+    osc.start(t);
+    osc.stop(t + 0.3);
+    // Whoosh noise layer
+    const buf = ctx.createBuffer(1, ctx.sampleRate * 0.2, ctx.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < d.length; i++)
+      d[i] = (Math.random() * 2 - 1) * 0.4 * Math.exp(-i / (ctx.sampleRate * 0.08));
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    const bp = ctx.createBiquadFilter();
+    bp.type = "bandpass";
+    bp.frequency.setValueAtTime(2000, t);
+    bp.frequency.exponentialRampToValueAtTime(500, t + 0.2);
+    bp.Q.value = 1;
+    const ng = ctx.createGain();
+    ng.gain.setValueAtTime(0.18, t);
+    ng.gain.exponentialRampToValueAtTime(0.001, t + 0.2);
+    src.connect(bp).connect(ng).connect(ctx.destination);
+    src.start(t);
+    src.stop(t + 0.2);
+  } catch (e) {}
+}
+
 function playShuffleSound() {
   try {
     if (!_shuffleAudioCtx)
@@ -224,10 +260,27 @@ function initSocket() {
         window._prevPlayerMoney[p.id] = p.money;
       }
     }
+    // Detect vine swing completion: previous state had vineSwing, new one doesn't
+    if (gs && gs.vineSwing && !state.vineSwing) {
+      playVineSwing();
+    }
+
     gs = state;
     gameId = state.gameId;
     myId = socket.id;
     route();
+
+    // General money-loss detection: show red deduction popup for ANY player
+    // whose money decreased (tax, farm purchase, bombs, poker, etc.)
+    if (window._prevPlayerMoney) {
+      for (const p of gs.players) {
+        const prev = window._prevPlayerMoney[p.id];
+        if (prev != null && p.money < prev) {
+          const diff = prev - p.money;
+          _showMoneyDeduction(p.id, diff);
+        }
+      }
+    }
   });
 
   socket.on("game_error", (data) => {
@@ -340,6 +393,8 @@ function showGameOver() {
     if (a.bankrupt !== b.bankrupt) return a.bankrupt ? 1 : -1;
     return b.money - a.money;
   });
+  const superBananaSvg = `<svg class="super-banana-icon" viewBox="0 0 64 64" width="28" height="28"><defs><radialGradient id="sbg" cx="40%" cy="35%" r="60%"><stop offset="0%" stop-color="#fff7a0"/><stop offset="40%" stop-color="#ffe135"/><stop offset="100%" stop-color="#c8a800"/></radialGradient><filter id="sbglow"><feGaussianBlur stdDeviation="2" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs><g filter="url(#sbglow)"><path d="M38 8c-8 2-16 12-20 24s-4 22 0 24c3 2 8-2 14-10s12-20 14-28c1-6-2-12-8-10z" fill="url(#sbg)" stroke="#b8960a" stroke-width="1.5"/><path d="M38 8c2-3 6-4 8-2s2 6-1 10" fill="none" stroke="#b8960a" stroke-width="1.5" stroke-linecap="round"/></g><polygon points="52,6 54,12 60,12 55,16 57,22 52,18 47,22 49,16 44,12 50,12" fill="#ffe135" stroke="#c8a800" stroke-width="0.8"/></svg>`;
+
   standingsEl.innerHTML = sorted
     .map((p, i) => {
       const emoji = MONKEY_EMOJI[p.color] || "\uD83D\uDC35";
@@ -352,7 +407,9 @@ function showGameOver() {
               ? "\uD83E\uDD49"
               : "";
       const status = p.bankrupt ? " \uD83D\uDCA5" : "";
-      return `<div class="standing-row">${medal} ${emoji} <span style="flex:1;margin-left:6px">${p.name}${status}</span><span>${p.money}\uD83C\uDF4C</span></div>`;
+      const isWinner = winnerId && p.id === winnerId;
+      const bananaIcon = isWinner ? superBananaSvg : "";
+      return `<div class="standing-row">${medal} ${emoji} <span style="flex:1;margin-left:6px">${p.name}${status}</span>${bananaIcon}<span>${p.money}\uD83C\uDF4C</span></div>`;
     })
     .join("");
 }
@@ -616,6 +673,8 @@ function hideReveal() {
 function showLobby() {
   showScreen("screen-lobby");
   _prevLogLen = 0;
+  _revealShown = false;
+  _shufflePlayed = false;
   resetBoardAnimationState();
 
   // Game code (click to copy)
@@ -1142,7 +1201,7 @@ function showGame() {
     roll3Btn.innerHTML =
       armedDice === 3
         ? '<span style="font-size:1.2em;line-height:1">\uD83D\uDC07</span><span>\uD83C\uDFB2\u00d73 Armed \u2713</span>'
-        : '<span style="font-size:1.2em;line-height:1">\uD83D\uDC07</span><span>\uD83C\uDFB2\u00d73 1000\uD83C\uDF4C</span>';
+        : '<span style="font-size:1.2em;line-height:1">\uD83D\uDC07</span><span>\uD83C\uDFB2\u00d73 500\uD83C\uDF4C</span>';
     if (armedDice === 3) roll3Btn.classList.add("btn-armed");
     else roll3Btn.classList.remove("btn-armed");
   }
@@ -1225,6 +1284,12 @@ function showGame() {
             die2El.style.setProperty("--die-final", DIE_TRANSFORMS[gs.dice[1]]);
           if (numDice >= 3)
             die3El.style.setProperty("--die-final", DIE_TRANSFORMS[gs.dice[2]]);
+          // Show dice-match pile grows immediately when dice settle
+          const hasDiceMatch = gs.diceMatchTiles && gs.diceMatchTiles.length > 0;
+          if (hasDiceMatch) {
+            window._diceMatchUnfrozen = true;
+            renderBoard(gs);
+          }
           // Step-by-step token walk to final position
           const total = gs.dice.reduce((a, b) => a + b, 0);
           const rollText = `🎲 ${cur.name} rolled ${gs.dice.join("+")} = ${total}`;
@@ -1238,6 +1303,9 @@ function showGame() {
           const backwardDist = (startPos - cur.position + 52) % 52;
           const walkBackward = forwardDist > 26 && backwardDist <= 3;
           const steps = walkBackward ? backwardDist : forwardDist || total;
+          // Delay walk start when dice-match animation needs to play
+          const walkDelay = hasDiceMatch ? 1200 : 0;
+          const startWalk = () => {
           let step = 0;
           // Keep reveals frozen during walk, but let token move
           window._diceRollingRevealed = window._diceRollingRevealed || null;
@@ -1287,10 +1355,13 @@ function showGame() {
                 renderBoard(gs);
                 setTimeout(() => {
                   window._frozenBananaPiles = null;
+                  window._diceMatchUnfrozen = false;
+                  window._growUnfreezeRender = true;
                   renderBoard(gs);
                 }, 600);
               } else {
                 window._frozenBananaPiles = null;
+                window._diceMatchUnfrozen = false;
                 window._tokenVisitedTiles = null;
                 renderBoard(gs);
               }
@@ -1315,7 +1386,13 @@ function showGame() {
               renderBoard(gs);
             }
           }, 150);
+          }; // end startWalk
           window._tokenWalking = true;
+          if (walkDelay > 0) {
+            setTimeout(startWalk, walkDelay);
+          } else {
+            startWalk();
+          }
           // Show result notification after dice settle
           diceNotif.innerHTML = rollText;
           diceNotif.classList.remove("show");
@@ -1583,16 +1660,6 @@ function showGame() {
       } else {
         // Lost the auction — play loss sound
         playAuctionLoss();
-      }
-      // Show red deduction popup for whoever bought the farm
-      if (window._prevPlayerMoney) {
-        for (const p of gs.players) {
-          const prev = window._prevPlayerMoney[p.id];
-          if (prev != null && p.money < prev) {
-            const diff = prev - p.money;
-            _showMoneyDeduction(p.id, diff);
-          }
-        }
       }
       window._lastAuctionPos = null;
     }
@@ -1939,6 +2006,8 @@ function showGame() {
 
   const plist = document.getElementById("players-list");
   plist.innerHTML = "";
+  const isAnimating = !!(window._diceRollingPositions || window._tokenWalking);
+  const frozenPlayerMoney = isAnimating ? window._prevPlayerMoney : null;
   if (gs.gameMode === "teams" && gs.teams) {
     // Section off by team
     for (const teamKey of ["A", "B"]) {
@@ -1955,6 +2024,7 @@ function showGame() {
         const div = document.createElement("div");
         const isMe = p.id === myId;
         div.className = "pstat" + (isMe ? " pstat-me" : "");
+        div.setAttribute("data-player-id", p.id);
         const petTag = p.pet
           ? `<span class="pstat-pet">${PET_EMOJIS[p.pet] || ""}${p.petCooldown > 0 ? p.petCooldown : "✓"}</span>`
           : "";
@@ -1965,7 +2035,7 @@ function showGame() {
           `<div class="pstat-monkey c-${p.color}">${MONKEY_EMOJI[p.color] || "\uD83D\uDC35"}</div>` +
           `<span>${p.name}<span class="team-badge team-${teamKey}">T${teamKey}</span>${petTag}</span>` +
           pileTag +
-          `<span class="pstat-money">${p.money}🍌</span>`;
+          `<span class="pstat-money">${frozenPlayerMoney && frozenPlayerMoney[p.id] != null ? frozenPlayerMoney[p.id] : p.money}🍌</span>`;
         teamDiv.appendChild(div);
       });
       plist.appendChild(teamDiv);
@@ -1986,7 +2056,7 @@ function showGame() {
         `<div class="pstat-monkey c-${p.color}">${MONKEY_EMOJI[p.color] || "\uD83D\uDC35"}</div>` +
         `<span>${p.name}${petTag}</span>` +
         pileTag +
-        `<span class="pstat-money">${p.money}🍌</span>`;
+        `<span class="pstat-money">${frozenPlayerMoney && frozenPlayerMoney[p.id] != null ? frozenPlayerMoney[p.id] : p.money}🍌</span>`;
       plist.appendChild(div);
     });
   }
@@ -2311,13 +2381,34 @@ function createGame() {
 }
 
 function pasteCode() {
-  navigator.clipboard
-    .readText()
-    .then((text) => {
-      const code = text.trim().replace(/\D/g, "").substring(0, 6);
-      if (code) document.getElementById("join-code").value = code;
-    })
-    .catch(() => alert("Could not read clipboard. Paste manually."));
+  const input = document.getElementById("join-code");
+
+  function apply(text) {
+    if (!text) return false;
+    const code = text.trim().replace(/\D/g, "").substring(0, 6);
+    if (code) {
+      input.value = code;
+      return true;
+    }
+    return false;
+  }
+
+  function fallbackPrompt() {
+    const text = prompt("Paste your game code:");
+    apply(text);
+  }
+
+  // Try the modern Clipboard API first (requires HTTPS or localhost)
+  if (navigator.clipboard && navigator.clipboard.readText) {
+    navigator.clipboard
+      .readText()
+      .then((text) => {
+        if (!apply(text)) fallbackPrompt();
+      })
+      .catch(fallbackPrompt);
+  } else {
+    fallbackPrompt();
+  }
 }
 
 function joinGame() {
@@ -3763,12 +3854,17 @@ function swapFarm() {
 }
 
 function leaveGame() {
-  if (gameId) socket.emit("leave_game", { gameId });
-  gameId = null;
-  gs = null;
   const goOverlay = document.getElementById("game-over-overlay");
   if (goOverlay) goOverlay.style.display = "none";
-  showScreen("screen-menu");
+  if (gameId && gs && gs.state === "finished") {
+    // Return all players to the game lobby
+    socket.emit("return_to_lobby", { gameId });
+  } else {
+    if (gameId) socket.emit("leave_game", { gameId });
+    gameId = null;
+    gs = null;
+    showScreen("screen-menu");
+  }
 }
 
 // ── Init ───────────────────────────────────────────────────────────

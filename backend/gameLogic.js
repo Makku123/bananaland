@@ -123,260 +123,260 @@ const PROPERTIES = [
     id: 1,
     name: "CV1",
     group: "yellow",
-    price: 50,
-    rent: [2, 10, 30, 90, 160, 250],
+    price: 40,
+    rent: [40, 200, 600, 1800, 3200, 5000],
   },
   {
     id: 3,
     name: "CV2",
     group: "yellow",
-    price: 50,
-    rent: [4, 20, 60, 180, 320, 450],
+    price: 40,
+    rent: [40, 200, 600, 1800, 3200, 4500],
   },
   {
     id: 4,
     name: "CV3",
     group: "yellow",
-    price: 50,
-    rent: [5, 25, 75, 200, 350, 475],
+    price: 40,
+    rent: [40, 200, 600, 1600, 2800, 3800],
   },
   {
     id: 15,
     name: "CV4",
     group: "yellow",
-    price: 50,
-    rent: [5, 25, 75, 200, 350, 475],
+    price: 40,
+    rent: [40, 200, 600, 1600, 2800, 3800],
   },
   {
     id: 35,
     name: "CV5",
     group: "yellow",
-    price: 50,
-    rent: [6, 28, 80, 220, 380, 500],
+    price: 40,
+    rent: [40, 187, 533, 1467, 2533, 3333],
   },
   {
     id: 47,
     name: "CV6",
     group: "yellow",
-    price: 50,
-    rent: [6, 28, 80, 220, 380, 500],
+    price: 40,
+    rent: [40, 187, 533, 1467, 2533, 3333],
   },
   // Blue Java (7)
   {
     id: 6,
     name: "BJ1",
     group: "lightblue",
-    price: 100,
-    rent: [6, 30, 90, 270, 400, 550],
+    price: 80,
+    rent: [80, 400, 1200, 3600, 5333, 7333],
   },
   {
     id: 7,
     name: "BJ2",
     group: "lightblue",
-    price: 100,
-    rent: [6, 30, 90, 270, 400, 550],
+    price: 80,
+    rent: [80, 400, 1200, 3600, 5333, 7333],
   },
   {
     id: 9,
     name: "BJ3",
     group: "lightblue",
-    price: 100,
-    rent: [6, 30, 90, 270, 400, 550],
+    price: 80,
+    rent: [80, 400, 1200, 3600, 5333, 7333],
   },
   {
     id: 10,
     name: "BJ4",
     group: "lightblue",
-    price: 100,
-    rent: [8, 40, 100, 300, 450, 600],
+    price: 80,
+    rent: [80, 400, 1000, 3000, 4500, 6000],
   },
   {
     id: 11,
     name: "BJ5",
     group: "lightblue",
-    price: 100,
-    rent: [10, 50, 120, 350, 500, 650],
+    price: 80,
+    rent: [80, 400, 960, 2800, 4000, 5200],
   },
   {
     id: 19,
     name: "BJ6",
     group: "lightblue",
-    price: 100,
-    rent: [6, 30, 90, 270, 400, 550],
+    price: 80,
+    rent: [80, 400, 1200, 3600, 5333, 7333],
   },
   {
     id: 32,
     name: "BJ7",
     group: "lightblue",
-    price: 100,
-    rent: [6, 30, 90, 270, 400, 550],
+    price: 80,
+    rent: [80, 400, 1200, 3600, 5333, 7333],
   },
   // Red Dacca (5)
   {
     id: 14,
     name: "RD1",
     group: "red",
-    price: 200,
-    rent: [10, 50, 150, 450, 625, 750],
+    price: 160,
+    rent: [160, 800, 2400, 7200, 10000, 12000],
   },
   {
     id: 16,
     name: "RD2",
     group: "red",
-    price: 200,
-    rent: [10, 50, 150, 450, 625, 750],
+    price: 160,
+    rent: [160, 800, 2400, 7200, 10000, 12000],
   },
   {
     id: 17,
     name: "RD3",
     group: "red",
-    price: 200,
-    rent: [12, 60, 180, 500, 700, 900],
+    price: 160,
+    rent: [160, 800, 2400, 6667, 9333, 12000],
   },
   {
     id: 18,
     name: "RD4",
     group: "red",
-    price: 200,
-    rent: [14, 70, 200, 550, 750, 950],
+    price: 160,
+    rent: [160, 800, 2286, 6286, 8571, 10857],
   },
   // Lady Finger (5)
   {
     id: 20,
     name: "LF1",
     group: "pink",
-    price: 200,
-    rent: [14, 70, 200, 550, 750, 950],
+    price: 160,
+    rent: [160, 800, 2286, 6286, 8571, 10857],
   },
   {
     id: 22,
     name: "LF2",
     group: "pink",
-    price: 200,
-    rent: [14, 70, 200, 550, 750, 950],
+    price: 160,
+    rent: [160, 800, 2286, 6286, 8571, 10857],
   },
   {
     id: 23,
     name: "LF3",
     group: "pink",
-    price: 200,
-    rent: [16, 80, 220, 600, 800, 1000],
+    price: 160,
+    rent: [160, 800, 2200, 6000, 8000, 10000],
   },
   {
     id: 24,
     name: "LF4",
     group: "pink",
-    price: 200,
-    rent: [18, 90, 240, 650, 850, 1050],
+    price: 160,
+    rent: [160, 800, 2133, 5778, 7556, 9333],
   },
   {
     id: 27,
     name: "CV7",
     group: "yellow",
-    price: 50,
-    rent: [18, 90, 250, 700, 875, 1050],
+    price: 40,
+    rent: [40, 200, 556, 1556, 1944, 2333],
   },
   {
     id: 29,
     name: "CV8",
     group: "yellow",
-    price: 50,
-    rent: [18, 90, 250, 700, 875, 1050],
+    price: 40,
+    rent: [40, 200, 556, 1556, 1944, 2333],
   },
   {
     id: 30,
     name: "CV9",
     group: "yellow",
-    price: 50,
-    rent: [20, 100, 300, 750, 925, 1100],
+    price: 40,
+    rent: [40, 200, 600, 1500, 1850, 2200],
   },
   {
     id: 31,
     name: "CV10",
     group: "yellow",
-    price: 50,
-    rent: [22, 110, 320, 800, 975, 1150],
+    price: 40,
+    rent: [40, 200, 582, 1455, 1773, 2091],
   },
   {
     id: 46,
     name: "CV11",
     group: "yellow",
-    price: 50,
-    rent: [6, 28, 80, 220, 380, 500],
+    price: 40,
+    rent: [40, 187, 533, 1467, 2533, 3333],
   },
   {
     id: 5,
     name: "CV12",
     group: "yellow",
-    price: 50,
-    rent: [7, 30, 85, 230, 390, 510],
+    price: 40,
+    rent: [40, 171, 486, 1314, 2229, 2914],
   },
   // Gros Michel (4)
   {
     id: 33,
     name: "GM1",
     group: "darkblue",
-    price: 360,
-    rent: [22, 110, 330, 800, 975, 1150],
+    price: 320,
+    rent: [320, 1600, 4800, 11636, 14182, 16727],
   },
   {
     id: 34,
     name: "GM2",
     group: "darkblue",
-    price: 360,
-    rent: [24, 120, 360, 850, 1025, 1200],
+    price: 320,
+    rent: [320, 1600, 4800, 11333, 13667, 16000],
   },
   {
     id: 36,
     name: "GM3",
     group: "darkblue",
-    price: 360,
-    rent: [25, 125, 370, 875, 1050, 1225],
+    price: 320,
+    rent: [320, 1600, 4736, 11200, 13440, 15680],
   },
   {
     id: 37,
     name: "GM4",
     group: "darkblue",
-    price: 360,
-    rent: [27, 133, 380, 900, 1075, 1250],
+    price: 320,
+    rent: [320, 1576, 4504, 10667, 12741, 14815],
   },
   // Red Dacca (5th)
   {
     id: 40,
     name: "RD5",
     group: "red",
-    price: 200,
-    rent: [15, 75, 210, 575, 775, 975],
+    price: 160,
+    rent: [160, 800, 2240, 6133, 8267, 10400],
   },
   // Lady Finger (5th)
   {
     id: 41,
     name: "LF5",
     group: "pink",
-    price: 200,
-    rent: [19, 95, 250, 675, 875, 1075],
+    price: 160,
+    rent: [160, 800, 2105, 5684, 7368, 9053],
   },
   // Goldfinger (3)
   {
     id: 48,
     name: "GF1",
     group: "orange",
-    price: 500,
-    rent: [35, 175, 500, 1100, 1300, 1500],
+    price: 480,
+    rent: [480, 2400, 6857, 15086, 17829, 20571],
   },
   {
     id: 49,
     name: "GF2",
     group: "orange",
-    price: 500,
-    rent: [42, 188, 550, 1250, 1450, 1750],
+    price: 480,
+    rent: [480, 2149, 6286, 14286, 16571, 20000],
   },
   {
     id: 51,
     name: "GF3",
     group: "orange",
-    price: 500,
-    rent: [50, 200, 600, 1400, 1700, 2000],
+    price: 480,
+    rent: [480, 1920, 5760, 13440, 16320, 19200],
   },
 ];
 
@@ -1221,6 +1221,67 @@ class MonopolyGame {
       this.currentPlayerIndex = 0;
     if (this.admin === socketId && this.players.length > 0)
       this.admin = this.players[0].id;
+
+    // If only one non-bankrupt player remains during an active game, they win
+    if (this.state === "playing" || this.state === "revealing") {
+      const alive = this.players.filter((p) => !p.bankrupt);
+      if (alive.length === 1) {
+        this.state = "finished";
+        this.bombWinner = alive[0].id;
+        this._log(
+          `🏆 ${alive[0].name} is the last monkey standing and wins! 👑`,
+        );
+      }
+    }
+  }
+
+  returnToLobby() {
+    if (this.state !== "finished") return false;
+    this.state = "waiting";
+    this.currentPlayerIndex = 0;
+    this.turn = 0;
+    this.dice = [0, 0];
+    this.diceRolled = false;
+    this.log = [];
+    this.properties = new Map();
+    this.board = [...BOARD];
+    this.auction = null;
+    this.mushroomPending = null;
+    this.petCoinFlip = null;
+    this.pendingPetMove = null;
+    this.pendingMagicPets = [];
+    this.petResolving = false;
+    this.petUsedThisTurn = false;
+    this.bombs = [];
+    this.sellListings = [];
+    this._sellListingId = 0;
+    this.teams = null;
+    this.revealAccepted = null;
+    this.teamCoinFlip = null;
+    this.bombWinner = null;
+    this.bananaLoser = null;
+    this.poker = null;
+    this.vineSwing = null;
+    if (this._pokerDismissTimer) {
+      clearTimeout(this._pokerDismissTimer);
+      this._pokerDismissTimer = null;
+    }
+    // Reset players to lobby state
+    for (const p of this.players) {
+      p.position = 0;
+      p.money = this.startingMoney;
+      p.properties = [];
+      p.bankrupt = false;
+      p.revealedTiles = new Set([...CORNER_POSITIONS, 0]);
+      p.pet = null;
+      p.petCooldown = 0;
+      p.petUses = 0;
+      p.pendingPet = null;
+      p.bomb = false;
+      p.hasRolled = false;
+    }
+    this._initProperties();
+    return true;
   }
 
   startGame(socketId) {
@@ -1276,10 +1337,38 @@ class MonopolyGame {
   completeReveal() {
     if (this.state !== "revealing") return false;
     this._shuffleBoard();
+    this._initTileLabelNumbers();
     this._initProperties();
     this.state = "playing";
     this._log(`Tiles shuffled! Game started! \uD83C\uDF4C`);
     return true;
+  }
+
+  _initTileLabelNumbers() {
+    // Collect board positions per group
+    const groupPositions = {};
+    for (let i = 0; i < this.board.length; i++) {
+      const space = this.board[i];
+      if (space.buyable) {
+        const g = space.buyable.group;
+        if (g && g !== "desert" && g !== "mushroom") {
+          if (!groupPositions[g]) groupPositions[g] = [];
+          groupPositions[g].push(i);
+        }
+      }
+    }
+    // For each group, create [1..N], shuffle it, and assign to positions
+    this.tileLabelNumbers = new Map();
+    for (const [g, positions] of Object.entries(groupPositions)) {
+      const nums = positions.map((_, idx) => idx + 1);
+      for (let i = nums.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [nums[i], nums[j]] = [nums[j], nums[i]];
+      }
+      for (let i = 0; i < positions.length; i++) {
+        this.tileLabelNumbers.set(positions[i], nums[i]);
+      }
+    }
   }
 
   _shuffleBoard() {
@@ -1308,6 +1397,7 @@ class MonopolyGame {
   debugShuffle() {
     if (this.state !== "playing") return false;
     this._shuffleBoard();
+    this._initTileLabelNumbers();
     this._initProperties();
     // Clear player property lists since positions changed
     for (const p of this.players) p.properties = [];
@@ -1321,7 +1411,7 @@ class MonopolyGame {
     if (!player || !player.pet) return false;
     player.petCooldown = 0;
     if (this.petMode === "limited") {
-      player.petUses = PET_TYPES[player.pet].uses || 3;
+      player.petUses = PET_LIMITED_USES[player.pet] || 3;
     }
     this._log(`\ud83d\udc3e ${player.name}'s pet cooldown reset! (debug)`);
     return true;
@@ -1357,6 +1447,7 @@ class MonopolyGame {
     this.lastExplosion = null;
     this.bombSelfDamage = null;
     this.diceMatchTiles = null;
+    this.diceMatchGrownAmounts = null;
     const cur = this.getCurrentPlayer();
     if (
       !cur ||
@@ -1372,8 +1463,8 @@ class MonopolyGame {
     if (diceCount === 1 && cur.money >= 500) {
       cur.money -= 500;
       numDice = 1;
-    } else if (diceCount === 3 && cur.money >= 1000) {
-      cur.money -= 1000;
+    } else if (diceCount === 3 && cur.money >= 500) {
+      cur.money -= 500;
       numDice = 3;
     }
 
@@ -1398,11 +1489,42 @@ class MonopolyGame {
     cur.position = (cur.position + diceSum) % BOARD_SIZE;
     cur.revealedTiles.add(cur.position);
 
+    // Collect own banana piles on crossed/landed tiles & steal opponent piles on landing
+    const crossedFreeBananas = this._collectBananasOnPath(
+      cur,
+      oldPos,
+      cur.position,
+    );
+
     // Dice-match grow: if dice sum matches a farm label number you own, 100% grow
     this._processDiceMatchGrow(cur, diceSum);
 
-    // Collect own banana piles on crossed/landed tiles & steal opponent piles on landing
-    this._collectBananasOnPath(cur, oldPos, cur.position);
+    // Collect dice-match-grown piles if the player walked past those tiles this turn
+    if (this.diceMatchTiles && this.diceMatchTiles.length > 0) {
+      const pathTiles = new Set();
+      const pathSteps = (cur.position - oldPos + BOARD_SIZE) % BOARD_SIZE;
+      for (let s = 1; s <= pathSteps; s++) {
+        pathTiles.add((oldPos + s) % BOARD_SIZE);
+      }
+      let diceMatchCollected = 0;
+      for (const tileId of this.diceMatchTiles) {
+        if (!pathTiles.has(tileId)) continue;
+        const prop = this.properties.get(tileId);
+        if (!prop || prop.bananaPile <= 0) continue;
+        // Collect own piles on crossed/landed tiles, steal opponent piles only on landing
+        const isLanding = tileId === cur.position;
+        if (prop.owner === cur.id || isLanding) {
+          diceMatchCollected += prop.bananaPile;
+          prop.bananaPile = 0;
+        }
+      }
+      if (diceMatchCollected > 0) {
+        cur.money += diceMatchCollected;
+        this._log(
+          `${cur.name} harvested ${diceMatchCollected}\ud83c\udf4c from freshly sprouted dice-match piles! \ud83c\udf31\ud83d\udc35`,
+        );
+      }
+    }
 
     // Check if player landed on a bomb (eliminates victims, placer takes loot)
     if (this._checkBombDetonation(cur)) {
@@ -1421,14 +1543,26 @@ class MonopolyGame {
     this._processLanding(cur);
 
     // Auto-end turn if no auction, vine swing, or poker was started
-    // Delay accounts for frontend dice animation (550ms) + token walk (steps*150ms) + post-walk pause (500ms) + buffer
-    const walkAnimMs = 550 + diceSum * 150 + 500;
+    // Delay accounts for frontend dice animation (550ms) + dice-match anim (1200ms if applicable) + token walk (steps*150ms) + post-walk pause (500ms) + buffer
+    const diceMatchDelayMs =
+      this.diceMatchTiles && this.diceMatchTiles.length > 0 ? 1200 : 0;
+    const walkAnimMs = 550 + diceMatchDelayMs + diceSum * 150 + 500;
     if (
       !this.auction &&
       !this.vineSwing &&
       !this.poker &&
       !this.mushroomPending
     ) {
+      // Defer awarding +500 for crossing revealed freebananas until after walk animation
+      setTimeout(() => {
+        for (const pos of crossedFreeBananas) {
+          cur.money += 500;
+          this._log(
+            `${cur.name} crossed Free Bananas +500 and collected 500\ud83c\udf4c! \ud83c\udf4c`,
+          );
+          if (this.onUpdate) this.onUpdate();
+        }
+      }, walkAnimMs);
       this._scheduleAutoEnd(cur, walkAnimMs + 3000, 3000);
     }
 
@@ -1498,14 +1632,12 @@ class MonopolyGame {
       }
 
       const teamProps = [];
-      const groupCount = {}; // count of owned farms per color group
       for (const p of this.players) {
         if (!teamIds.has(p.id)) continue;
         for (const propId of p.properties) {
           const prop = this.properties.get(propId);
           if (!prop || !prop.group || prop.group === "desert") continue;
           teamProps.push(propId);
-          groupCount[prop.group] = (groupCount[prop.group] || 0) + 1;
         }
       }
 
@@ -1518,7 +1650,10 @@ class MonopolyGame {
         return 0; // bottom row (1-12)
       };
 
-      // 3) Set bonus: each farm grows (price � (1 + sideBonus)) � setMultiplier � growPct
+      // 3) Chain multiplier: adjacent same-group farms multiply yield by chain length
+      const chainMultipliers = this._computeChainMultipliers(teamIds);
+
+      // Each farm grows (price * (1 + sideBonus)) * chainMult * growPct� (1 + sideBonus)) � setMultiplier � growPct
       //    Side bonus is applied to the base yield first, then set bonus and grow %
       //    If an opponent is sitting on the farm, they collect the bananas instead
       let totalGrown = 0;
@@ -1527,11 +1662,10 @@ class MonopolyGame {
       for (const propId of teamProps) {
         const prop = this.properties.get(propId);
         if (!prop) continue;
-        const owned = groupCount[prop.group] || 1;
-        const setMultiplier = 1 + (owned - 1) * 0.1;
+        const chainMult = chainMultipliers[propId] || 1;
         const amount = Math.floor(
           easyGrowBase +
-            prop.price * (1 + getSideBonus(propId)) * setMultiplier * pct,
+            prop.price * (1 + getSideBonus(propId)) * chainMult * pct,
         );
         if (amount > 0) {
           // Check if a non-teammate opponent is sitting on this tile
@@ -1747,25 +1881,7 @@ class MonopolyGame {
     }
 
     if (prop.owner && prop.owner !== player.id) {
-      // In team mode, no rent for landing on teammate's property
-      const isTeammate =
-        this.gameMode === "teams" &&
-        this.getTeamOf(prop.owner) === this.getTeamOf(player.id);
-      if (!isTeammate) {
-        const rent = this._calcRent(prop);
-        const owner = this.players.find((p) => p.id === prop.owner);
-        const actualRent = Math.min(rent, player.money);
-        player.money -= actualRent;
-        if (owner) owner.money += actualRent;
-        this._log(
-          `${player.name} paid ${actualRent}\ud83c\udf4c yield to ${owner?.name || "?"} for ${prop.name}.`,
-        );
-      } else {
-        const owner = this.players.find((p) => p.id === prop.owner);
-        this._log(
-          `${player.name} visited teammate ${owner?.name || "?"}'s farm \ud83c\udf34 \u2014 no yield!`,
-        );
-      }
+      // No rent in this game — just a visit
     } else if (!prop.owner) {
       if (player.money <= 0) {
         // Broke player -- give to opponent if they have money, otherwise landing player gets it free
@@ -1838,14 +1954,12 @@ class MonopolyGame {
         }
       }
       const teamProps = [];
-      const groupCount = {};
       for (const p of this.players) {
         if (!teamIds.has(p.id)) continue;
         for (const propId of p.properties) {
           const prop = this.properties.get(propId);
           if (!prop || !prop.group || prop.group === "desert") continue;
           teamProps.push(propId);
-          groupCount[prop.group] = (groupCount[prop.group] || 0) + 1;
         }
       }
       const getSideBonus = (pos) => {
@@ -1855,15 +1969,15 @@ class MonopolyGame {
         if (pos >= 40 && pos <= 51) return 0.5;
         return 0;
       };
+      const chainMultipliers = this._computeChainMultipliers(teamIds);
       let totalGrown = 0;
       for (const propId of teamProps) {
         const prop = this.properties.get(propId);
         if (!prop) continue;
-        const owned = groupCount[prop.group] || 1;
-        const setMultiplier = 1 + (owned - 1) * 0.1;
+        const chainMult = chainMultipliers[propId] || 1;
         const amount = Math.floor(
           easyGrowBase +
-            prop.price * (1 + getSideBonus(propId)) * setMultiplier * pct,
+            prop.price * (1 + getSideBonus(propId)) * chainMult * pct,
         );
         if (amount > 0) {
           prop.bananaPile += amount;
@@ -1904,21 +2018,7 @@ class MonopolyGame {
     // Rent applies passively (but no auction/poker/vine/mushroom)
     const prop = this.properties.get(player.position);
     if (!prop) return;
-    if (prop.owner && prop.owner !== player.id) {
-      const isTeammate =
-        this.gameMode === "teams" &&
-        this.getTeamOf(prop.owner) === this.getTeamOf(player.id);
-      if (!isTeammate) {
-        const rent = this._calcRent(prop);
-        const owner = this.players.find((p) => p.id === prop.owner);
-        const actualRent = Math.min(rent, player.money);
-        player.money -= actualRent;
-        if (owner) owner.money += actualRent;
-        this._log(
-          `${player.name} paid ${actualRent}\ud83c\udf4c yield to ${owner?.name || "?"} for ${prop.name}.`,
-        );
-      }
-    }
+    // No rent in this game
 
     // Magic auction: pushed onto unowned tile
     if (!prop.owner && devilUserId && player.money > 0) {
@@ -2042,16 +2142,6 @@ class MonopolyGame {
       }
     }
     return true;
-  }
-
-  _calcRent(prop) {
-    const owner = this.players.find((p) => p.id === prop.owner);
-    if (!owner) return 0;
-
-    if (prop.rent) {
-      return prop.rent[0];
-    }
-    return 0;
   }
 
   // -- Auction System ---------------------------------------------
@@ -2204,12 +2294,42 @@ class MonopolyGame {
       a.highBid = lb.amount;
       a.highBidder = a.landingPlayer;
 
-      // Move to team response phase (all others accept/reject)
-      a.phase = "team-respond";
+      // Filter out players who can't afford the pitched price
+      const cantAffordIds = a.bidders.filter((id) => {
+        if (id === a.landingPlayer) return false;
+        const p = this.players.find((pl) => pl.id === id);
+        return !p || p.money < lb.amount;
+      });
+      if (cantAffordIds.length > 0) {
+        const names = cantAffordIds
+          .map((id) => this.players.find((p) => p.id === id)?.name || "?")
+          .join(", ");
+        this._log(
+          `${names} can't afford ${lb.amount}\ud83c\udf4c \u2014 excluded from the auction.`,
+        );
+        a.bidders = a.bidders.filter((id) => !cantAffordIds.includes(id));
+        for (const id of cantAffordIds) delete a.bids[id];
+      }
+
       const others = a.bidders.filter((id) => id !== a.landingPlayer);
+
+      if (others.length === 0) {
+        // No one else can afford it — lander buys automatically
+        this._log(`No one else can afford it \u2014 lander buys the farm!`);
+        this._resolveAuction();
+        return;
+      }
+
+      // Move to respond phase; 1 remaining other → simple 2-player format
       for (const id of others) {
         a.bids[id].placed = false;
         a.bids[id].passed = false;
+      }
+      if (others.length === 1) {
+        a.phase = "simple-respond";
+        a.simple = true;
+      } else {
+        a.phase = "team-respond";
       }
       this._log(
         `Lander priced it at ${lb.amount}\ud83c\udf4c \u2014 accept or reject?`,
@@ -2667,29 +2787,50 @@ class MonopolyGame {
 
   // -- Banana Pile Collection -------------------------------------
 
-  // Returns a map: position -> label number (e.g. CV6 -> 6)
-  _getTileLabelNumbers() {
-    const groupLetters = {
-      pink: "LF",
-      lightblue: "BJ",
-      red: "RD",
-      yellow: "CV",
-      orange: "GF",
-      darkblue: "GM",
-    };
-    const groupCounters = {};
-    const labelNumbers = new Map();
-    for (let i = 0; i < this.board.length; i++) {
-      const space = this.board[i];
-      if (space.buyable) {
-        const g = space.buyable.group;
-        if (g && groupLetters[g]) {
-          groupCounters[g] = (groupCounters[g] || 0) + 1;
-          labelNumbers.set(i, groupCounters[g]);
+  // Returns chainMultipliers: { boardPos: chainLength } for all non-desert team farms.
+  // Adjacent same-group owned farms form chains; each farm's multiplier = chain length.
+  _computeChainMultipliers(teamIds) {
+    // Build map: boardPos -> group (using map keys, not prop.id which is the pre-shuffle buyable id)
+    const posGroup = new Map();
+    for (const p of this.players) {
+      if (!teamIds.has(p.id)) continue;
+      for (const boardPos of p.properties) {
+        const prop = this.properties.get(boardPos);
+        if (prop && prop.group && prop.group !== "desert") {
+          posGroup.set(boardPos, prop.group);
         }
       }
     }
-    return labelNumbers;
+    const chainMultipliers = {};
+    const visited = new Set();
+    for (const [boardPos, group] of posGroup) {
+      if (visited.has(boardPos)) continue;
+      const chain = [];
+      const queue = [boardPos];
+      visited.add(boardPos);
+      while (queue.length > 0) {
+        const cur = queue.shift();
+        chain.push(cur);
+        const neighbors = [
+          (cur - 1 + BOARD_SIZE) % BOARD_SIZE,
+          (cur + 1) % BOARD_SIZE,
+        ];
+        for (const n of neighbors) {
+          if (visited.has(n) || !posGroup.has(n) || CORNER_POSITIONS.has(n))
+            continue;
+          if (posGroup.get(n) !== group) continue;
+          visited.add(n);
+          queue.push(n);
+        }
+      }
+      for (const c of chain) chainMultipliers[c] = chain.length;
+    }
+    return chainMultipliers;
+  }
+
+  // Returns a map: position -> label number (e.g. CV6 -> 6)
+  _getTileLabelNumbers() {
+    return this.tileLabelNumbers || new Map();
   }
 
   _processDiceMatchGrow(player, diceSum) {
@@ -2724,52 +2865,24 @@ class MonopolyGame {
 
     if (matchedTiles.length === 0) return;
 
-    // Build chain multipliers for all team-owned farms (same logic as frontend board.js)
-    // Adjacent same-group farms form a chain; each tile's multiplier = chain length.
-    const allTeamProps = [];
-    for (const p of this.players) {
-      if (!teamIds.has(p.id)) continue;
-      for (const propId of p.properties) {
-        const prop = this.properties.get(propId);
-        if (prop && prop.group && prop.group !== "desert" && prop.group !== "mushroom") {
-          allTeamProps.push(prop);
-        }
-      }
-    }
-    const teamPosSet = new Set(allTeamProps.map((p) => p.id));
-    const chainMultipliers = {};
-    const visitedChain = new Set();
-    for (const prop of allTeamProps) {
-      if (visitedChain.has(prop.id)) continue;
-      const chain = [];
-      const queue = [prop.id];
-      visitedChain.add(prop.id);
-      while (queue.length > 0) {
-        const cur = queue.shift();
-        chain.push(cur);
-        const neighbors = [(cur - 1 + 52) % 52, (cur + 1) % 52];
-        for (const n of neighbors) {
-          if (visitedChain.has(n) || !teamPosSet.has(n) || CORNER_POSITIONS.has(n)) continue;
-          const nProp = allTeamProps.find((p) => p.id === n);
-          if (!nProp || nProp.group !== prop.group) continue;
-          visitedChain.add(n);
-          queue.push(n);
-        }
-      }
-      for (const c of chain) chainMultipliers[c] = chain.length;
-    }
+    // Chain multipliers: adjacent same-group farms multiply yield by chain length
+    const chainMultipliers = this._computeChainMultipliers(teamIds);
 
     // Apply 100% grow to each matched tile
     let totalGrown = 0;
     const tileNames = [];
+    const grownAmounts = {};
     for (const propId of matchedTiles) {
       const prop = this.properties.get(propId);
       if (!prop || !prop.group || prop.group === "desert") continue;
       const chainMult = chainMultipliers[propId] || 1;
-      const amount = Math.floor(prop.price * (1 + getSideBonus(propId)) * chainMult);
+      const amount = Math.floor(
+        prop.price * (1 + getSideBonus(propId)) * chainMult,
+      );
       if (amount > 0) {
         prop.bananaPile += amount;
         totalGrown += amount;
+        grownAmounts[propId] = amount;
         // Build label for log
         const groupLetters = {
           pink: "LF",
@@ -2786,6 +2899,7 @@ class MonopolyGame {
 
     if (totalGrown > 0) {
       this.diceMatchTiles = matchedTiles;
+      this.diceMatchGrownAmounts = grownAmounts;
       this._log(
         `\ud83c\udfb2 ${player.name} rolled ${diceSum} and owns ${tileNames.join(", ")}! 100% grow \u2014 ${totalGrown}\ud83c\udf4c sprouted! \ud83c\udf31`,
       );
@@ -2803,14 +2917,12 @@ class MonopolyGame {
       }
     }
     const teamProps = [];
-    const groupCount = {};
     for (const p of this.players) {
       if (!teamIds.has(p.id)) continue;
       for (const propId of p.properties) {
         const prop = this.properties.get(propId);
         if (!prop || !prop.group || prop.group === "desert") continue;
         teamProps.push(propId);
-        groupCount[prop.group] = (groupCount[prop.group] || 0) + 1;
       }
     }
     const getSideBonus = (pos) => {
@@ -2820,15 +2932,15 @@ class MonopolyGame {
       if (pos >= 40 && pos <= 51) return 0.5;
       return 0;
     };
+    const chainMultipliers = this._computeChainMultipliers(teamIds);
     let totalGrown = 0;
     for (const propId of teamProps) {
       const prop = this.properties.get(propId);
       if (!prop) continue;
-      const owned = groupCount[prop.group] || 1;
-      const setMultiplier = 1 + (owned - 1) * 0.1;
+      const chainMult = chainMultipliers[propId] || 1;
       const amount = Math.floor(
         easyGrowBase +
-          prop.price * (1 + getSideBonus(propId)) * setMultiplier * pct,
+          prop.price * (1 + getSideBonus(propId)) * chainMult * pct,
       );
       if (amount > 0) {
         prop.bananaPile += amount;
@@ -2845,10 +2957,11 @@ class MonopolyGame {
   _collectBananasOnPath(player, oldPos, newPos) {
     // Walk every tile from oldPos+1 to newPos (wrapping around the board)
     const steps = (newPos - oldPos + BOARD_SIZE) % BOARD_SIZE;
-    if (steps === 0) return;
+    if (steps === 0) return [];
     let collected = 0;
     let stolen = 0;
     const stolenVictims = new Set();
+    const crossedFreeBananas = [];
 
     for (let s = 1; s <= steps; s++) {
       const pos = (oldPos + s) % BOARD_SIZE;
@@ -2861,10 +2974,7 @@ class MonopolyGame {
         pos !== newPos &&
         player.revealedTiles.has(pos)
       ) {
-        player.money += 500;
-        this._log(
-          `${player.name} crossed Free Bananas +500 and collected 500\ud83c\udf4c! \ud83c\udf4c`,
-        );
+        crossedFreeBananas.push(pos);
       }
 
       const prop = this.properties.get(pos);
@@ -2910,6 +3020,7 @@ class MonopolyGame {
         `${player.name} stole ${stolen}\ud83c\udf4c from ${names}'s banana pile! \ud83d\udc12`,
       );
     }
+    return crossedFreeBananas;
   }
 
   _collectBananasAtTile(player, pos) {
@@ -3496,6 +3607,7 @@ class MonopolyGame {
     this.petCoinFlip = null;
     this.petUsedThisTurn = false;
     this.diceMatchTiles = null;
+    this.diceMatchGrownAmounts = null;
     this.lastPetUsed = null;
 
     // Clamp all players to 0 minimum (no negatives, no bankruptcy)
@@ -3788,7 +3900,6 @@ class MonopolyGame {
     if (sellerListings.length >= 5) return false;
 
     this._sellListingId++;
-    // Compute the tile label (e.g. "BJ2") using the same logic as getState/boardLayout
     const groupLetters = {
       pink: "LF",
       lightblue: "BJ",
@@ -3797,19 +3908,10 @@ class MonopolyGame {
       orange: "GF",
       darkblue: "GM",
     };
-    const groupCounters = {};
     let tileLabel = prop.name;
-    for (let i = 0; i < this.board.length; i++) {
-      const sp = this.board[i];
-      if (sp.buyable && sp.buyable.group && groupLetters[sp.buyable.group]) {
-        groupCounters[sp.buyable.group] =
-          (groupCounters[sp.buyable.group] || 0) + 1;
-        if (i === propPos) {
-          tileLabel =
-            groupLetters[sp.buyable.group] + groupCounters[sp.buyable.group];
-          break;
-        }
-      }
+    if (this.tileLabelNumbers && prop.group && groupLetters[prop.group]) {
+      const num = this.tileLabelNumbers.get(propPos);
+      if (num !== undefined) tileLabel = groupLetters[prop.group] + num;
     }
     this.sellListings.push({
       id: this._sellListingId,
@@ -3937,7 +4039,6 @@ class MonopolyGame {
       orange: "GF",
       darkblue: "GM",
     };
-    const groupCounters = {};
     const boardLayout = this.board.map((space, i) => {
       const entry = { id: i, type: space.type };
       if (space.name) entry.name = space.name;
@@ -3947,9 +4048,9 @@ class MonopolyGame {
         entry.group = space.buyable.group || null;
         entry.price = space.buyable.price;
         const g = space.buyable.group;
-        if (g && groupLetters[g]) {
-          groupCounters[g] = (groupCounters[g] || 0) + 1;
-          entry.tileLabel = groupLetters[g] + groupCounters[g];
+        if (g && groupLetters[g] && this.tileLabelNumbers) {
+          const num = this.tileLabelNumbers.get(i);
+          if (num !== undefined) entry.tileLabel = groupLetters[g] + num;
         }
       }
       return entry;
@@ -4034,6 +4135,7 @@ class MonopolyGame {
       lastExplosion: this.lastExplosion || null,
       bombSelfDamage: this.bombSelfDamage || null,
       diceMatchTiles: this.diceMatchTiles || null,
+      diceMatchGrownAmounts: this.diceMatchGrownAmounts || null,
       superBananaWin: this.superBananaWin || null,
       sellListings: this.sellListings.map((l) => ({ ...l })),
       silentAuctionTied: this.silentAuctionTied || false,
