@@ -562,9 +562,9 @@ const PET_TYPES = {
   devil: {
     name: "Magic Pet",
     emoji: "??",
-    cooldown: 10,
+    cooldown: 15,
     description:
-      "Flip a coin: heads move forward 1, tails move backward 1. 10 roll cooldown.",
+      "Flip a coin: heads move forward 1, tails move backward 1. 15 roll cooldown.",
   },
 };
 
@@ -584,10 +584,8 @@ class MonopolyGame {
     gameMode,
     teamTarget,
     petMode,
-    simpleAuction,
     bombMode,
     monkeyPoker,
-    sideBonuses,
   ) {
     this.gameId = gameId;
     this.gameMode = gameMode === "teams" ? "teams" : "ffa";
@@ -597,15 +595,12 @@ class MonopolyGame {
     } else {
       this.maxPlayers = Math.min(Math.max(maxPlayers || 4, 2), 4);
     }
-    // Simple auction allowed for FFA games (2-4 players)
-    this.simpleAuction = simpleAuction === true && this.gameMode === "ffa";
     this.startingMoney = Math.min(
       Math.max(Math.floor(startingMoney) || 2222, 100),
       99999,
     );
     this.bombMode = bombMode !== false; // on by default
     this.monkeyPoker = monkeyPoker !== false; // on by default
-    this.sideBonuses = sideBonuses === true; // off by default
     this.state = "waiting"; // waiting | playing | finished
     this.admin = null;
     this.players = [];
@@ -653,8 +648,8 @@ class MonopolyGame {
   // -- Player management ------------------------------------------
 
   addPlayer(socketId, name) {
-    if (this.players.length >= this.maxPlayers || this.state !== "waiting")
-      return null;
+    if (this.state !== "waiting") return { error: "already_started" };
+    if (this.players.length >= this.maxPlayers) return { error: "full" };
     if (!this.admin) this.admin = socketId;
 
     const allColors = ["brown", "golden", "silver", "red"];
@@ -707,6 +702,18 @@ class MonopolyGame {
     return true;
   }
 
+  changeColor(socketId, color) {
+    if (this.state !== "waiting") return false;
+    const allColors = ["brown", "golden", "silver", "red"];
+    if (!allColors.includes(color)) return false;
+    const player = this.players.find((p) => p.id === socketId);
+    if (!player) return false;
+    const taken = this.players.filter((p) => p.id !== socketId).map((p) => p.color);
+    if (taken.includes(color)) return false;
+    player.color = color;
+    return true;
+  }
+
   selectPet(socketId, petType) {
     if (this.state !== "waiting") return false;
     if (!PET_TYPES[petType]) return false;
@@ -727,12 +734,8 @@ class MonopolyGame {
     } else {
       if (player.petCooldown > 0) return false;
     }
-    // Pet usage costs 100 bananas (magic pet only)
-    const petCost = player.pet === "devil" ? 100 : 0;
-    if (player.money < petCost) return false;
     // Must have rolled at least once before using pet
     if (!player.hasRolled) return false;
-    player.money -= petCost;
 
     const petType = player.pet;
     const cooldown = PET_TYPES[petType].cooldown;
@@ -755,7 +758,7 @@ class MonopolyGame {
         ? `${player.petUses} use${player.petUses !== 1 ? "s" : ""} left`
         : `${cooldown} roll cooldown`;
       player.pendingPet = { type: "energy", cooldown };
-      this.lastPetUsed = { playerName: player.name, petType: "energy" };
+      this.lastPetUsed = { playerId: player.id, playerName: player.name, petType: "energy" };
       this._log();
       return true;
     }
@@ -777,7 +780,7 @@ class MonopolyGame {
         ? `${player.petUses} use${player.petUses !== 1 ? "s" : ""} left`
         : `${cooldown} roll cooldown`;
       player.pendingPet = { type: "strong", cooldown };
-      this.lastPetUsed = { playerName: player.name, petType: "strong" };
+      this.lastPetUsed = { playerId: player.id, playerName: player.name, petType: "strong" };
       this._log();
       return true;
     }
@@ -798,7 +801,7 @@ class MonopolyGame {
         ? `${player.petUses} use${player.petUses !== 1 ? "s" : ""} left`
         : `${cooldown} roll cooldown`;
       player.pendingPet = { type: "devil", cooldown };
-      this.lastPetUsed = { playerName: player.name, petType: "devil" };
+      this.lastPetUsed = { playerId: player.id, playerName: player.name, petType: "devil" };
       this._log();
       return true;
     }
@@ -857,7 +860,7 @@ class MonopolyGame {
         !this.vineSwing &&
         !this.mushroomPending
       ) {
-        this._scheduleAutoEnd(cur2, 3000);
+        this._scheduleAutoEnd(cur2, 2000);
       }
     }
     if (this.onUpdate) this.onUpdate();
@@ -1235,9 +1238,25 @@ class MonopolyGame {
     }
   }
 
-  returnToLobby() {
+  playerReadyForLobby(socketId) {
     if (this.state !== "finished") return false;
+    if (!this._lobbyReady) this._lobbyReady = new Set();
+    this._lobbyReady.add(socketId);
+    // Check if all non-disconnected players are ready
+    const allReady = this.players.every((p) => this._lobbyReady.has(p.id));
+    if (allReady) {
+      this._resetToLobby();
+    }
+    return true;
+  }
+
+  isLobbyReady() {
+    return this.state === "waiting";
+  }
+
+  _resetToLobby() {
     this.state = "waiting";
+    this._lobbyReady = null;
     this.currentPlayerIndex = 0;
     this.turn = 0;
     this.dice = [0, 0];
@@ -1262,9 +1281,24 @@ class MonopolyGame {
     this.bananaLoser = null;
     this.poker = null;
     this.vineSwing = null;
+    this.lastExplosion = null;
+    this.bombSelfDamage = null;
+    this.diceMatchTiles = null;
+    this.diceMatchGrownAmounts = null;
+    this.growSquatterSteals = null;
+    this.superBananaWin = null;
+    this.silentAuctionTied = false;
+    this.autoEndDelay = false;
+    this.autoEndDelayMs = 0;
+    this.lastPetUsed = null;
+    this.petTurnDelay = false;
     if (this._pokerDismissTimer) {
       clearTimeout(this._pokerDismissTimer);
       this._pokerDismissTimer = null;
+    }
+    if (this._autoEndTimer) {
+      clearTimeout(this._autoEndTimer);
+      this._autoEndTimer = null;
     }
     // Reset players to lobby state
     for (const p of this.players) {
@@ -1281,7 +1315,6 @@ class MonopolyGame {
       p.hasRolled = false;
     }
     this._initProperties();
-    return true;
   }
 
   startGame(socketId) {
@@ -1448,6 +1481,7 @@ class MonopolyGame {
     this.bombSelfDamage = null;
     this.diceMatchTiles = null;
     this.diceMatchGrownAmounts = null;
+    this.growSquatterSteals = null;
     const cur = this.getCurrentPlayer();
     if (
       !cur ||
@@ -1563,7 +1597,7 @@ class MonopolyGame {
           if (this.onUpdate) this.onUpdate();
         }
       }, walkAnimMs);
-      this._scheduleAutoEnd(cur, walkAnimMs + 3000, 3000);
+      this._scheduleAutoEnd(cur, walkAnimMs + 2000, 2000);
     }
 
     return { dice: this.dice, moved: true };
@@ -1600,7 +1634,7 @@ class MonopolyGame {
       !this.poker &&
       !this.mushroomPending
     ) {
-      this._scheduleAutoEnd(cur, debugWalkMs + 3000, 3000);
+      this._scheduleAutoEnd(cur, debugWalkMs + 2000, 2000);
     }
     return { dice: this.dice, moved: true };
   }
@@ -1641,31 +1675,22 @@ class MonopolyGame {
         }
       }
 
-      // 2) Side bonus based on which row/column the farm tile sits on
-      const getSideBonus = (pos) => {
-        if (!this.sideBonuses) return 0;
-        if (pos >= 14 && pos <= 25) return 0.1; // left column
-        if (pos >= 27 && pos <= 38) return 0.25; // top row
-        if (pos >= 40 && pos <= 51) return 0.5; // right column
-        return 0; // bottom row (1-12)
-      };
-
-      // 3) Chain multiplier: adjacent same-group farms multiply yield by chain length
+      // 2) Chain multiplier: adjacent same-group farms multiply yield by chain length
       const chainMultipliers = this._computeChainMultipliers(teamIds);
 
-      // Each farm grows (price * (1 + sideBonus)) * chainMult * growPct� (1 + sideBonus)) � setMultiplier � growPct
-      //    Side bonus is applied to the base yield first, then set bonus and grow %
+      // Each farm grows price * chainMult * growPct
       //    If an opponent is sitting on the farm, they collect the bananas instead
       let totalGrown = 0;
       let totalStolen = 0;
       const stolenBy = {}; // playerId -> amount
+      const squatterSteals = []; // { tileId, amount, squatterId }
       for (const propId of teamProps) {
         const prop = this.properties.get(propId);
         if (!prop) continue;
         const chainMult = chainMultipliers[propId] || 1;
         const amount = Math.floor(
           easyGrowBase +
-            prop.price * (1 + getSideBonus(propId)) * chainMult * pct,
+            prop.price * chainMult * pct,
         );
         if (amount > 0) {
           // Check if a non-teammate opponent is sitting on this tile
@@ -1676,11 +1701,15 @@ class MonopolyGame {
             squatter.money += amount;
             totalStolen += amount;
             stolenBy[squatter.id] = (stolenBy[squatter.id] || 0) + amount;
+            squatterSteals.push({ tileId: propId, amount, squatterId: squatter.id });
           } else {
             prop.bananaPile += amount;
             totalGrown += amount;
           }
         }
+      }
+      if (squatterSteals.length > 0) {
+        this.growSquatterSteals = squatterSteals;
       }
 
       if (totalGrown > 0) {
@@ -1817,11 +1846,12 @@ class MonopolyGame {
           this.state = "finished";
           if (this.gameMode === "teams" && this.teams) {
             const teamKey = this.getTeamOf(player.id);
-            const names = this.teams[teamKey]
-              .map((id) => this.players.find((p) => p.id === id)?.name || "?")
-              .join(" & ");
+            const teamMembers = teamKey && this.teams[teamKey];
+            const names = teamMembers
+              ? teamMembers.map((id) => this.players.find((p) => p.id === id)?.name || "?").join(" & ")
+              : player.name;
             this._log(
-              `\ud83c\udfc6 Team ${teamKey} (${names}) bought the Super Banana and won! \u2b50\ud83d\udc51`,
+              `\ud83c\udfc6 Team ${teamKey || "?"} (${names}) bought the Super Banana and won! \u2b50\ud83d\udc51`,
             );
             this._log(
               `\u2728 ${names} found the Super Banana, they now have good luck for all eternity! \u2728`,
@@ -1962,13 +1992,6 @@ class MonopolyGame {
           teamProps.push(propId);
         }
       }
-      const getSideBonus = (pos) => {
-        if (!this.sideBonuses) return 0;
-        if (pos >= 14 && pos <= 25) return 0.1;
-        if (pos >= 27 && pos <= 38) return 0.25;
-        if (pos >= 40 && pos <= 51) return 0.5;
-        return 0;
-      };
       const chainMultipliers = this._computeChainMultipliers(teamIds);
       let totalGrown = 0;
       for (const propId of teamProps) {
@@ -1977,7 +2000,7 @@ class MonopolyGame {
         const chainMult = chainMultipliers[propId] || 1;
         const amount = Math.floor(
           easyGrowBase +
-            prop.price * (1 + getSideBonus(propId)) * chainMult * pct,
+            prop.price * chainMult * pct,
         );
         if (amount > 0) {
           prop.bananaPile += amount;
@@ -2036,6 +2059,16 @@ class MonopolyGame {
     const tmpBoard = this.board[mushroomPos];
     this.board[mushroomPos] = this.board[swapPos];
     this.board[swapPos] = tmpBoard;
+
+    // Swap tile label numbers so labels follow their tiles
+    if (this.tileLabelNumbers) {
+      const mushLabel = this.tileLabelNumbers.get(mushroomPos);
+      const swapLabel = this.tileLabelNumbers.get(swapPos);
+      this.tileLabelNumbers.delete(mushroomPos);
+      this.tileLabelNumbers.delete(swapPos);
+      if (mushLabel !== undefined) this.tileLabelNumbers.set(swapPos, mushLabel);
+      if (swapLabel !== undefined) this.tileLabelNumbers.set(mushroomPos, swapLabel);
+    }
 
     // Swap properties entries (preserving owner/bananaPile state)
     const mushroomProp = this.properties.get(mushroomPos);
@@ -2173,7 +2206,7 @@ class MonopolyGame {
 
     this.silentAuctionTied = false;
 
-    // Use price-it auction when there are 3+ bidders
+    // Use team auction when there are 3+ bidders, simple auction for 2
     const usePriceIt = bidders.length >= 3;
     this.auction = {
       position: pos,
@@ -2184,20 +2217,21 @@ class MonopolyGame {
       devilUser: devilUserId,
       bidders,
       bids,
-      phase: usePriceIt ? "team-bid" : "lander-bid",
+      phase: usePriceIt ? "team-bid" : "simple-bid",
       highBid: 0,
       highBidder: null,
+      simple: !usePriceIt,
       teamAuction: usePriceIt,
     };
 
     this._log(
       usePriceIt
         ? `\ud83d\udd2e Magic auction! ${pushedPlayer.name} was pushed onto an unowned farm! Name your price!`
-        : `\ud83d\udd2e Magic auction! ${pushedPlayer.name} was pushed onto an unowned farm! Lander bids first.`,
+        : `\ud83d\udd2e Magic auction! ${pushedPlayer.name} was pushed onto an unowned farm! Name your price!`,
     );
 
-    // Auto-list at 0 if lander is broke in price-it auction
-    if (usePriceIt && pushedPlayer.money === 0) {
+    // Auto-list at 0 if lander is broke
+    if (pushedPlayer.money === 0) {
       const lb = this.auction.bids[pushedPlayer.id];
       lb.amount = 0;
       lb.placed = true;
@@ -2239,7 +2273,7 @@ class MonopolyGame {
     for (const id of bidders)
       bids[id] = { amount: 0, placed: false, passed: false };
 
-    // Use price-it auction when there are 3+ bidders
+    // Use team auction when there are 3+ bidders, simple auction for 2
     const usePriceIt = bidders.length >= 3;
     this.auction = {
       position: pos,
@@ -2249,27 +2283,17 @@ class MonopolyGame {
       landingPlayer: bidders[0],
       bidders,
       bids,
-      phase: usePriceIt
-        ? "team-bid"
-        : this.simpleAuction
-          ? "simple-bid"
-          : "lander-bid",
+      phase: usePriceIt ? "team-bid" : "simple-bid",
       highBid: 0,
       highBidder: null,
-      simple: !usePriceIt && (this.simpleAuction || false),
+      simple: !usePriceIt,
       teamAuction: usePriceIt,
     };
 
-    this._log(
-      usePriceIt
-        ? `\ud83c\udf4c Banana bid! Lander, name your price.`
-        : this.simpleAuction
-          ? `\ud83c\udf4c Banana bid! Lander, name your price.`
-          : `\ud83c\udf4c Banana bid started! Lander places their bid first.`,
-    );
+    this._log(`\ud83c\udf4c Banana bid! Lander, name your price.`);
 
-    // Auto-list at 0 if lander is broke in price-it/simple auction
-    if ((usePriceIt || this.simpleAuction) && cur.money === 0) {
+    // Auto-list at 0 if lander is broke
+    if (cur.money === 0) {
       const lb = this.auction.bids[cur.id];
       lb.amount = 0;
       lb.placed = true;
@@ -2480,101 +2504,6 @@ class MonopolyGame {
       return;
     }
 
-    // -- FFA Phase 1: Lander submits visible opening bid --
-    if (a.phase === "lander-bid") {
-      const lb = a.bids[a.landingPlayer];
-      if (!lb.placed) return;
-
-      a.landerOpenBid = lb.amount;
-      a.highBid = lb.amount;
-      a.highBidder = a.landingPlayer;
-
-      // Move challengers to blind bid phase
-      const challengers = a.bidders.filter((id) => id !== a.landingPlayer);
-      if (challengers.length === 0) {
-        this._resolveAuction();
-        return;
-      }
-      a.phase = "challenger-bid";
-      for (const id of challengers) {
-        a.bids[id].placed = false;
-        a.bids[id].passed = false;
-      }
-      this._log(
-        `Lander bid ${lb.amount}\ud83c\udf4c \u2014 challengers, bid or pass!`,
-      );
-      return;
-    }
-
-    // -- FFA Phase 2: Challengers bid blindly (must beat lander) or pass --
-    if (a.phase === "challenger-bid") {
-      const challengers = a.bidders.filter((id) => id !== a.landingPlayer);
-      const allDone = challengers.every(
-        (id) => a.bids[id].placed || a.bids[id].passed,
-      );
-      if (!allDone) return;
-
-      // Find highest challenger bid (ties broken by earliest submission)
-      let anyChallenger = false;
-      for (const id of challengers) {
-        const b = a.bids[id];
-        if (b.placed && b.amount > a.highBid) {
-          a.highBid = b.amount;
-          a.highBidder = id;
-          anyChallenger = true;
-        } else if (
-          b.placed &&
-          b.amount === a.highBid &&
-          a.highBidder !== a.landingPlayer
-        ) {
-          // Tie between challengers � whoever bid first wins
-          const currentWinner = a.bids[a.highBidder];
-          if (currentWinner && b.bidTime < currentWinner.bidTime) {
-            a.highBidder = id;
-          }
-          anyChallenger = true;
-        } else if (b.placed) {
-          anyChallenger = true;
-        }
-      }
-
-      if (!anyChallenger) {
-        // All challengers passed � lander wins at their opening bid
-        this._resolveAuction();
-        return;
-      }
-
-      // Skip lander second bid on desert tiles
-      if (a.propGroup === "desert") {
-        this._resolveAuction();
-        return;
-      }
-
-      // Give lander a second blind bid
-      a.phase = "lander-second";
-      const lb = a.bids[a.landingPlayer];
-      lb.placed = false;
-      lb.passed = false;
-      this._log(
-        `Challenger(s) outbid you! Pass or place your second bid. \ud83c\udf4c`,
-      );
-      return;
-    }
-
-    // -- FFA Phase 3: Lander second bid --
-    if (a.phase === "lander-second") {
-      const lb = a.bids[a.landingPlayer];
-      if (!lb.placed && !lb.passed) return;
-
-      if (lb.placed && lb.amount >= a.highBid) {
-        // Lander wins ties
-        a.highBid = lb.amount;
-        a.highBidder = a.landingPlayer;
-      }
-
-      this._resolveAuction();
-      return;
-    }
   }
 
   _resolveAuction() {
@@ -2612,11 +2541,12 @@ class MonopolyGame {
           this.state = "finished";
           if (this.gameMode === "teams" && this.teams) {
             const teamKey = this.getTeamOf(winner.id);
-            const names = this.teams[teamKey]
-              .map((id) => this.players.find((p) => p.id === id)?.name || "?")
-              .join(" & ");
+            const teamMembers = teamKey && this.teams[teamKey];
+            const names = teamMembers
+              ? teamMembers.map((id) => this.players.find((p) => p.id === id)?.name || "?").join(" & ")
+              : winner.name;
             this._log(
-              `\ud83c\udfc6 Team ${teamKey} (${names}) bought the Super Banana and won! \u2b50\ud83d\udc51`,
+              `\ud83c\udfc6 Team ${teamKey || "?"} (${names}) bought the Super Banana and won! \u2b50\ud83d\udc51`,
             );
             this._log(
               `\u2728 ${names} found the Super Banana, they now have good luck for all eternity! \u2728`,
@@ -2641,7 +2571,7 @@ class MonopolyGame {
     this.auction = null;
     this.silentAuctionTied = false;
     if (turnPlayer) {
-      this._scheduleAutoEnd(turnPlayer, 3000);
+      this._scheduleAutoEnd(turnPlayer, 2000);
     }
   }
 
@@ -2661,15 +2591,27 @@ class MonopolyGame {
       !(a.tiebreakBidders || []).includes(socketId)
     )
       return false;
-    if (a.phase === "lander-bid" && socketId !== a.landingPlayer) return false;
-    if (a.phase === "challenger-bid" && socketId === a.landingPlayer)
-      return false;
-    if (a.phase === "lander-second" && socketId !== a.landingPlayer)
-      return false;
-
     const player = this.players.find((p) => p.id === socketId);
     amount = Math.floor(amount);
     if (!player || amount > player.money || amount < 0) return false;
+
+    // When lander is pitching a price (team-bid or simple-bid), cap at the
+    // second-richest player's money if the lander is the richest.  This
+    // prevents the richest player from naming a price nobody else can match.
+    if (
+      (a.phase === "team-bid" || a.phase === "simple-bid") &&
+      socketId === a.landingPlayer
+    ) {
+      const others = this.players.filter(
+        (p) => p.id !== socketId && !p.bankrupt,
+      );
+      if (others.length > 0) {
+        const maxOtherMoney = Math.max(...others.map((p) => p.money));
+        if (player.money >= maxOtherMoney && amount > maxOtherMoney) {
+          return false;
+        }
+      }
+    }
 
     // Minimum bid is 1 banana; 0 only allowed when lander is broke in simple-bid or team-bid
     if (
@@ -2683,14 +2625,6 @@ class MonopolyGame {
 
     // Silent auction tiebreak bids must be at least the lander's price
     if (a.phase === "simple-tiebreak" && amount < (a.landerOpenBid || 0))
-      return false;
-
-    // Challenger bids must exceed the lander's opening bid
-    if (a.phase === "challenger-bid" && amount <= (a.landerOpenBid || 0))
-      return false;
-
-    // Lander second bid must exceed their opening bid
-    if (a.phase === "lander-second" && amount <= (a.landerOpenBid || 0))
       return false;
 
     b.amount = amount;
@@ -2718,14 +2652,6 @@ class MonopolyGame {
       !(a.tiebreakBidders || []).includes(socketId)
     )
       return false;
-    if (a.phase === "lander-bid") return false;
-    // Challengers can pass
-    if (a.phase === "challenger-bid" && socketId === a.landingPlayer)
-      return false;
-    // Lander can pass their second bid (keeps current highest)
-    if (a.phase === "lander-second" && socketId !== a.landingPlayer)
-      return false;
-
     b.passed = true;
     const player = this.players.find((p) => p.id === socketId);
     this._log(`${player?.name || "?"} passed on Farm #${a.position}.`);
@@ -2843,14 +2769,6 @@ class MonopolyGame {
       }
     }
 
-    const getSideBonus = (pos) => {
-      if (!this.sideBonuses) return 0;
-      if (pos >= 14 && pos <= 25) return 0.1;
-      if (pos >= 27 && pos <= 38) return 0.25;
-      if (pos >= 40 && pos <= 51) return 0.5;
-      return 0;
-    };
-
     // Find all owned farms where the label number matches the dice sum
     const matchedTiles = [];
     for (const p of this.players) {
@@ -2870,6 +2788,9 @@ class MonopolyGame {
 
     // Apply 100% grow to each matched tile
     let totalGrown = 0;
+    let totalStolen = 0;
+    const stolenBy = {};
+    const squatterSteals = [];
     const tileNames = [];
     const grownAmounts = {};
     for (const propId of matchedTiles) {
@@ -2877,12 +2798,23 @@ class MonopolyGame {
       if (!prop || !prop.group || prop.group === "desert") continue;
       const chainMult = chainMultipliers[propId] || 1;
       const amount = Math.floor(
-        prop.price * (1 + getSideBonus(propId)) * chainMult,
+        prop.price * chainMult,
       );
       if (amount > 0) {
-        prop.bananaPile += amount;
-        totalGrown += amount;
-        grownAmounts[propId] = amount;
+        // Check if a non-teammate opponent is sitting on this tile
+        const squatter = this.players.find(
+          (p) => !p.bankrupt && p.position === propId && !teamIds.has(p.id),
+        );
+        if (squatter) {
+          squatter.money += amount;
+          totalStolen += amount;
+          stolenBy[squatter.id] = (stolenBy[squatter.id] || 0) + amount;
+          squatterSteals.push({ tileId: propId, amount, squatterId: squatter.id });
+        } else {
+          prop.bananaPile += amount;
+          totalGrown += amount;
+          grownAmounts[propId] = amount;
+        }
         // Build label for log
         const groupLetters = {
           pink: "LF",
@@ -2896,13 +2828,27 @@ class MonopolyGame {
         tileNames.push(prefix + diceSum);
       }
     }
+    if (squatterSteals.length > 0) {
+      this.growSquatterSteals = squatterSteals;
+    }
 
-    if (totalGrown > 0) {
+    if (totalGrown > 0 || totalStolen > 0) {
       this.diceMatchTiles = matchedTiles;
       this.diceMatchGrownAmounts = grownAmounts;
-      this._log(
-        `\ud83c\udfb2 ${player.name} rolled ${diceSum} and owns ${tileNames.join(", ")}! 100% grow \u2014 ${totalGrown}\ud83c\udf4c sprouted! \ud83c\udf31`,
-      );
+      if (totalGrown > 0) {
+        this._log(
+          `\ud83c\udfb2 ${player.name} rolled ${diceSum} and owns ${tileNames.join(", ")}! 100% grow \u2014 ${totalGrown}\ud83c\udf4c sprouted! \ud83c\udf31`,
+        );
+      }
+      if (totalStolen > 0) {
+        const theftLines = Object.entries(stolenBy).map(([id, amt]) => {
+          const p = this.players.find((pl) => pl.id === id);
+          return `${p?.name || "?"} collected ${amt}\ud83c\udf4c`;
+        });
+        this._log(
+          `\ud83c\udfb2 ${player.name} rolled ${diceSum} but opponents on their farms grabbed the bananas! ${theftLines.join(", ")} \ud83d\udc12`,
+        );
+      }
     }
   }
 
@@ -2925,13 +2871,6 @@ class MonopolyGame {
         teamProps.push(propId);
       }
     }
-    const getSideBonus = (pos) => {
-      if (!this.sideBonuses) return 0;
-      if (pos >= 14 && pos <= 25) return 0.1;
-      if (pos >= 27 && pos <= 38) return 0.25;
-      if (pos >= 40 && pos <= 51) return 0.5;
-      return 0;
-    };
     const chainMultipliers = this._computeChainMultipliers(teamIds);
     let totalGrown = 0;
     for (const propId of teamProps) {
@@ -2940,7 +2879,7 @@ class MonopolyGame {
       const chainMult = chainMultipliers[propId] || 1;
       const amount = Math.floor(
         easyGrowBase +
-          prop.price * (1 + getSideBonus(propId)) * chainMult * pct,
+          prop.price * chainMult * pct,
       );
       if (amount > 0) {
         prop.bananaPile += amount;
@@ -3608,6 +3547,7 @@ class MonopolyGame {
     this.petUsedThisTurn = false;
     this.diceMatchTiles = null;
     this.diceMatchGrownAmounts = null;
+    this.growSquatterSteals = null;
     this.lastPetUsed = null;
 
     // Clamp all players to 0 minimum (no negatives, no bankruptcy)
@@ -4062,10 +4002,8 @@ class MonopolyGame {
       admin: this.admin,
       maxPlayers: this.maxPlayers,
       startingMoney: this.startingMoney,
-      simpleAuction: this.simpleAuction,
       bombMode: this.bombMode,
       monkeyPoker: this.monkeyPoker,
-      sideBonuses: this.sideBonuses,
       petMode: this.petMode,
       turn: this.turn,
       currentPlayer: this.getCurrentPlayer(),
@@ -4136,9 +4074,11 @@ class MonopolyGame {
       bombSelfDamage: this.bombSelfDamage || null,
       diceMatchTiles: this.diceMatchTiles || null,
       diceMatchGrownAmounts: this.diceMatchGrownAmounts || null,
+      growSquatterSteals: this.growSquatterSteals || null,
       superBananaWin: this.superBananaWin || null,
       sellListings: this.sellListings.map((l) => ({ ...l })),
       silentAuctionTied: this.silentAuctionTied || false,
+      lobbyReady: this._lobbyReady ? [...this._lobbyReady] : [],
     };
   }
 

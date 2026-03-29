@@ -64,22 +64,13 @@ const SPECIAL_SPACES = {
   46: { name: "\ud83c\udf35", type: "desert" },
   // Mega specials
   12: { name: "\ud83c\udf35", type: "desert" },
-  25: { name: "Vine\nSwing", type: "bus" },
+  25: { name: "Vine", fullName: "Vine Swing", type: "bus" },
   38: { name: "\ud83c\udf35", type: "desert" },
   43: { name: "\ud83c\udf35", type: "desert" },
   44: { name: "\ud83c\udf35", type: "desert" },
   45: { name: "\ud83c\udf35", type: "desert" },
   50: { name: "\ud83c\udf35", type: "desert" },
 };
-
-// ——— Side bonus based on board position ————————————————————————————
-function getSideBonus(pos) {
-  if (!window._gs || !window._gs.sideBonuses) return 0;
-  if (pos >= 14 && pos <= 25) return 0.1; // left column
-  if (pos >= 27 && pos <= 38) return 0.25; // top row
-  if (pos >= 40 && pos <= 51) return 0.5; // right column
-  return 0; // bottom row (1-12) and corners
-}
 
 // ——— Layout calculation (52 spaces, 14×14 grid) ———————————————————
 
@@ -122,15 +113,24 @@ let _freeBananasShown = new Set(); // positions already shown this walk
 
 // ——— Banana pile tracking for collection animation ————————————————
 let _prevBananaPiles = {}; // { tileIndex: amount }
+let _stealShown = new Set(); // tile indices where "Steal!" floater already fired this turn
+let _collectShown = new Set(); // tile indices where collect floater/popup already fired this turn
+let _wasTokenWalking = false; // tracks previous walk state to detect walk-start transitions
 
 // ——— Dice-match grow: track which tile set has already been animated ——
+
+// ——— Chain multiplier cache ——————————————————————————————————————————
+let _chainCache = null;     // { multipliers: {pos: mult}, key: string }
 
 // ——— Reset all between-game animation state (call when returning to lobby) ———
 function resetBoardAnimationState() {
   _prevBananaPiles = {};
+  _stealShown = new Set();
+  _collectShown = new Set();
+  _wasTokenWalking = false;
   _prevFreeBananasTiles = new Set();
   _freeBananasShown = new Set();
-
+  _chainCache = null;
 }
 
 // ——— Shared helper: show a floating popup at the "Your Bananas" box ——
@@ -153,11 +153,316 @@ function showPopupAtBananaBox(text, cssClass) {
 // ——— Persistent token elements for smooth animation ———————————————
 const _tokenElements = {}; // { playerId: HTMLElement }
 
+// ——— Event delegation for board tile clicks ——————————————————————
+let _boardDelegationSetup = false;
+function _setupBoardDelegation() {
+  if (_boardDelegationSetup) return;
+  const board = document.getElementById("board");
+  if (!board) return;
+  _boardDelegationSetup = true;
+  board.addEventListener("click", (e) => {
+    const tile = e.target.closest(".space[data-tile]");
+    if (!tile) return;
+    const i = parseInt(tile.dataset.tile, 10);
+    if (isNaN(i)) return;
+    const gs = window._gs;
+    if (!gs) return;
+    // Vine swing mode
+    if (gs.vineSwing && gs.vineSwing === myId && !window._tokenWalking) {
+      if (tile.classList.contains("space-pickable")) {
+        if (socket && gameId)
+          socket.emit("vine_swing_move", { gameId, position: i });
+        return;
+      }
+    }
+    // Bomb placement mode
+    if (window._bombPlacementMode && tile.classList.contains("bomb-target")) {
+      if (socket && gameId) {
+        socket.emit("place_bomb", { gameId, position: i });
+        closeBombPlacement();
+      }
+      return;
+    }
+    // Sell mode
+    if (tile.classList.contains("trade-clickable")) {
+      handleSellTileClick(i);
+      return;
+    }
+  });
+}
+
+// ——— Lightweight walk-step update (skips full tile rebuild) ————————
+// Only updates token positions and banana pile collection visuals.
+// Call this instead of renderBoard() for intermediate walk steps.
+function walkStepUpdate(gs) {
+  window._gs = gs;
+  const board = document.getElementById("board");
+  if (!board) return;
+
+  const _propById = {};
+  if (gs && gs.properties) {
+    for (const p of gs.properties) _propById[p.id] = p;
+  }
+  const _playerById = {};
+  if (gs && gs.players) {
+    for (const p of gs.players) _playerById[p.id] = p;
+  }
+
+  // Recalculate banana piles with frozen/visited logic
+  const _bananaPiles = [];
+  if (gs && gs.properties) {
+    for (let i = 0; i < BOARD_SIZE; i++) {
+      const prop = _propById[i];
+      let pileAmount = prop ? prop.bananaPile : 0;
+      if (window._frozenBananaPiles) {
+        const frozenVal = window._frozenBananaPiles[i] || 0;
+        const isDiceMatchTile =
+          window._diceMatchUnfrozen &&
+          gs.diceMatchTiles &&
+          gs.diceMatchTiles.includes(i);
+        if (window._tokenVisitedTiles && window._tokenVisitedTiles.has(i)) {
+          const isOwn = prop && prop.owner === window._walkingPlayerId;
+          const isLanding = i === window._walkingLandingPos;
+          if (isOwn || isLanding) {
+            pileAmount = 0;
+          } else {
+            pileAmount = frozenVal;
+          }
+        } else if (isDiceMatchTile) {
+          const grownAmount = gs.diceMatchGrownAmounts && gs.diceMatchGrownAmounts[i] || 0;
+          pileAmount = frozenVal + grownAmount;
+        } else {
+          pileAmount = frozenVal;
+        }
+      }
+      if (pileAmount > 0) {
+        const owner = prop && prop.owner ? _playerById[prop.owner] : null;
+        _bananaPiles.push({
+          tileIndex: i,
+          amount: pileAmount,
+          ownerColor: owner ? owner.color : null,
+        });
+      }
+      // Update has-banana-pile class on existing tile element
+      const tileEl = document.getElementById("space-" + i);
+      if (tileEl) {
+        if (pileAmount > 0) {
+          tileEl.classList.add("has-banana-pile");
+        } else {
+          tileEl.classList.remove("has-banana-pile");
+        }
+      }
+    }
+  }
+
+  // Remove old banana pile elements and re-render
+  board.querySelectorAll(".banana-pile").forEach((el) => el.remove());
+  for (const pile of _bananaPiles) {
+    const r = spaceRect(pile.tileIndex);
+    const pileEl = document.createElement("div");
+    pileEl.className = "banana-pile";
+    if (pile.ownerColor) pileEl.classList.add("pile-" + pile.ownerColor);
+    pileEl.textContent = pile.amount + "\ud83c\udf4c";
+    if (r.side === "bottom") {
+      pileEl.style.left = r.l + r.w / 2 + "%";
+      pileEl.style.top = r.t - 0.3 + "%";
+      pileEl.style.setProperty("--pile-transform", "translate(-50%, -100%)");
+    } else if (r.side === "top") {
+      pileEl.style.left = r.l + r.w / 2 + "%";
+      pileEl.style.top = r.t + r.h + 0.3 + "%";
+      pileEl.style.setProperty("--pile-transform", "translate(-50%, 0)");
+    } else if (r.side === "left") {
+      pileEl.style.left = r.l + r.w + 0.3 + "%";
+      pileEl.style.top = r.t + r.h / 2 + "%";
+      pileEl.style.setProperty("--pile-transform", "translate(0, -50%)");
+    } else if (r.side === "right") {
+      pileEl.style.left = r.l - 0.3 + "%";
+      pileEl.style.top = r.t + r.h / 2 + "%";
+      pileEl.style.setProperty("--pile-transform", "translate(-100%, -50%)");
+    } else {
+      const cx = r.l + r.w / 2;
+      const cy = r.t + r.h / 2;
+      pileEl.style.left = (cx < 50 ? r.l + r.w + 0.3 : r.l - 0.3) + "%";
+      pileEl.style.top = (cy < 50 ? r.t + r.h + 0.3 : r.t - 0.3) + "%";
+      pileEl.style.setProperty(
+        "--pile-transform",
+        (cx < 50 ? "translateX(0)" : "translateX(-100%)") +
+          " " +
+          (cy < 50 ? "translateY(0)" : "translateY(-100%)"),
+      );
+    }
+    board.appendChild(pileEl);
+  }
+
+  // Detect collected piles and show floating animation (once per tile per turn)
+  const currentPiles = {};
+  for (const pile of _bananaPiles) {
+    currentPiles[pile.tileIndex] = pile.amount;
+  }
+  for (const [idx, oldAmount] of Object.entries(_prevBananaPiles)) {
+    const newAmount = currentPiles[idx] || 0;
+    if (oldAmount > 0 && newAmount < oldAmount && !_collectShown.has(Number(idx))) {
+      _collectShown.add(Number(idx));
+      const collected = oldAmount - newAmount;
+      const r = spaceRect(Number(idx));
+      const floater = document.createElement("div");
+      floater.className = "banana-pile-collected";
+      floater.textContent = "+" + collected + "\ud83c\udf4c";
+      if (r.side === "bottom") {
+        floater.style.left = r.l + r.w / 2 + "%";
+        floater.style.top = r.t - 0.3 + "%";
+      } else if (r.side === "top") {
+        floater.style.left = r.l + r.w / 2 + "%";
+        floater.style.top = r.t + r.h + 0.3 + "%";
+      } else if (r.side === "left") {
+        floater.style.left = r.l + r.w + 0.3 + "%";
+        floater.style.top = r.t + r.h / 2 + "%";
+      } else if (r.side === "right") {
+        floater.style.left = r.l - 0.3 + "%";
+        floater.style.top = r.t + r.h / 2 + "%";
+      } else {
+        floater.style.left = r.l + r.w / 2 + "%";
+        floater.style.top = r.t + r.h / 2 + "%";
+      }
+      board.appendChild(floater);
+      floater.addEventListener("animationend", () => floater.remove());
+      const collectorId = gs.currentPlayer && gs.currentPlayer.id;
+      // Flying banana burst for pile collection
+      bananaBurst(collected, collectorId);
+      window._walkPileCollected = (window._walkPileCollected || 0) + collected;
+      const stolenProp = _propById[Number(idx)];
+      if (stolenProp && stolenProp.owner && stolenProp.owner !== collectorId && !_stealShown.has(Number(idx))) {
+        _stealShown.add(Number(idx));
+        const stealFloater = document.createElement("div");
+        stealFloater.className = "steal-floater";
+        stealFloater.textContent = "Steal!";
+        stealFloater.style.left = floater.style.left;
+        stealFloater.style.top = floater.style.top;
+        board.appendChild(stealFloater);
+        stealFloater.addEventListener("animationend", () => stealFloater.remove());
+      }
+      const collectorIsMe =
+        typeof myId !== "undefined" && collectorId === myId;
+      if (collectorIsMe || !collectorId) {
+        showPopupAtBananaBox("+" + collected + "\uD83C\uDF4C", "pile-collect-popup-player");
+      } else {
+        const pstat = document.querySelector(
+          `.pstat[data-player-id="${collectorId}"]`,
+        );
+        const anchor = pstat && pstat.querySelector(".pstat-money");
+        if (anchor) {
+          const rect = anchor.getBoundingClientRect();
+          const floater2 = document.createElement("div");
+          floater2.className = "pile-collect-popup-player";
+          floater2.textContent = "+" + collected + "\uD83C\uDF4C";
+          floater2.style.position = "fixed";
+          floater2.style.left = rect.left + rect.width / 2 + "px";
+          floater2.style.top = rect.top + "px";
+          floater2.style.pointerEvents = "none";
+          floater2.style.zIndex = "1000";
+          document.body.appendChild(floater2);
+          floater2.addEventListener("animationend", () => floater2.remove());
+        }
+      }
+    }
+  }
+  _prevBananaPiles = currentPiles;
+
+  // Free Bananas pass-through detection
+  const layout = gs && gs.boardLayout;
+  const me = gs && gs.players && gs.players.find((p) => p.id === myId);
+  const myRevealed = me && me.revealedTiles ? new Set(me.revealedTiles) : null;
+  if (layout && window._diceRollingPositions) {
+    const currentFB = new Set();
+    layout.forEach((tile, idx) => {
+      if (tile.type === "freebananas") currentFB.add(idx);
+    });
+    for (const [playerId, pos] of Object.entries(window._diceRollingPositions)) {
+      const isStartPos =
+        window._walkStartPositions &&
+        window._walkStartPositions[playerId] === pos;
+      if (isStartPos) continue;
+      const tileRevealed = !myRevealed || myRevealed.has(pos);
+      if (currentFB.has(pos) && !_freeBananasShown.has(pos) && tileRevealed) {
+        _freeBananasShown.add(pos);
+        const isMe = typeof myId !== "undefined" && playerId === myId;
+        if (isMe) {
+          showPopupAtBananaBox("+500\uD83C\uDF4C", "free-bananas-popup-player");
+        } else {
+          const pstat = document.querySelector(`.pstat[data-player-id="${playerId}"]`);
+          const anchor = pstat && pstat.querySelector(".pstat-money");
+          if (anchor) {
+            const rect = anchor.getBoundingClientRect();
+            const floater = document.createElement("div");
+            floater.className = "free-bananas-popup-player";
+            floater.textContent = "+500\uD83C\uDF4C";
+            floater.style.position = "fixed";
+            floater.style.left = rect.left + rect.width / 2 + "px";
+            floater.style.top = rect.top + "px";
+            floater.style.pointerEvents = "none";
+            floater.style.zIndex = "1000";
+            document.body.appendChild(floater);
+            floater.addEventListener("animationend", () => floater.remove());
+          }
+        }
+      }
+    }
+  }
+
+  // Update token positions (reuse persistent token layer)
+  let tokenLayer = document.getElementById("token-layer");
+  if (!tokenLayer) return;
+  const activePlayerIds = new Set();
+  if (gs && gs.players) {
+    const frozenPos = window._diceRollingPositions || null;
+    const posMap = {};
+    gs.players.forEach((p) => {
+      if (p.bankrupt) return;
+      const pos =
+        frozenPos && frozenPos[p.id] != null ? frozenPos[p.id] : p.position;
+      if (!posMap[pos]) posMap[pos] = [];
+      posMap[pos].push({ ...p, _renderPos: pos });
+    });
+    for (const pos in posMap) {
+      const players = posMap[pos];
+      const r = spaceRect(Number(pos));
+      const cx = r.l + r.w / 2;
+      const cy = r.t + r.h / 2;
+      players.forEach((p, idx) => {
+        activePlayerIds.add(p.id);
+        let tok = _tokenElements[p.id];
+        if (!tok) {
+          tok = document.createElement("div");
+          tok.textContent = "\ud83d\udc35";
+          _tokenElements[p.id] = tok;
+        }
+        tok.className = "token c-" + p.color;
+        if (p.id === myId) tok.classList.add("token-me");
+        if (gs.currentPlayer && gs.currentPlayer.id === p.id)
+          tok.classList.add("token-active");
+        const offsetX = (idx % 2) * 3 - 1.5;
+        const offsetY = Math.floor(idx / 2) * 3 - 1.5;
+        const half = p.id === myId ? 18 : 14;
+        tok.style.left = `calc(${cx + offsetX}% - ${half}px)`;
+        tok.style.top = `calc(${cy + offsetY}% - ${half}px)`;
+        if (!tok.parentNode) tokenLayer.appendChild(tok);
+      });
+    }
+  }
+  for (const id in _tokenElements) {
+    if (!activePlayerIds.has(id)) {
+      if (_tokenElements[id].parentNode) _tokenElements[id].remove();
+      delete _tokenElements[id];
+    }
+  }
+}
+
 // ——— Render Board ——————————————————————————————————————————————————
 
 function renderBoard(gs) {
   window._gs = gs;
   const board = document.getElementById("board");
+  _setupBoardDelegation();
   // Preserve overlays across re-renders
   const chat = document.getElementById("board-chat");
   const chatToggle = document.getElementById("board-chat-toggle");
@@ -178,6 +483,10 @@ function renderBoard(gs) {
   // Detach persistent token layer before clearing
   let tokenLayer = document.getElementById("token-layer");
   if (tokenLayer) tokenLayer.remove();
+  // Floaters (steal, collect) are NOT preserved across re-renders — re-appending
+  // restarts CSS animations causing visible flashing. Instead, dedup sets
+  // (_collectShown, _stealShown) prevent re-creation, and popups on document.body
+  // (pile-collect-popup-player) naturally survive re-renders.
   board.innerHTML = "";
   // Create token layer if first render
   if (!tokenLayer) {
@@ -196,70 +505,86 @@ function renderBoard(gs) {
   // Use server's board layout if available, otherwise fall back to static data
   const layout = gs && gs.boardLayout;
 
+  const _bananaPiles = [];
+
+  // Build fast lookup maps for properties and players (avoids O(n) .find() per tile)
+  const _propById = {};  // { tileIndex: property }
+  if (gs && gs.properties) {
+    for (const p of gs.properties) _propById[p.id] = p;
+  }
+  const _playerById = {};  // { playerId: player }
+  if (gs && gs.players) {
+    for (const p of gs.players) _playerById[p.id] = p;
+  }
+
   // Build set of tiles revealed by the current player (fog of war)
   // If dice are rolling, use pre-roll revealed tiles to avoid spoiling the destination
   let myRevealed = null;
   if (window._diceRollingRevealed) {
     myRevealed = window._diceRollingRevealed;
   } else if (gs && gs.players && typeof myId !== "undefined") {
-    const me = gs.players.find((p) => p.id === myId);
+    const me = _playerById[myId];
     if (me && me.revealedTiles) {
       myRevealed = new Set(me.revealedTiles);
     }
   }
 
-  const _bananaPiles = [];
-
-  // Compute chain multipliers for each owned tile
-  // Connected same-group farms owned by the same player get Nx multiplier (N = chain length)
-  const _chainMultipliers = {}; // { position: multiplier }
+  // Compute chain multipliers (cached — only recompute when ownership changes)
+  // Build a key from owned tile positions to detect changes
+  let _chainMultipliers;
   if (gs && gs.properties) {
-    // Group owned positions by owner
-    const ownerPositions = {};
+    let chainKey = "";
     for (const prop of gs.properties) {
-      if (
-        prop.owner &&
-        prop.group &&
-        prop.group !== "desert" &&
-        prop.group !== "mushroom"
-      ) {
-        if (!ownerPositions[prop.owner]) ownerPositions[prop.owner] = [];
-        ownerPositions[prop.owner].push(prop);
-      }
+      if (prop.owner) chainKey += prop.id + ":" + prop.owner + ",";
     }
-    const CORNERS = new Set([0, 13, 26, 39]);
-    for (const ownerId of Object.keys(ownerPositions)) {
-      const props = ownerPositions[ownerId];
-      const posSet = new Set(props.map((p) => p.id));
-      const visited = new Set();
-      for (const prop of props) {
-        if (visited.has(prop.id)) continue;
-        const chain = [];
-        const queue = [prop.id];
-        visited.add(prop.id);
-        while (queue.length > 0) {
-          const cur = queue.shift();
-          chain.push(cur);
-          const neighbors = [(cur - 1 + 52) % 52, (cur + 1) % 52];
-          for (const n of neighbors) {
-            if (visited.has(n) || !posSet.has(n) || CORNERS.has(n)) continue;
-            const nProp = props.find((p) => p.id === n);
-            if (!nProp || nProp.group !== prop.group) continue;
-            visited.add(n);
-            queue.push(n);
+    if (_chainCache && _chainCache.key === chainKey) {
+      _chainMultipliers = _chainCache.multipliers;
+    } else {
+      _chainMultipliers = {};
+      const ownerPositions = {};
+      for (const prop of gs.properties) {
+        if (prop.owner && prop.group && prop.group !== "desert" && prop.group !== "mushroom") {
+          if (!ownerPositions[prop.owner]) ownerPositions[prop.owner] = [];
+          ownerPositions[prop.owner].push(prop);
+        }
+      }
+      const CORNERS_SET = [0, 13, 26, 39];
+      for (const ownerId of Object.keys(ownerPositions)) {
+        const props = ownerPositions[ownerId];
+        const posSet = new Set(props.map((p) => p.id));
+        const visited = new Set();
+        for (const prop of props) {
+          if (visited.has(prop.id)) continue;
+          const chain = [];
+          const queue = [prop.id];
+          visited.add(prop.id);
+          while (queue.length > 0) {
+            const cur = queue.shift();
+            chain.push(cur);
+            const prev = (cur - 1 + 52) % 52;
+            const next = (cur + 1) % 52;
+            for (const n of [prev, next]) {
+              if (visited.has(n) || !posSet.has(n) || CORNERS_SET.includes(n)) continue;
+              const nProp = _propById[n];
+              if (!nProp || nProp.group !== prop.group) continue;
+              visited.add(n);
+              queue.push(n);
+            }
           }
-        }
-        for (const c of chain) {
-          _chainMultipliers[c] = chain.length;
+          for (const c of chain) _chainMultipliers[c] = chain.length;
         }
       }
+      _chainCache = { multipliers: _chainMultipliers, key: chainKey };
     }
+  } else {
+    _chainMultipliers = {};
   }
 
   for (let i = 0; i < BOARD_SIZE; i++) {
     const el = document.createElement("div");
     el.className = "space";
     el.id = "space-" + i;
+    el.dataset.tile = i;
 
     const r = spaceRect(i);
     el.style.left = r.l + "%";
@@ -283,27 +608,15 @@ function renderBoard(gs) {
       el.classList.add("space-hidden");
       el.innerHTML = `<span class="sname">${i}</span>`;
       // Vine Swing: hidden tiles are also clickable (only own properties)
-      if (gs && gs.vineSwing && gs.vineSwing === myId && !isCornerPos) {
-        const ownsProp =
-          gs.properties &&
-          gs.properties.find((p) => p.id === i && p.owner === myId);
+      if (gs && gs.vineSwing && gs.vineSwing === myId && !isCornerPos && !window._tokenWalking) {
+        const ownsProp = _propById[i] && _propById[i].owner === myId;
         if (ownsProp) {
           el.classList.add("space-pickable");
-          el.addEventListener("click", () => {
-            if (socket && gameId)
-              socket.emit("vine_swing_move", { gameId, position: i });
-          });
         }
       }
       // Bomb placement mode: make hidden non-corner tiles clickable
       if (window._bombPlacementMode && !isCornerPos) {
         el.classList.add("space-pickable", "bomb-target");
-        el.addEventListener("click", () => {
-          if (socket && gameId) {
-            socket.emit("place_bomb", { gameId, position: i });
-            closeBombPlacement();
-          }
-        });
       }
       // Sell mode: make hidden owned tiles clickable too
       if (
@@ -313,12 +626,10 @@ function renderBoard(gs) {
         !isCornerPos
       ) {
         const sState = window._sellState;
-        const tProp =
-          gs && gs.properties && gs.properties.find((p) => p.id === i);
+        const tProp = _propById[i];
         if (tProp && tProp.owner === myId) {
           el.classList.add("trade-clickable");
           el.classList.add("trade-clickable-mine");
-          el.addEventListener("click", () => handleSellTileClick(i));
           if (sState.selectedTile === i) {
             el.classList.add("trade-selected");
             el.classList.add("trade-selected-mine");
@@ -347,36 +658,47 @@ function renderBoard(gs) {
           el.classList.add("g-mushroom");
           el.innerHTML =
             `<span class="sname"><svg class="rainbow-banana" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">` +
-            `<defs><linearGradient id="rb" x1="0.2" y1="0" x2="0.8" y2="1">` +
+            `<defs><linearGradient id="rb${i}" x1="0.2" y1="0" x2="0.8" y2="1">` +
             `<stop offset="0%" stop-color="#ff3333"/>` +
             `<stop offset="20%" stop-color="#ff9933"/>` +
             `<stop offset="40%" stop-color="#ffee33"/>` +
             `<stop offset="60%" stop-color="#33dd55"/>` +
             `<stop offset="80%" stop-color="#3399ff"/>` +
             `<stop offset="100%" stop-color="#cc44ff"/>` +
+            `</linearGradient>` +
+            `<linearGradient id="rb-hi${i}" x1="0" y1="0" x2="0.5" y2="1">` +
+            `<stop offset="0%" stop-color="rgba(255,255,255,0.6)"/>` +
+            `<stop offset="50%" stop-color="rgba(255,255,255,0)"/>` +
             `</linearGradient></defs>` +
             `<g transform="rotate(45,32,32) translate(64,0) scale(-1,1)">` +
-            `<path d="M36 10 C34 10 31 14 28 20 C23 30 16 40 16 48 C16 52 18 55 22 55 C25 55 27 53 27 50 C27 44 30 36 34 28 C38 20 42 14 42 11 C42 9 39 8 36 10Z" fill="url(#rb)" stroke="#fff" stroke-width="1.5"/>` +
-            `<path d="M36 10 C38 6 41 3 44 2 C46 1 47 3 46 5 C45 7 42 9 39 10Z" fill="#5a3a1a" stroke="#3d2510" stroke-width="0.8" stroke-linejoin="round"/>` +
-            `<path d="M24 38 C22 42 21 46 22 50" fill="none" stroke="rgba(255,255,255,0.5)" stroke-width="1.5" stroke-linecap="round"/>` +
+            `<path d="M36 10 C34 10 31 14 28 20 C23 30 16 40 16 48 C16 52 18 55 22 55 C25 55 27 53 27 50 C27 44 30 36 34 28 C38 20 42 14 42 11 C42 9 39 8 36 10Z" fill="url(#rb${i})" stroke="rgba(255,255,255,0.7)" stroke-width="1.5"/>` +
+            `<path d="M36 10 C34 10 31 14 28 20 C23 30 16 40 16 48 C16 52 18 55 22 55 C25 55 27 53 27 50 C27 44 30 36 34 28 C38 20 42 14 42 11 C42 9 39 8 36 10Z" fill="url(#rb-hi${i})" stroke="none"/>` +
+            `<path d="M36 10 C38 6 41 3 44 2 C46 1 47 3 46 5 C45 7 42 9 39 10Z" fill="#6a4520" stroke="#3d2510" stroke-width="0.8" stroke-linejoin="round"/>` +
+            `<path d="M35 16 C33 20 30 28 27 36 C25 40 23 44 23 47" fill="none" stroke="rgba(255,255,255,0.55)" stroke-width="2" stroke-linecap="round"/>` +
+            `<path d="M37 14 C36 18 34 24 32 30" fill="none" stroke="rgba(255,255,255,0.25)" stroke-width="1" stroke-linecap="round"/>` +
             `</g></svg></span>` +
             `<span class="sprice">${tile.price}\ud83c\udf4c</span>`;
         } else {
           el.classList.add("g-" + (tile.group || "railroad"));
-          // Show effective yield with side bonus and chain multiplier
-          const baseYield = Math.round(tile.price * (1 + getSideBonus(i)));
+          // Show effective yield with chain multiplier
           const chainMult = _chainMultipliers[i] || 1;
-          const effectiveYield = Math.round(baseYield * chainMult);
+          const effectiveYield = Math.round(tile.price * chainMult);
           const priceDisplay = `${effectiveYield}🍌`;
+          const labelMatch = label.match(/^([A-Za-z]+)(\d+)$/);
+          const labelHTML = labelMatch
+            ? `${labelMatch[1]}<span class="sname-num">${labelMatch[2]}</span>`
+            : label;
           el.innerHTML =
-            `<span class="sname">${label}</span>` +
+            `<span class="sname">${labelHTML}</span>` +
             `<span class="sprice">${priceDisplay}</span>`;
         }
       } else {
         // Non-buyable special tile (chest, chance, tax)
         el.classList.add("type-" + tile.type);
-        const displayName = tile.name || tile.type;
+        const rawName = tile.name || tile.type;
+        const displayName = rawName === "Vine Swing" ? "Vine" : rawName;
         el.innerHTML = `<span class="sname">${displayName}</span>`;
+        if (displayName !== rawName) el.title = rawName;
       }
     } else {
       // Fallback: use static SPACE_DATA / SPECIAL_SPACES (pre-game)
@@ -394,37 +716,26 @@ function renderBoard(gs) {
       } else if (special) {
         el.classList.add("type-" + special.type);
         el.innerHTML = `<span class="sname">${special.name}</span>`;
+        if (special.fullName) el.title = special.fullName;
       }
     }
 
     // Vine Swing: make revealed owned tiles clickable
-    if (gs && gs.vineSwing && gs.vineSwing === myId && !isCornerPos) {
-      const ownsProp =
-        gs.properties &&
-        gs.properties.find((p) => p.id === i && p.owner === myId);
+    if (gs && gs.vineSwing && gs.vineSwing === myId && !isCornerPos && !window._tokenWalking) {
+      const ownsProp = _propById[i] && _propById[i].owner === myId;
       if (ownsProp) {
         el.classList.add("space-pickable");
-        el.addEventListener("click", () => {
-          if (socket && gameId)
-            socket.emit("vine_swing_move", { gameId, position: i });
-        });
       }
     }
 
     // Bomb placement mode: make non-corner tiles clickable
     if (window._bombPlacementMode && !isCornerPos) {
       el.classList.add("space-pickable", "bomb-target");
-      el.addEventListener("click", () => {
-        if (socket && gameId) {
-          socket.emit("place_bomb", { gameId, position: i });
-          closeBombPlacement();
-        }
-      });
     }
 
     // Banana pile — collect for board-level rendering below
     if (gs && gs.properties) {
-      const prop = gs.properties.find((p) => p.id === i);
+      const prop = _propById[i];
       // During dice animation, use frozen banana piles (remove only when token walks over)
       let pileAmount = prop ? prop.bananaPile : 0;
       if (window._frozenBananaPiles) {
@@ -451,8 +762,7 @@ function renderBoard(gs) {
         }
       }
       if (pileAmount > 0) {
-        const owner =
-          gs.players && gs.players.find((p) => p.id === (prop && prop.owner));
+        const owner = prop && prop.owner ? _playerById[prop.owner] : null;
         _bananaPiles.push({
           tileIndex: i,
           amount: pileAmount,
@@ -462,7 +772,7 @@ function renderBoard(gs) {
       }
       // Ownership border
       if (prop && prop.owner) {
-        const owner = gs.players && gs.players.find((p) => p.id === prop.owner);
+        const owner = _playerById[prop.owner];
         if (owner) el.classList.add("owned-" + owner.color);
       }
     }
@@ -470,12 +780,10 @@ function renderBoard(gs) {
     // Sell mode: make own tiles clickable and highlight selected tile
     if (typeof isSellMode === "function" && isSellMode() && window._sellState) {
       const sState = window._sellState;
-      const tProp =
-        gs && gs.properties && gs.properties.find((p) => p.id === i);
+      const tProp = _propById[i];
       if (tProp && tProp.owner === myId) {
         el.classList.add("trade-clickable");
         el.classList.add("trade-clickable-mine");
-        el.addEventListener("click", () => handleSellTileClick(i));
         if (sState.selectedTile === i) {
           el.classList.add("trade-selected");
           el.classList.add("trade-selected-mine");
@@ -492,6 +800,8 @@ function renderBoard(gs) {
   // _growUnfreezeRender: set when GROW corner unfreeze fires — treat all current piles as new
   const isGrowUnfreeze = !!window._growUnfreezeRender;
   window._growUnfreezeRender = false;
+  const isDiceMatchSteal = !!window._diceMatchStealRender;
+  window._diceMatchStealRender = false;
   const grewTiles = new Map(); // tileIndex -> delta
   for (const pile of _bananaPiles) {
     const prev = isGrowUnfreeze ? 0 : (_prevBananaPiles[pile.tileIndex] || 0);
@@ -540,11 +850,19 @@ function renderBoard(gs) {
     }
 
     // Pile-grew animation: pile amount increased since last render
-    if (grewTiles.has(pile.tileIndex)) {
+    // Skip during walk animation UNLESS this is a dice-match or GROW unfreeze render
+    if (grewTiles.has(pile.tileIndex) && (!window._tokenWalking || isGrowUnfreeze || isDiceMatchSteal)) {
       const isDiceMatch = diceMatchSet.has(pile.tileIndex);
       pileEl.classList.add(isDiceMatch ? "dice-match-grow" : "pile-grew");
       const tileEl = document.getElementById("space-" + pile.tileIndex);
       if (tileEl) tileEl.classList.add("pile-grew-tile");
+      if (isDiceMatch && tileEl) {
+        const numEl = tileEl.querySelector(".sname-num");
+        if (numEl) {
+          numEl.classList.add("dice-match-glow");
+          setTimeout(() => numEl.classList.remove("dice-match-glow"), 2500);
+        }
+      }
       const delta = grewTiles.get(pile.tileIndex);
       const floater = document.createElement("div");
       floater.className = "pile-grow-floater";
@@ -575,14 +893,57 @@ function renderBoard(gs) {
     board.appendChild(pileEl);
   }
 
-  // Detect collected piles and show floating animation
+  // Grow-then-steal animation for squatters on GROW corner tiles or dice-match grows
+  if ((isGrowUnfreeze || isDiceMatchSteal) && gs && gs.growSquatterSteals && gs.growSquatterSteals.length > 0) {
+    for (const steal of gs.growSquatterSteals) {
+      const r = spaceRect(steal.tileId);
+      // Show a temporary "grow" floater on the squatted tile
+      const growFloater = document.createElement("div");
+      growFloater.className = "pile-grow-floater";
+      growFloater.textContent = "+" + steal.amount + "\uD83C\uDF4C";
+      if (r.side === "bottom") {
+        growFloater.style.left = r.l + r.w / 2 + "%";
+        growFloater.style.top = r.t - 0.3 + "%";
+      } else if (r.side === "top") {
+        growFloater.style.left = r.l + r.w / 2 + "%";
+        growFloater.style.top = r.t + r.h + 0.3 + "%";
+      } else if (r.side === "left") {
+        growFloater.style.left = r.l + r.w + 0.3 + "%";
+        growFloater.style.top = r.t + r.h / 2 + "%";
+      } else if (r.side === "right") {
+        growFloater.style.left = r.l - 0.3 + "%";
+        growFloater.style.top = r.t + r.h / 2 + "%";
+      } else {
+        growFloater.style.left = r.l + r.w / 2 + "%";
+        growFloater.style.top = r.t + r.h / 2 + "%";
+      }
+      board.appendChild(growFloater);
+      growFloater.addEventListener("animationend", () => growFloater.remove());
+      // After 1 second, show "Steal!" floater and banana burst for squatter
+      const stealLeft = growFloater.style.left;
+      const stealTop = growFloater.style.top;
+      setTimeout(() => {
+        const stealFloater = document.createElement("div");
+        stealFloater.className = "steal-floater";
+        stealFloater.textContent = "Steal!";
+        stealFloater.style.left = stealLeft;
+        stealFloater.style.top = stealTop;
+        board.appendChild(stealFloater);
+        stealFloater.addEventListener("animationend", () => stealFloater.remove());
+        bananaBurst(steal.amount, steal.squatterId);
+      }, 1000);
+    }
+  }
+
+  // Detect collected piles and show floating animation (once per tile per turn)
   const currentPiles = {};
   for (const pile of _bananaPiles) {
     currentPiles[pile.tileIndex] = pile.amount;
   }
   for (const [idx, oldAmount] of Object.entries(_prevBananaPiles)) {
     const newAmount = currentPiles[idx] || 0;
-    if (oldAmount > 0 && newAmount < oldAmount) {
+    if (oldAmount > 0 && newAmount < oldAmount && !_collectShown.has(Number(idx))) {
+      _collectShown.add(Number(idx));
       const collected = oldAmount - newAmount;
       const r = spaceRect(Number(idx));
       const floater = document.createElement("div");
@@ -610,10 +971,14 @@ function renderBoard(gs) {
 
       // The collector is always the current player (they collect own piles and steal from others)
       const collectorId = gs.currentPlayer && gs.currentPlayer.id;
+      // Flying banana burst for pile collection
+      bananaBurst(collected, collectorId);
+      window._walkPileCollected = (window._walkPileCollected || 0) + collected;
 
-      // Show "Steal!" floater if the pile belonged to another player
-      const stolenProp = gs.properties && gs.properties.find((p) => p.id === Number(idx));
-      if (stolenProp && stolenProp.owner && stolenProp.owner !== collectorId) {
+      // Show "Steal!" floater if the pile belonged to another player (once per tile per turn)
+      const stolenProp = _propById[Number(idx)];
+      if (stolenProp && stolenProp.owner && stolenProp.owner !== collectorId && !_stealShown.has(Number(idx))) {
+        _stealShown.add(Number(idx));
         const stealFloater = document.createElement("div");
         stealFloater.className = "steal-floater";
         stealFloater.textContent = "Steal!";
@@ -657,10 +1022,15 @@ function renderBoard(gs) {
       if (tile.type === "freebananas") currentFB.add(idx);
     });
 
-    // Reset shown set when walk ends
-    if (!window._tokenWalking) {
+    // Reset dedup sets when a NEW walk starts (not when walk ends, because
+    // post-walk renderBoard calls still need the sets to block duplicates)
+    const walking = !!window._tokenWalking;
+    if (walking && !_wasTokenWalking) {
       _freeBananasShown = new Set();
+      _stealShown = new Set();
+      _collectShown = new Set();
     }
+    _wasTokenWalking = walking;
 
     // Check if any walking token is currently on a freebananas tile
     // Only show popup if the tile is revealed (hidden tiles don't award bananas)
@@ -702,35 +1072,26 @@ function renderBoard(gs) {
     _prevFreeBananasTiles = currentFB;
   }
 
-  // Side bonus labels (only if side bonuses are enabled)
-  if (gs.sideBonuses) {
-    const sideBonuses = [
-      { label: "+10%", l: "14%", t: "50%" },
-      { label: "+25%", l: "50%", t: "14%" },
-      { label: "+50%", l: "86%", t: "50%" },
-    ];
-    sideBonuses.forEach((b) => {
-      const lbl = document.createElement("div");
-      lbl.className = "side-bonus-label";
-      lbl.textContent = b.label;
-      lbl.style.left = b.l;
-      lbl.style.top = b.t;
-      board.appendChild(lbl);
-    });
-  }
-
-  // Center decoration: jungle scene
+  // Center decoration: jungle scene with decorative rings
   const centerBg = document.createElement("div");
   centerBg.className = "board-center-jungle";
   board.appendChild(centerBg);
 
+  const ring1 = document.createElement("div");
+  ring1.className = "board-center-ring board-center-ring-1";
+  board.appendChild(ring1);
+  const ring2 = document.createElement("div");
+  ring2.className = "board-center-ring board-center-ring-2";
+  board.appendChild(ring2);
+
   const centerTitle = document.createElement("div");
   centerTitle.className = "board-center-title";
   centerTitle.innerHTML =
-    '<div class="jungle-canopy">🌴🌳🌴</div>' +
-    '<span class="banana-land-emoji">🍌</span>' +
-    '<span class="banana-land-name">BANANA<br>LAND</span>' +
-    '<div class="jungle-floor">🐒🌿🐵🌿🐒</div>';
+    '<div class="jungle-canopy">🌴🌳🍌🌳🌴</div>' +
+    '<span class="banana-land-emoji"><span class="monkey-caller">🐒<span class="monkey-phone">📱</span></span></span>' +
+    '<span class="banana-land-name">MONKEY<br>BUSINESS</span>' +
+    '<div class="jungle-floor">🍌🌿🐵🌿🍌</div>' +
+    '<div class="center-vine">🌱🍃🌱</div>';
   board.appendChild(centerTitle);
 
   // Bomb indicators
@@ -753,6 +1114,25 @@ function renderBoard(gs) {
       bombEl.appendChild(timerBadge);
       board.appendChild(bombEl);
     }
+  }
+
+  // Keep showing the bomb at the explosion position until the explosion animation fires
+  if (
+    gs &&
+    gs.lastExplosion &&
+    !window._explosionShown
+  ) {
+    const r = spaceRect(gs.lastExplosion.position);
+    const phantomBomb = document.createElement("div");
+    phantomBomb.className = "bomb-indicator";
+    phantomBomb.textContent = "\uD83C\uDF4D";
+    phantomBomb.style.left = r.l + r.w - 2 + "%";
+    phantomBomb.style.top = r.t + r.h - 2 + "%";
+    const timerBadge = document.createElement("span");
+    timerBadge.className = "bomb-timer";
+    timerBadge.textContent = "0";
+    phantomBomb.appendChild(timerBadge);
+    board.appendChild(phantomBomb);
   }
 
   // Bomb explosion animation (wait for token walk to finish)
@@ -868,6 +1248,7 @@ function renderBoard(gs) {
           _tokenElements[p.id] = tok;
         }
         tok.className = "token c-" + p.color;
+        tok.dataset.playerId = p.id;
         if (p.id === myId) tok.classList.add("token-me");
         if (gs.currentPlayer && gs.currentPlayer.id === p.id)
           tok.classList.add("token-active");
@@ -909,6 +1290,11 @@ function updateSellHighlights() {
   const gs = window._gs;
   if (!gs) return;
   const sState = window._sellState;
+  // Build local property lookup (the renderBoard-scoped _propById isn't accessible here)
+  const _propById = {};
+  if (gs.properties) {
+    for (const p of gs.properties) _propById[p.id] = p;
+  }
   const sellClasses = [
     "trade-clickable",
     "trade-clickable-mine",
@@ -923,22 +1309,13 @@ function updateSellHighlights() {
     // Remove all sell classes first
     sellClasses.forEach((c) => el.classList.remove(c));
 
-    // Remove any previously-attached sell click handler
-    if (el._tradeClickHandler) {
-      el.removeEventListener("click", el._tradeClickHandler);
-      el._tradeClickHandler = null;
-    }
-
     if (!sState) continue;
 
-    const prop = gs.properties && gs.properties.find((p) => p.id === i);
+    const prop = _propById[i];
     if (!prop || prop.owner !== myId) continue;
 
     el.classList.add("trade-clickable");
     el.classList.add("trade-clickable-mine");
-    const handler = () => handleSellTileClick(i);
-    el._tradeClickHandler = handler;
-    el.addEventListener("click", handler);
 
     if (sState.selectedTile === i) {
       el.classList.add("trade-selected");
@@ -1031,6 +1408,7 @@ function buildPreviewLayout() {
       });
     } else if (special) {
       const entry = { type: special.type, name: special.name };
+      if (special.fullName) entry.fullName = special.fullName;
       // Desert cacti are buyable
       if (special.type === "desert") {
         entry.tileName = special.name;
@@ -1263,7 +1641,7 @@ function renderPreviewBoard(layout) {
         el.innerHTML =
           `<span class="sname desert-icon">${tile.tileName}</span>` +
           (tile.price > 0
-            ? `<span class="sprice desert-price">${Math.round(tile.price * (1 + getSideBonus(i)))}\ud83c\udf4c</span>`
+            ? `<span class="sprice desert-price">${tile.price}\ud83c\udf4c</span>`
             : "");
       } else if (tile.group === "mushroom") {
         el.classList.add("g-mushroom");
@@ -1282,17 +1660,18 @@ function renderPreviewBoard(layout) {
           `<path d="M36 10 C38 6 41 3 44 2 C46 1 47 3 46 5 C45 7 42 9 39 10Z" fill="#5a3a1a" stroke="#3d2510" stroke-width="0.8" stroke-linejoin="round"/>` +
           `<path d="M24 38 C22 42 21 46 22 50" fill="none" stroke="rgba(255,255,255,0.5)" stroke-width="1.5" stroke-linecap="round"/>` +
           `</g></svg></span>` +
-          `<span class="sprice">${Math.round(tile.price * (1 + getSideBonus(i)))}\ud83c\udf4c</span>`;
+          `<span class="sprice">${tile.price}\ud83c\udf4c</span>`;
       } else {
         el.classList.add("g-" + (tile.group || "railroad"));
         el.innerHTML =
           `<span class="sname">${label}</span>` +
-          `<span class="sprice">${Math.round(tile.price * (1 + getSideBonus(i)))}\ud83c\udf4c</span>`;
+          `<span class="sprice">${tile.price}\ud83c\udf4c</span>`;
       }
     } else {
       el.classList.add("type-" + tile.type);
       const displayName = (tile.name || tile.type || "").replace(/\n/g, "<br>");
       el.innerHTML = `<span class="sname">${displayName}</span>`;
+      if (tile.fullName) el.title = tile.fullName;
     }
 
     board.appendChild(el);

@@ -225,7 +225,7 @@
       <!-- ── Menu ─────────────────────────────────────────────── -->
       <div id="screen-menu" class="screen active">
         <div class="card menu-card">
-          <div class="menu-logo">🐒</div>
+          <div class="menu-logo"><span class="monkey-caller">🐒<span class="monkey-phone">📱</span></span></div>
           <h1>🍍💣 MONKEY BUSINESS 💰</h1>
           <p class="menu-tagline">
             🌴 Buy farms. Grow bananas. Bomb monkeys. Achieve the
@@ -293,7 +293,7 @@
             </div>
             <div class="form-section">
               <div class="form-section-title">⚙️ Game Settings</div>
-              <label
+              <label class="players-label"
                 >Players
                 <select
                   id="create-max"
@@ -303,6 +303,42 @@
                   <option value="3">3</option>
                   <option value="4" selected>4</option>
                 </select>
+                <span class="auction-info-icon" tabindex="0" onclick="event.preventDefault(); event.stopPropagation(); this.classList.toggle('open');">?
+                  <div class="auction-tooltip">
+                    <div class="auction-tooltip-title">Auction Types by Player Count</div>
+                    <div class="auction-tooltip-section">
+                      <strong>2 bidders → FFA Auction</strong> (Simple Auction off)
+                      <ol>
+                        <li>Lander places a visible opening bid</li>
+                        <li>Challenger bids blindly (must beat lander's bid)</li>
+                        <li>Lander gets an optional second bid (wins ties)</li>
+                      </ol>
+                      <em>Desert tiles skip the lander's second bid.</em>
+                    </div>
+                    <div class="auction-tooltip-section">
+                      <strong>2 bidders → Simple Auction</strong> (Simple Auction on, FFA only)
+                      <ol>
+                        <li>Lander names a price</li>
+                        <li>Opponent accepts or declines</li>
+                        <li>If accepted → opponent buys at that price</li>
+                        <li>If declined → lander buys at their own price</li>
+                      </ol>
+                      <em>If multiple opponents accept, they enter a silent auction (min bid = lander's price). Ties go to the lander.</em>
+                    </div>
+                    <div class="auction-tooltip-section">
+                      <strong>3+ bidders → Price-It Auction</strong>
+                      <ol>
+                        <li>Lander names a price</li>
+                        <li>All others accept or reject (odd-one-out)</li>
+                        <li>All accept OR all reject → lander buys</li>
+                        <li>Exactly 1 accepts → that player buys</li>
+                        <li>Exactly 1 rejects → that player buys</li>
+                      </ol>
+                      <em>Players who can't afford the price are excluded. If only 1 opponent remains, it falls back to Simple Auction rules.</em>
+                    </div>
+                    <div class="auction-tooltip-note">Bidder count = non-bankrupt players. With 2 players you always get 2 bidders. With 3-4 players you start with Price-It and may fall back if players go bankrupt.</div>
+                  </div>
+                </span>
               </label>
               <label
                 >Starting Bananas 🍌 <span id="bananas-display">2222</span>
@@ -347,21 +383,13 @@
             <div class="form-section" style="grid-column: 1 / -1">
               <div class="form-section-title">🔧 Options</div>
               <div style="display: flex; gap: 18px; flex-wrap: wrap">
-                <label class="toggle-label" id="simple-auction-label">
-                  <input type="checkbox" id="create-simple-auction" checked />
-                  <span>Simple Auction 🏷️</span>
-                </label>
-                <label class="toggle-label">
+<label class="toggle-label">
                   <input type="checkbox" id="create-bomb-mode" checked />
                   <span>Pineapple Bomb Mode 🍍</span>
                 </label>
                 <label class="toggle-label">
                   <input type="checkbox" id="create-monkey-poker" checked />
                   <span>Monkey Poker 🐵</span>
-                </label>
-                <label class="toggle-label">
-                  <input type="checkbox" id="create-side-bonuses" />
-                  <span>Side Bonuses 📍</span>
                 </label>
               </div>
             </div>
@@ -387,8 +415,7 @@
           <div class="join-grid">
             <div class="form-section">
               <div class="form-section-title">🎫 Game Code</div>
-              <label
-                >Enter the 6-digit code
+              <label for="join-code">Enter the 6-digit code</label>
                 <div class="input-paste-row">
                   <input
                     id="join-code"
@@ -400,7 +427,6 @@
                     📋 Paste
                   </button>
                 </div>
-              </label>
             </div>
             <div class="form-section">
               <div class="form-section-title">🐒 Your Monkey</div>
@@ -529,10 +555,10 @@
                   <div class="lobby-pet-name">Magic Pet</div>
                   <div
                     class="lobby-pet-desc"
-                    data-cd-desc="Flip a coin: heads forward 1, tails backward 1. 10 roll cooldown."
+                    data-cd-desc="Flip a coin: heads forward 1, tails backward 1. 15 roll cooldown."
                     data-lim-desc="Flip a coin: heads forward 1, tails backward 1. 2 uses per game."
                   >
-                    Flip a coin: heads forward 1, tails backward 1. 10 roll
+                    Flip a coin: heads forward 1, tails backward 1. 15 roll
                     cooldown.
                   </div>
                 </button>
@@ -545,7 +571,7 @@
               <div class="lobby-waiting-dots">
                 <span></span><span></span><span></span>
               </div>
-              <span>Waiting for players</span>
+              <span id="lobby-waiting-text">Waiting for players</span>
             </div>
             <div class="card-actions">
               <button
@@ -1283,7 +1309,7 @@
                   "
                 >
                   <span style="font-size: 1.2em; line-height: 1">🐇</span>
-                  <span>🎲🎲🎲 1000🍌</span>
+                  <span>🎲🎲🎲 500🍌</span>
                 </button>
               </div>
               <button
@@ -1530,6 +1556,10 @@
               />
               Reveal All Tiles</label
             >
+            <label class="toggle-reveal toggle-auto-all" title="Turn on all auto toggles">
+              <input type="checkbox" id="chk-auto-all" onchange="toggleAutoAll(this.checked)" />
+              Auto All
+            </label>
             <label class="toggle-reveal" title="Auto bid 1🍌 in auctions">
               <input type="checkbox" id="chk-auto-bid" />
               Auto Bid 1
@@ -1653,6 +1683,11 @@
                 >
                 <a
                   class="rules-toc-link"
+                  onclick="scrollToRule('rules-sec-fogofwar')"
+                  >🌫️ Fog of War</a
+                >
+                <a
+                  class="rules-toc-link"
                   onclick="scrollToRule('rules-sec-settings')"
                   >⚙️ Game Modes</a
                 >
@@ -1721,8 +1756,8 @@
               </p>
               <div class="rules-callout rules-callout-warn">
                 <b>🍍 Pineapple Bomb Mode:</b> If enabled, you can also win by
-                detonating a pineapple bomb under an opponent! See the Bombs
-                section below.
+                eliminating an opponent with a pineapple bomb! See the
+                Bombs section below.
               </div>
               <p>
                 In <b>Teams mode (2v2)</b>, your team wins when either teammate
@@ -1743,7 +1778,7 @@
               </p>
               <ul>
                 <li><b>1 die</b> — costs 500🍌 (move 1–6 spaces)</li>
-                <li><b>3 dice</b> — costs 1,000🍌 (move 3–18 spaces)</li>
+                <li><b>3 dice</b> — costs 500🍌 (move 3–18 spaces)</li>
               </ul>
               <div class="rules-callout rules-callout-tip">
                 <b>🍌 Banana Piles:</b> As you move, you automatically
@@ -1784,9 +1819,10 @@
                 in a new spot each game — no two games are alike!
               </p>
               <p>
-                At game start, all tiles are briefly
-                <b>revealed for 5 seconds</b>
-                before the board shuffles — memorize what you can!
+                At game start, all tiles are revealed in a
+                <b>reveal phase</b> — each player accepts to continue, and
+                a countdown timer begins. Memorize what you can before the
+                board locks in!
               </p>
             </div>
 
@@ -1907,20 +1943,10 @@
                 owning farms of the same color on opposite sides of the board
                 won't form a chain.
               </p>
-              <p>
-                <b>Side Bonus</b> (optional — off by default, enable in game
-                options):
-              </p>
-              <ul>
-                <li>Bottom row: <b>+0%</b></li>
-                <li>Left column: <b>+10%</b></li>
-                <li>Top row: <b>+25%</b></li>
-                <li>Right column: <b>+50%</b></li>
-              </ul>
               <div class="rules-callout rules-callout-example">
                 <b>📝 Example:</b> You own 2 adjacent Red Dacca farms (yield
-                200🍌 each) on the top row. You land on GROW 50%. Growth per
-                farm = 200 × 0.50 × (1 + 0.25) × 2 = <b>250🍌</b> added to each
+                200🍌 each). You land on GROW 50%. Growth per
+                farm = 200 × 0.50 × 2 = <b>200🍌</b> added to each
                 farm's banana pile.
               </div>
               <div class="rules-callout rules-callout-warn">
@@ -1933,9 +1959,10 @@
             <div class="rules-section">
               <h3>🏜️ Desert Tiles</h3>
               <p>
-                <b>8 desert tiles</b> that cost 0🍌. They produce no yield and
-                are excluded from GROW. Won through auctions like normal farms —
-                but since they cost nothing, the winning bid is always 0.
+                <b>8 desert tiles</b> that produce no yield and
+                are excluded from GROW. Won through auctions like normal farms.
+                They can be strategically useful for blocking chains or as
+                placeholders.
               </p>
             </div>
 
@@ -1977,7 +2004,7 @@
               </p>
               <div class="rules-callout rules-callout-tip">
                 <b>Can't afford it?</b> The tile is revealed to all players for
-                4.5 seconds, then it <b>swaps to a random hidden tile</b>
+                ~7 seconds, then it <b>swaps to a random hidden tile</b>
                 elsewhere on the board. The tile left behind becomes a normal
                 farm that gets auctioned.
               </div>
@@ -2150,23 +2177,27 @@
                 <div class="rules-step">
                   <span class="rules-step-num">3</span>
                   <span
-                    ><b>Wait...</b> The bomb arms after a few turns. If an
-                    opponent lands on or near it — 💥 BOOM!</span
+                    ><b>Wait...</b> The bomb has a <b>5-turn timer</b>. It
+                    arms when the timer reaches ≤2. If an opponent lands on or
+                    near it while armed — 💥 BOOM!</span
                   >
                 </div>
               </div>
               <div class="rules-callout rules-callout-warn">
-                <b>⏳ Timer:</b> Bombs last <b>5 turns</b>. They arm partway
-                through and explode when the timer runs out.
+                <b>⏳ Timer:</b> Bombs last <b>5 turns</b>. They
+                <b>arm at ≤2 turns remaining</b> and
+                <b>auto-explode when the timer hits 0</b>.
                 <b>Blast radius</b> hits the bomb tile
                 <b>plus 1 tile on each side</b>
-                (3 tiles total).
+                (3 tiles total). If a bomb survives a full round without
+                detonating, it expires and the owner gets a refund.
               </div>
               <div class="rules-callout rules-callout-tip">
-                <b>💥 Self-damage:</b> If you're caught in your own bomb's
-                blast, you lose <b>50% of your bananas</b> (but aren't
-                eliminated). Opponents in the blast are eliminated and you claim
-                their bananas and farms.
+                <b>💥 Self-damage:</b> If you or your <b>teammate</b> are
+                caught in your own bomb's blast, you lose
+                <b>50% of your bananas</b> (but aren't eliminated).
+                Opponents in the blast are <b>instantly eliminated</b> and
+                you claim their bananas and farms.
               </div>
             </div>
 
@@ -2271,21 +2302,52 @@
                   <tr>
                     <td>🦄 Magic</td>
                     <td>Coin flip: heads = forward 1, tails = backward 1</td>
-                    <td>10 rolls</td>
+                    <td>15 rolls</td>
                     <td>2 uses</td>
                   </tr>
                 </tbody>
               </table>
               <p>
-                <b>🦄 Magic Pet</b> can also target an opponent — on their next
-                turn, a coin flip decides: heads pushes them forward 1, tails
-                does nothing.
+                <b>🆓 Pets are free to use</b> — no banana cost.
+                You must have <b>rolled at least once</b> before your pet
+                becomes available.
               </p>
               <p>
                 <b>Cooldown mode:</b> Pet recharges after N rolls (counting
                 <i>all</i> players' rolls). <b>Limited mode:</b> Fixed number of
                 uses for the entire game — use them wisely!
               </p>
+            </div>
+
+            <!-- ═══ CATEGORY: FOG OF WAR ═══ -->
+            <div class="rules-category-header" id="rules-sec-fogofwar">
+              <span class="rules-cat-line"></span>
+              <span class="rules-cat-label">🌫️ Fog of War</span>
+              <span class="rules-cat-line"></span>
+            </div>
+
+            <div class="rules-section">
+              <h3>🌫️ Fog of War (Optional)</h3>
+              <p>
+                When enabled, the board starts <b>hidden</b> — tiles are
+                face-down and you can't see what's on them until you
+                <b>discover</b> them. Tiles are revealed when:
+              </p>
+              <ul>
+                <li>You <b>land on</b> or <b>walk through</b> a tile</li>
+                <li>The tile is <b>adjacent</b> to a tile you've visited</li>
+              </ul>
+              <p>
+                Each player has their own <b>revealed tiles</b> set — what
+                you've discovered is visible only to you. Other players may
+                have discovered different parts of the board.
+              </p>
+              <div class="rules-callout rules-callout-tip">
+                <b>🔍 Strategy:</b> Fog of War adds a layer of exploration
+                and memory to the game. You need to explore the board to find
+                the ⭐ Super Banana — you can't just rush to it from the
+                start!
+              </div>
             </div>
 
             <!-- ═══ CATEGORY: GAME MODES ═══ -->
@@ -2304,7 +2366,7 @@
               </p>
               <ul>
                 <li>
-                  <b>No yield</b> between teammates — landing on your teammate's
+                  <b>No poker</b> between teammates — landing on your teammate's
                   farm is safe
                 </li>
                 <li>Teammate banana piles are <b>collected, not stolen</b></li>
@@ -2324,7 +2386,7 @@
                   <tr>
                     <td>📦 Send Bananas</td>
                     <td>150🍌</td>
-                    <td>Transfer any amount of 🍌 to your teammate</td>
+                    <td>Transfer any amount of 🍌 to your teammate (fee is on top)</td>
                   </tr>
                   <tr>
                     <td>🔄 Swap Farms</td>
@@ -2361,7 +2423,7 @@
                   <tr>
                     <td>💰 Starting Bananas</td>
                     <td>2,222🍌</td>
-                    <td>Range: 100–99,999🍌</td>
+                    <td>Range: 100–4,000🍌</td>
                   </tr>
                   <tr>
                     <td>👥 Max Players</td>
@@ -2376,7 +2438,7 @@
                   <tr>
                     <td>🍍 Pineapple Bomb Mode</td>
                     <td>On</td>
-                    <td>Buy & plant bombs for instant win</td>
+                    <td>Buy & plant bombs for instant elimination</td>
                   </tr>
                   <tr>
                     <td>🐵 Monkey Poker</td>
@@ -2384,9 +2446,9 @@
                     <td>Simplified poker (1–10 cards, sum wins)</td>
                   </tr>
                   <tr>
-                    <td>📍 Side Bonuses</td>
+                    <td>🌫️ Fog of War</td>
                     <td>Off</td>
-                    <td>Board edges give +10%/+25%/+50% yield bonus</td>
+                    <td>Board starts hidden — discover tiles as you move</td>
                   </tr>
                   <tr>
                     <td>🐾 Pet Mode</td>

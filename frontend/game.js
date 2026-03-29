@@ -5,7 +5,8 @@ let gameId = null;
 let myId = null;
 let revealAll = false;
 let gs = null; // current game state
-let _prevLogLen = 0; // track log length for banana burst detection
+let _gsPlayerMap = {}; // { playerId: player } — rebuilt on each game_update for O(1) lookups
+let _gsPropMap = {}; // { propertyId: property } — rebuilt on each game_update for O(1) lookups
 let _syncingLobby = false; // guard: prevent updateLobbySettings during showLobby sync
 
 const MONKEY_EMOJI = {
@@ -134,6 +135,70 @@ function playAuctionLoss() {
   } catch (e) {}
 }
 
+function playTaxSound() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const t = ctx.currentTime;
+    // Cash register "ka-ching" — bright metallic hit then bell ring
+    const hit = ctx.createOscillator();
+    const hitGain = ctx.createGain();
+    hit.type = "square";
+    hit.frequency.setValueAtTime(1200, t);
+    hit.frequency.exponentialRampToValueAtTime(600, t + 0.06);
+    hitGain.gain.setValueAtTime(0.04, t);
+    hitGain.gain.exponentialRampToValueAtTime(0.001, t + 0.08);
+    hit.connect(hitGain).connect(ctx.destination);
+    hit.start(t);
+    hit.stop(t + 0.08);
+    // Bell ding
+    const bell = ctx.createOscillator();
+    const bellGain = ctx.createGain();
+    bell.type = "sine";
+    bell.frequency.setValueAtTime(2200, t + 0.06);
+    bellGain.gain.setValueAtTime(0.05, t + 0.06);
+    bellGain.gain.exponentialRampToValueAtTime(0.001, t + 0.5);
+    bell.connect(bellGain).connect(ctx.destination);
+    bell.start(t + 0.06);
+    bell.stop(t + 0.5);
+    // Second higher ding
+    const bell2 = ctx.createOscillator();
+    const bell2Gain = ctx.createGain();
+    bell2.type = "sine";
+    bell2.frequency.setValueAtTime(3300, t + 0.12);
+    bell2Gain.gain.setValueAtTime(0.035, t + 0.12);
+    bell2Gain.gain.exponentialRampToValueAtTime(0.001, t + 0.55);
+    bell2.connect(bell2Gain).connect(ctx.destination);
+    bell2.start(t + 0.12);
+    bell2.stop(t + 0.55);
+  } catch (e) {}
+}
+
+function playBananaWhoosh() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const t = ctx.currentTime;
+    // Whoosh — filtered noise sweep
+    const buf = ctx.createBuffer(1, ctx.sampleRate * 0.35, ctx.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1);
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    const bp = ctx.createBiquadFilter();
+    bp.type = "bandpass";
+    bp.frequency.setValueAtTime(400, t);
+    bp.frequency.exponentialRampToValueAtTime(2000, t + 0.15);
+    bp.frequency.exponentialRampToValueAtTime(300, t + 0.35);
+    bp.Q.value = 2;
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0.001, t);
+    gain.gain.linearRampToValueAtTime(0.12, t + 0.08);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.35);
+    src.connect(bp).connect(gain).connect(ctx.destination);
+    src.start(t);
+    src.stop(t + 0.35);
+  } catch (e) {}
+}
+
 let _shuffleAudioCtx = null;
 function playVineSwing() {
   try {
@@ -239,7 +304,7 @@ function initSocket() {
       gs.players.forEach((p) => {
         window._prevPlayerPositions[p.id] = p.position;
       });
-      const me = gs.players.find((p) => p.id === socket.id);
+      const me = _gsPlayerMap[socket.id];
       if (me && me.revealedTiles) {
         window._prevRevealedTiles = new Set(me.revealedTiles);
       }
@@ -252,7 +317,7 @@ function initSocket() {
         });
       }
       // Snapshot money before state update
-      const meSnap = gs.players.find((p) => p.id === socket.id);
+      const meSnap = _gsPlayerMap[socket.id];
       if (meSnap) window._prevMoney = meSnap.money;
       // Snapshot all players' money for deduction popups
       window._prevPlayerMoney = {};
@@ -264,20 +329,84 @@ function initSocket() {
     if (gs && gs.vineSwing && !state.vineSwing) {
       playVineSwing();
     }
+    // Detect vine swing activation: animate the vine tile
+    if (state.vineSwing && (!gs || !gs.vineSwing)) {
+      const vinePlayer = state.players && state.players.find(p => p.id === state.vineSwing);
+      if (vinePlayer) {
+        const vineEl = document.getElementById("space-" + vinePlayer.position);
+        if (vineEl) {
+          vineEl.classList.remove("vine-activate");
+          void vineEl.offsetWidth;
+          vineEl.classList.add("vine-activate");
+          vineEl.addEventListener("animationend", () => vineEl.classList.remove("vine-activate"), { once: true });
+        }
+      }
+    }
 
     gs = state;
     gameId = state.gameId;
     myId = socket.id;
+    // Rebuild lookup maps for O(1) access
+    _gsPlayerMap = {};
+    if (gs.players) for (const p of gs.players) _gsPlayerMap[p.id] = p;
+    _gsPropMap = {};
+    if (gs.properties) for (const p of gs.properties) _gsPropMap[p.id] = p;
     route();
 
     // General money-loss detection: show red deduction popup for ANY player
     // whose money decreased (tax, farm purchase, bombs, poker, etc.)
+    // If a walk animation is in progress, defer the walking player's deduction
+    // until they visually land on the tile.
+    // If poker just started, defer BOTH poker players' deductions until the
+    // poker table visually appears.
     if (window._prevPlayerMoney) {
+      // Detect if a brand-new dice roll just arrived (walk animation hasn't started yet)
+      const isNewDiceRoll = gs.diceRolled && gs.dice && !gs.petUsedThisTurn &&
+        gs.currentPlayer && (gs.dice.join("-") + "-" + gs.turn) !== window._lastDiceKey;
+      const walkInProgress = window._tokenWalking || isNewDiceRoll;
+      const pokerJustStarted = gs.poker && !gs.poker.resolved && walkInProgress;
+      const walkingId = window._walkingPlayerId || (isNewDiceRoll && gs.currentPlayer ? gs.currentPlayer.id : null);
+
       for (const p of gs.players) {
         const prev = window._prevPlayerMoney[p.id];
+
+        // ── Money LOSS detection ──
         if (prev != null && p.money < prev) {
           const diff = prev - p.money;
-          _showMoneyDeduction(p.id, diff);
+          if (pokerJustStarted && gs.poker.players[p.id]) {
+            // Defer poker deductions until poker table appears
+            if (!window._pendingPokerDeductions) window._pendingPokerDeductions = [];
+            window._pendingPokerDeductions.push({ playerId: p.id, amount: diff });
+          } else if (walkInProgress && p.id === walkingId) {
+            // Defer walking player's deduction until visual landing
+            window._pendingLandingDeduction = { playerId: p.id, amount: diff };
+          } else if (isNewDiceRoll && p.id !== walkingId) {
+            // Defer other players' deductions (e.g. rent loss) until visual landing
+            if (!window._pendingLandingOtherEffects) window._pendingLandingOtherEffects = [];
+            window._pendingLandingOtherEffects.push({ type: "loss", playerId: p.id, amount: diff });
+          } else {
+            _showMoneyDeduction(p.id, diff);
+          }
+        }
+
+        // ── Money GAIN detection ──
+        // Skip the walking player — pile collections are handled in board.js,
+        // and non-pile gains fire from the post-walk handler.
+        if (prev != null && p.money > prev) {
+          const gain = p.money - prev;
+          if (walkInProgress && p.id === walkingId) {
+            // Walking player gains handled by post-walk handler
+          } else if (isNewDiceRoll) {
+            // Defer other players' gains (e.g. rent income) until visual landing
+            if (!window._pendingLandingOtherEffects) window._pendingLandingOtherEffects = [];
+            window._pendingLandingOtherEffects.push({ type: "gain", playerId: p.id, amount: gain });
+          } else if (window._tokenWalking) {
+            // Walk mid-progress updates — defer
+            if (!window._pendingLandingOtherEffects) window._pendingLandingOtherEffects = [];
+            window._pendingLandingOtherEffects.push({ type: "gain", playerId: p.id, amount: gain });
+          } else {
+            bananaBurst(gain, p.id);
+          }
         }
       }
     }
@@ -329,6 +458,11 @@ function initSocket() {
 function route() {
   if (!gs) return;
   if (gs.state === "waiting") {
+    window._returnedToLobby = false;
+    showLobby();
+  } else if (gs.state === "finished" && window._returnedToLobby) {
+    // Player clicked "Back to Lobby" but game hasn't fully reset yet
+    // Show lobby screen while waiting for other players
     showLobby();
   } else if (gs.state === "revealing") {
     showReveal();
@@ -351,10 +485,25 @@ function showGameOver() {
   if (!overlay || overlay.style.display === "flex") return;
   overlay.style.display = "flex";
 
+  // Spawn confetti particles
+  const confettiEmojis = ["\uD83C\uDF4C", "\uD83C\uDF1F", "\u2728", "\uD83C\uDF89", "\uD83C\uDF8A", "\uD83D\uDC51", "\uD83C\uDF4C", "\u2B50"];
+  for (let i = 0; i < 40; i++) {
+    const el = document.createElement("span");
+    el.className = "game-over-confetti";
+    el.textContent = confettiEmojis[Math.floor(Math.random() * confettiEmojis.length)];
+    el.style.left = Math.random() * 100 + "vw";
+    el.style.top = -(Math.random() * 10) + "%";
+    el.style.animationDuration = 2.5 + Math.random() * 3 + "s";
+    el.style.animationDelay = Math.random() * 2 + "s";
+    el.style.fontSize = 1 + Math.random() * 1.2 + "em";
+    overlay.appendChild(el);
+    el.addEventListener("animationend", () => el.remove());
+  }
+
   // Find the winner (player who owns the mushroom property, bomb winner, or banana loser)
   let winnerPlayer;
   if (gs.bombWinner) {
-    winnerPlayer = gs.players.find((p) => p.id === gs.bombWinner);
+    winnerPlayer = _gsPlayerMap[gs.bombWinner];
   } else if (gs.bananaLoser) {
     // Winner is the opponent with the most money
     winnerPlayer = [...gs.players]
@@ -363,7 +512,7 @@ function showGameOver() {
   } else {
     winnerPlayer = gs.players.find((p) =>
       p.properties.some((pos) => {
-        const prop = gs.properties && gs.properties.find((pr) => pr.id === pos);
+        const prop = _gsPropMap[pos];
         return prop && prop.group === "mushroom";
       }),
     );
@@ -374,7 +523,7 @@ function showGameOver() {
     const emoji = MONKEY_EMOJI[winnerPlayer.color] || "\uD83D\uDC35";
     winnerEl.innerHTML = `${emoji} <span class="winner-name">${winnerPlayer.name}</span><br>is the Monkey King! \uD83D\uDC51\uD83D\uDCA5`;
   } else if (winnerPlayer && gs.bananaLoser) {
-    const loser = gs.players.find((p) => p.id === gs.bananaLoser);
+    const loser = _gsPlayerMap[gs.bananaLoser];
     const emoji = MONKEY_EMOJI[winnerPlayer.color] || "\uD83D\uDC35";
     winnerEl.innerHTML = `${emoji} <span class="winner-name">${winnerPlayer.name}</span><br>is the richest monkey and wins! \u2b50\uD83D\uDC51`;
   } else if (winnerPlayer) {
@@ -393,7 +542,7 @@ function showGameOver() {
     if (a.bankrupt !== b.bankrupt) return a.bankrupt ? 1 : -1;
     return b.money - a.money;
   });
-  const superBananaSvg = `<svg class="super-banana-icon" viewBox="0 0 64 64" width="28" height="28"><defs><radialGradient id="sbg" cx="40%" cy="35%" r="60%"><stop offset="0%" stop-color="#fff7a0"/><stop offset="40%" stop-color="#ffe135"/><stop offset="100%" stop-color="#c8a800"/></radialGradient><filter id="sbglow"><feGaussianBlur stdDeviation="2" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs><g filter="url(#sbglow)"><path d="M38 8c-8 2-16 12-20 24s-4 22 0 24c3 2 8-2 14-10s12-20 14-28c1-6-2-12-8-10z" fill="url(#sbg)" stroke="#b8960a" stroke-width="1.5"/><path d="M38 8c2-3 6-4 8-2s2 6-1 10" fill="none" stroke="#b8960a" stroke-width="1.5" stroke-linecap="round"/></g><polygon points="52,6 54,12 60,12 55,16 57,22 52,18 47,22 49,16 44,12 50,12" fill="#ffe135" stroke="#c8a800" stroke-width="0.8"/></svg>`;
+  const superBananaSvg = `<svg class="super-banana-icon" viewBox="0 0 64 64" width="28" height="28"><defs><linearGradient id="sbrb" x1="0.2" y1="0" x2="0.8" y2="1"><stop offset="0%" stop-color="#ff3333"/><stop offset="20%" stop-color="#ff9933"/><stop offset="40%" stop-color="#ffee33"/><stop offset="60%" stop-color="#33dd55"/><stop offset="80%" stop-color="#3399ff"/><stop offset="100%" stop-color="#cc44ff"/></linearGradient></defs><g transform="rotate(45,32,32) translate(64,0) scale(-1,1)"><path d="M36 10 C34 10 31 14 28 20 C23 30 16 40 16 48 C16 52 18 55 22 55 C25 55 27 53 27 50 C27 44 30 36 34 28 C38 20 42 14 42 11 C42 9 39 8 36 10Z" fill="url(#sbrb)" stroke="#fff" stroke-width="1.5"/><path d="M36 10 C38 6 41 3 44 2 C46 1 47 3 46 5 C45 7 42 9 39 10Z" fill="#5a3a1a" stroke="#3d2510" stroke-width="0.8" stroke-linejoin="round"/><path d="M24 38 C22 42 21 46 22 50" fill="none" stroke="rgba(255,255,255,0.5)" stroke-width="1.5" stroke-linecap="round"/></g></svg>`;
 
   standingsEl.innerHTML = sorted
     .map((p, i) => {
@@ -672,7 +821,6 @@ function hideReveal() {
 
 function showLobby() {
   showScreen("screen-lobby");
-  _prevLogLen = 0;
   _revealShown = false;
   _shufflePlayed = false;
   resetBoardAnimationState();
@@ -697,17 +845,15 @@ function showLobby() {
     <div class="lobby-setting">\ud83c\udfae <span class="lobby-setting-val">${modeLabel}</span></div>
     <div class="lobby-setting">\ud83d\udc3e <span class="lobby-setting-val">${petModeLabel}</span></div>
     ${gs.gameMode === "teams" ? `<div class="lobby-setting">\u2b50 <span class="lobby-setting-val">Win: Buy the Super Banana (7777\ud83c\udf4c)</span></div>` : ""}
-    ${gs.simpleAuction ? '<div class="lobby-setting">\ud83c\udff7\ufe0f <span class="lobby-setting-val">Simple Auction</span></div>' : ""}
     ${gs.bombMode ? '<div class="lobby-setting">\ud83c\udf4d <span class="lobby-setting-val">Pineapple Bomb Mode</span></div>' : ""}
     ${gs.monkeyPoker ? '<div class="lobby-setting">\ud83d\udc35 <span class="lobby-setting-val">Monkey Poker</span></div>' : ""}
     ${!gs.monkeyPoker ? '<div class="lobby-setting">\ud83c\udccf <span class="lobby-setting-val">Real Poker</span></div>' : ""}
-    ${gs.sideBonuses ? '<div class="lobby-setting">\ud83d\udccd <span class="lobby-setting-val">Side Bonuses</span></div>' : ""}
   `;
 
-  // Host settings controls
+  // Host settings controls (hide while waiting for players to return from finished game)
   const controlsEl = document.getElementById("lobby-settings-controls");
   const isHost = myId === gs.admin;
-  if (isHost) {
+  if (isHost && gs.state === "waiting") {
     controlsEl.style.display = "";
     settingsEl.style.display = "none";
     const lobbyBananas = document.getElementById("lobby-bananas");
@@ -804,15 +950,27 @@ function showLobby() {
 
   // Waiting indicator
   const waitingEl = document.getElementById("lobby-waiting");
-  if (gs.gameMode === "teams") {
+  const waitingForLobby = gs.state === "finished" && gs.lobbyReady;
+  const waitingTextEl = document.getElementById("lobby-waiting-text");
+  if (waitingForLobby) {
+    const readyCount = gs.lobbyReady.length;
+    const totalCount = gs.players.length;
+    waitingEl.style.display = "flex";
+    waitingTextEl.textContent =
+      `Waiting for players to return (${readyCount}/${totalCount})`;
+  } else if (gs.gameMode === "teams") {
     waitingEl.style.display = gs.players.length < 4 ? "flex" : "none";
+    waitingTextEl.textContent = "Waiting for players";
   } else {
     waitingEl.style.display = gs.players.length < 2 ? "flex" : "none";
+    waitingTextEl.textContent = "Waiting for players";
   }
 
   const btn = document.getElementById("btn-start");
   const allHavePets = gs.players.every((p) => p.pet);
-  if (gs.gameMode === "teams") {
+  if (waitingForLobby) {
+    btn.disabled = true;
+  } else if (gs.gameMode === "teams") {
     btn.disabled = !(
       myId === gs.admin &&
       gs.players.length === 4 &&
@@ -892,7 +1050,7 @@ function selectPet(petType) {
 
 function usePet() {
   if (!socket || !gameId || !gs) return;
-  const me = gs.players.find((p) => p.id === myId);
+  const me = _gsPlayerMap[myId];
   if (!me || !me.pet) return;
   if (gs.petMode === "limited") {
     if ((me.petUses || 0) <= 0) return;
@@ -905,7 +1063,7 @@ function usePet() {
 function updateLobbyPets() {
   const petSection = document.getElementById("lobby-pet-section");
   if (!petSection || !gs) return;
-  const me = gs.players.find((p) => p.id === myId);
+  const me = _gsPlayerMap[myId];
   if (!me) return;
 
   // Highlight selected pet card
@@ -1089,6 +1247,25 @@ function _showMoneyDeduction(playerId, amount) {
   anchor.style.position = anchor.style.position || "relative";
   anchor.appendChild(popup);
   setTimeout(() => popup.remove(), 2400);
+
+  // Also show a big animated floater on the board tile for the player
+  const player = gs && gs.players && gs.players.find((p) => p.id === playerId);
+  if (player != null) {
+    const tileRect = typeof spaceRect === "function" ? spaceRect(player.position) : null;
+    if (tileRect) {
+      const board = document.getElementById("board");
+      if (board) {
+        const taxFloater = document.createElement("div");
+        taxFloater.className = "tax-deduction-floater";
+        taxFloater.textContent = `-${amount}🍌`;
+        taxFloater.style.left = tileRect.l + tileRect.w / 2 + "%";
+        taxFloater.style.top = tileRect.t + tileRect.h / 2 + "%";
+        board.appendChild(taxFloater);
+        taxFloater.addEventListener("animationend", () => taxFloater.remove());
+        playTaxSound();
+      }
+    }
+  }
 }
 
 // ── Game Screen ────────────────────────────────────────────────────
@@ -1117,7 +1294,7 @@ function showGame() {
   }
 
   const cur = gs.currentPlayer;
-  const me = gs.players.find((p) => p.id === myId);
+  const me = _gsPlayerMap[myId];
   const isMyTurn = cur && cur.id === myId;
 
   // Turn info
@@ -1128,15 +1305,15 @@ function showGame() {
         ? gs.petUsedThisTurn
           ? "\ud83d\udc3e Pet used!"
           : "Your turn!"
-        : gs.petUsedThisTurn && cur
-          ? `\ud83d\udc3e ${cur.name}'s pet used!`
-          : cur.name
+        : cur.name
       : "—";
     document.getElementById("turn-name").style.color = isMyTurnLabel
       ? "#ffe135"
       : cur
         ? ""
         : "#888";
+    const turnInfoEl = document.querySelector(".turn-info");
+    if (turnInfoEl) turnInfoEl.classList.toggle("my-turn", !!isMyTurnLabel);
   }
 
   // Dice
@@ -1197,7 +1374,7 @@ function showGame() {
   if (roll3Btn) {
     roll3Btn.style.display = me && !isMyTurn ? "" : "none";
     roll3Btn.disabled =
-      myMoney < 1000 || !!petIsArmedForDice || isFirstRound || armedDice === 1;
+      myMoney < 500 || !!petIsArmedForDice || isFirstRound || armedDice === 1;
     roll3Btn.innerHTML =
       armedDice === 3
         ? '<span style="font-size:1.2em;line-height:1">\uD83D\uDC07</span><span>\uD83C\uDFB2\u00d73 Armed \u2713</span>'
@@ -1209,7 +1386,6 @@ function showGame() {
   if (canRoll && armedDice) {
     const rollBtn = document.getElementById("btn-roll");
     if (rollBtn)
-      if (rollBtn)
         rollBtn.textContent = `\uD83C\uDFB2 Roll (${armedDice === 1 ? "1 die" : "3 dice"})`;
   } else {
     const rollBtn = document.getElementById("btn-roll");
@@ -1249,6 +1425,10 @@ function showGame() {
     const diceKey = gs.dice.join("-") + "-" + gs.turn;
     if (diceKey !== window._lastDiceKey) {
       window._lastDiceKey = diceKey;
+      // Mark walk in progress immediately so subsequent game_updates
+      // defer money effects (closes the gap between _lastDiceKey set and walk start)
+      window._tokenWalking = true;
+      window._walkPileCollected = 0;
       // Freeze token positions and tile reveals at pre-roll state during animation
       window._diceRollingPositions = window._prevPlayerPositions || null;
       window._walkStartPositions = window._prevPlayerPositions ? Object.assign({}, window._prevPlayerPositions) : null;
@@ -1258,6 +1438,8 @@ function showGame() {
       window._tokenVisitedTiles = new Set();
       window._walkingPlayerId = cur.id;
       window._walkingLandingPos = cur.position;
+      window._walkPreMoney = window._prevPlayerMoney && window._prevPlayerMoney[cur.id] != null
+        ? window._prevPlayerMoney[cur.id] : (cur.money || 0);
       // Freeze money display at pre-roll value
       window._frozenMoney =
         window._prevMoney != null ? window._prevMoney : null;
@@ -1288,6 +1470,7 @@ function showGame() {
           const hasDiceMatch = gs.diceMatchTiles && gs.diceMatchTiles.length > 0;
           if (hasDiceMatch) {
             window._diceMatchUnfrozen = true;
+            window._diceMatchStealRender = true;
             renderBoard(gs);
           }
           // Step-by-step token walk to final position
@@ -1314,6 +1497,30 @@ function showGame() {
             playMoveTickSound();
             if (step >= steps) {
               clearInterval(walkInterval);
+
+              // ── Smooth landing: move token to final position via the
+              // lightweight walk-step path first, then defer the heavy
+              // full-board rebuild so the CSS transition finishes cleanly.
+              const finalPos = walkBackward
+                ? (startPos - step + 52) % 52
+                : (startPos + step) % 52;
+              window._diceRollingPositions = window._diceRollingPositions || {};
+              window._diceRollingPositions[cur.id] = finalPos;
+              if (window._tokenVisitedTiles) {
+                window._tokenVisitedTiles.add(finalPos);
+              }
+              walkStepUpdate(gs);
+              // Landing pulse on the final tile
+              const landedEl = document.getElementById("space-" + finalPos);
+              if (landedEl) {
+                landedEl.classList.remove("space-stepped", "space-landed");
+                void landedEl.offsetWidth;
+                landedEl.classList.add("space-landed");
+                landedEl.addEventListener("animationend", () => landedEl.classList.remove("space-landed"), { once: true });
+              }
+
+              // After the token transition completes, do the heavy cleanup
+              setTimeout(() => {
               // Fire freebananas popup if landing directly on the tile (it is never
               // an intermediate step so the board.js walk-through check can't catch it)
               const _landingSpace = gs.boardLayout && gs.boardLayout[cur.position];
@@ -1325,21 +1532,89 @@ function showGame() {
               window._diceRollingPositions = null;
               window._diceRollingRevealed = null;
               window._tokenWalking = false;
-              window._frozenMoney = null;
+              // Fire banana burst for non-pile money gains during walk
+              // (e.g. birthday, chest, free bananas, rent income)
+              const _walkPlayer = gs.players && gs.players.find(p => p.id === window._walkingPlayerId);
+              if (_walkPlayer && window._walkPreMoney != null) {
+                const totalGain = _walkPlayer.money - window._walkPreMoney;
+                const pileGain = window._walkPileCollected || 0;
+                const nonPileGain = totalGain - pileGain;
+                if (nonPileGain > 0) {
+                  bananaBurst(nonPileGain, _walkPlayer.id);
+                }
+              }
+              window._walkPreMoney = null;
+              window._walkPileCollected = 0;
               window._walkingPlayerId = null;
               window._walkingLandingPos = null;
+              // Fire deferred effects for other players (rent, etc.)
+              // Skip squatter steal gains — those are handled by the grow animation in board.js
+              const _squatterStealIds = new Set();
+              if (gs && gs.growSquatterSteals) {
+                for (const s of gs.growSquatterSteals) _squatterStealIds.add(s.squatterId);
+              }
+              if (window._pendingLandingOtherEffects) {
+                for (const fx of window._pendingLandingOtherEffects) {
+                  if (fx.type === "gain" && _squatterStealIds.has(fx.playerId)) {
+                    // Skip — board.js grow animation fires the burst for squatter steals
+                    continue;
+                  }
+                  if (fx.type === "gain") {
+                    bananaBurst(fx.amount, fx.playerId);
+                  } else {
+                    _showMoneyDeduction(fx.playerId, fx.amount);
+                  }
+                }
+                window._pendingLandingOtherEffects = null;
+              }
+              // If poker is about to start, keep money frozen for poker players
+              // until the poker table visually appears
+              const _pokerPending = gs && gs.poker && !gs.poker.resolved;
+              if (_pokerPending) {
+                window._pokerMoneyFrozen = {};
+                if (window._prevPlayerMoney) {
+                  for (const pid of Object.keys(gs.poker.players)) {
+                    if (window._prevPlayerMoney[pid] != null) {
+                      window._pokerMoneyFrozen[pid] = window._prevPlayerMoney[pid];
+                    }
+                  }
+                }
+                // Keep own money frozen if we're in the poker
+                if (window._frozenMoney != null && gs.poker.players[myId]) {
+                  window._pokerMoneyFrozen._myFrozen = window._frozenMoney;
+                }
+              }
+              window._frozenMoney = null;
+              // Fire deferred deduction popup (e.g. tax) now that the token has landed
+              // But skip poker deductions — those fire when the poker table appears
+              if (window._pendingLandingDeduction) {
+                const _ded = window._pendingLandingDeduction;
+                window._pendingLandingDeduction = null;
+                if (!(_pokerPending && gs.poker.players[_ded.playerId])) {
+                  _showMoneyDeduction(_ded.playerId, _ded.amount);
+                }
+              }
               // Update all players' banana scores immediately on landing
+              // (but keep poker players' money frozen)
               if (gs && gs.players) {
-                const _landingMe = gs.players.find((p) => p.id === myId);
+                const _landingMe = _gsPlayerMap[myId];
                 if (_landingMe) {
                   const _moneyEl = document.getElementById("info-money");
-                  if (_moneyEl) _moneyEl.textContent = `${_landingMe.money}\uD83C\uDF4C`;
+                  if (_moneyEl) {
+                    const _displayMoney = (window._pokerMoneyFrozen && window._pokerMoneyFrozen._myFrozen != null)
+                      ? window._pokerMoneyFrozen._myFrozen : _landingMe.money;
+                    _moneyEl.textContent = `${_displayMoney}\uD83C\uDF4C`;
+                  }
                 }
                 for (const _p of gs.players) {
                   const _pstat = document.querySelector(`.pstat[data-player-id="${_p.id}"]`);
                   if (_pstat) {
                     const _pm = _pstat.querySelector(".pstat-money");
-                    if (_pm) _pm.textContent = `${_p.money}\uD83C\uDF4C`;
+                    if (_pm) {
+                      const _dispMoney = (window._pokerMoneyFrozen && window._pokerMoneyFrozen[_p.id] != null)
+                        ? window._pokerMoneyFrozen[_p.id] : _p.money;
+                      _pm.textContent = `${_dispMoney}\uD83C\uDF4C`;
+                    }
                   }
                 }
               }
@@ -1372,6 +1647,7 @@ function showGame() {
                 // Re-run showGame to update money display and trigger pending notifications
                 route();
               }, 500);
+              }, 160); // wait for token CSS transition (140ms) to finish
             } else {
               // Move token one tile forward (or backward)
               const intermediatePos = walkBackward
@@ -1383,11 +1659,19 @@ function showGame() {
               if (window._tokenVisitedTiles) {
                 window._tokenVisitedTiles.add(intermediatePos);
               }
-              renderBoard(gs);
+              walkStepUpdate(gs);
+              // Brief glow on the tile being stepped on
+              const steppedEl = document.getElementById("space-" + intermediatePos);
+              if (steppedEl) {
+                steppedEl.classList.remove("space-stepped");
+                void steppedEl.offsetWidth;
+                steppedEl.classList.add("space-stepped");
+                steppedEl.addEventListener("animationend", () => steppedEl.classList.remove("space-stepped"), { once: true });
+              }
             }
           }, 150);
           }; // end startWalk
-          window._tokenWalking = true;
+          // _tokenWalking and _walkPileCollected already set at dice roll detection time
           if (walkDelay > 0) {
             setTimeout(startWalk, walkDelay);
           } else {
@@ -1425,9 +1709,9 @@ function showGame() {
   // Turn notification — show once per turn, keep visible for 1.5s (suppress during pet resolving)
   const notif = document.getElementById("turn-notification");
 
-  // Pet used notification — show when any player activates a pet
+  // Pet used notification — only show to the player who activated the pet
   const petNotifEl = document.getElementById("pet-used-notification");
-  if (petNotifEl && gs.lastPetUsed) {
+  if (petNotifEl && gs.lastPetUsed && gs.lastPetUsed.playerId === myId) {
     const petKey = `${gs.turn}-${gs.lastPetUsed.playerName}-${gs.lastPetUsed.petType}`;
     if (petKey !== window._lastPetNotifKey) {
       window._lastPetNotifKey = petKey;
@@ -1492,9 +1776,7 @@ function showGame() {
         !window._superBananaBoughtShown
       ) {
         window._superBananaBoughtShown = true;
-        const buyer = gs.players.find(
-          (p) => p.id === gs.superBananaWin.playerId,
-        );
+        const buyer = _gsPlayerMap[gs.superBananaWin.playerId];
         const name = buyer ? buyer.name : "Someone";
         if (textEl)
           textEl.textContent = `\u2b50 ${name} can afford it! ${name} bought the Super Banana and became Monkey God! \ud83d\udc51`;
@@ -1503,11 +1785,9 @@ function showGame() {
         !window._superBananaCantAffordShown
       ) {
         window._superBananaCantAffordShown = true;
-        const loser = gs.players.find(
-          (p) => p.id === gs.superBananaWin.playerId,
-        );
+        const loser = _gsPlayerMap[gs.superBananaWin.playerId];
         const winner = gs.superBananaWin.winnerId
-          ? gs.players.find((p) => p.id === gs.superBananaWin.winnerId)
+          ? _gsPlayerMap[gs.superBananaWin.winnerId]
           : null;
         const loserName = loser ? loser.name : "Someone";
         const winnerName = winner ? winner.name : "the richest monkey";
@@ -1640,7 +1920,7 @@ function showGame() {
       window._lastAuctionPos = gs.auction.position;
       window._lastAuctionSimple = gs.auction.simple;
     } else if (window._lastAuctionPos != null) {
-      const wonProp = gs.players.find((p) => p.id === myId);
+      const wonProp = _gsPlayerMap[myId];
       if (wonProp && wonProp.properties.includes(window._lastAuctionPos)) {
         if (window._lastAuctionSimple) {
           auctionNotif.textContent =
@@ -1695,7 +1975,9 @@ function showGame() {
       (window._diceRollingPositions || window._tokenWalking) &&
       window._frozenMoney != null
         ? window._frozenMoney
-        : me.money;
+        : (window._pokerMoneyFrozen && window._pokerMoneyFrozen._myFrozen != null)
+          ? window._pokerMoneyFrozen._myFrozen
+          : me.money;
     document.getElementById("info-money").textContent = `${displayMoney}🍌`;
     document.getElementById("info-position").textContent =
       `Position: ${me.position}`;
@@ -1773,7 +2055,7 @@ function showGame() {
       setTimeout(() => {
         window._autoEndQueued = false;
         // Re-check pet usability at execution time to avoid stale timer ending turn
-        const meNow = gs && gs.players && gs.players.find((p) => p.id === myId);
+        const meNow = gs && _gsPlayerMap[myId];
         const petReady =
           meNow &&
           meNow.pet &&
@@ -1849,8 +2131,7 @@ function showGame() {
         window._autoPetQueued = true;
         setTimeout(() => {
           window._autoPetQueued = false;
-          const meNow =
-            gs && gs.players && gs.players.find((p) => p.id === myId);
+          const meNow = gs && _gsPlayerMap[myId];
           const petStillReady =
             meNow &&
             (meNow.pet === "energy" ||
@@ -1912,8 +2193,7 @@ function showGame() {
           window._autoPetQueued = true;
           setTimeout(() => {
             window._autoPetQueued = false;
-            const meNow =
-              gs && gs.players && gs.players.find((p) => p.id === myId);
+            const meNow = gs && _gsPlayerMap[myId];
             const petStillReady =
               meNow &&
               meNow.pet &&
@@ -2007,7 +2287,7 @@ function showGame() {
   const plist = document.getElementById("players-list");
   plist.innerHTML = "";
   const isAnimating = !!(window._diceRollingPositions || window._tokenWalking);
-  const frozenPlayerMoney = isAnimating ? window._prevPlayerMoney : null;
+  const frozenPlayerMoney = isAnimating ? window._prevPlayerMoney : window._pokerMoneyFrozen || null;
   if (gs.gameMode === "teams" && gs.teams) {
     // Section off by team
     for (const teamKey of ["A", "B"]) {
@@ -2019,7 +2299,7 @@ function showGame() {
       teamDiv.appendChild(teamHeader);
       const members = gs.teams[teamKey];
       members.forEach((id) => {
-        const p = gs.players.find((pl) => pl.id === id);
+        const p = _gsPlayerMap[id];
         if (!p) return;
         const div = document.createElement("div");
         const isMe = p.id === myId;
@@ -2088,8 +2368,6 @@ function showGame() {
     logEl.scrollTop = 0;
   }
 
-  // Banana burst check
-  checkBananaBurstTrigger();
 
   // Board
   renderBoard(gs);
@@ -2218,7 +2496,7 @@ function updateOwnerPanel() {
             chainMult > 1
               ? ` <span class="owner-prop-bonus">${chainMult}x</span>`
               : "";
-          propsHTML += `<div class="owner-set-farm"><span class="owner-farm-name">${f.tileName || f.name}</span><span class="owner-prop-price">${effectivePrice}🍌${chainLabel}</span></div>`;
+          propsHTML += `<div class="owner-set-farm"><span class="owner-farm-name">${f.tileLabel || f.tileName || f.name}</span><span class="owner-prop-price">${effectivePrice}🍌${chainLabel}</span></div>`;
         });
         propsHTML += `</div>`;
       });
@@ -2254,23 +2532,21 @@ function updatePropertyChart() {
   CHART_GROUPS.forEach((g) => (grouped[g.key] = []));
 
   // Build set of tiles revealed to current player
-  const me = gs.players.find((p) => p.id === socket.id);
+  const me = _gsPlayerMap[socket.id];
   const myRevealed = me && me.revealedTiles ? new Set(me.revealedTiles) : null;
 
   gs.boardLayout.forEach((tile, pos) => {
     if (!tile.tileName || !tile.group) return;
-    const prop = gs.properties.find((p) => p.id === pos);
+    const prop = _gsPropMap[pos];
     const ownerPlayer =
-      prop && prop.owner ? gs.players.find((pl) => pl.id === prop.owner) : null;
+      prop && prop.owner ? _gsPlayerMap[prop.owner] : null;
     if (!grouped[tile.group]) grouped[tile.group] = [];
     const revealed = !myRevealed || myRevealed.has(pos);
     grouped[tile.group].push({
       pos,
       name: tile.tileName,
       label: tile.tileLabel || null,
-      price: revealed
-        ? Math.round(tile.price * (1 + getSideBonus(pos)))
-        : tile.price,
+      price: tile.price,
       owner: ownerPlayer,
       revealed,
     });
@@ -2359,12 +2635,8 @@ function createGame() {
     parseInt(document.getElementById("create-bananas").value) || 2222;
   const gameMode = document.getElementById("create-mode").value;
   const petMode = document.getElementById("create-petmode").value;
-  const simpleAuction = document.getElementById(
-    "create-simple-auction",
-  ).checked;
   const bombMode = document.getElementById("create-bomb-mode").checked;
   const monkeyPoker = document.getElementById("create-monkey-poker").checked;
-  const sideBonuses = document.getElementById("create-side-bonuses").checked;
   if (!socket.connected)
     return alert("Connecting to server, please try again.");
   socket.emit("create_game", {
@@ -2373,41 +2645,29 @@ function createGame() {
     startingMoney: bananas,
     gameMode,
     petMode,
-    simpleAuction,
     bombMode,
     monkeyPoker,
-    sideBonuses,
   });
 }
 
 function pasteCode() {
   const input = document.getElementById("join-code");
-
-  function apply(text) {
-    if (!text) return false;
-    const code = text.trim().replace(/\D/g, "").substring(0, 6);
-    if (code) {
-      input.value = code;
-      return true;
-    }
+  function apply(raw) {
+    if (!raw) return false;
+    const code = raw.trim().replace(/\D/g, "").substring(0, 6);
+    if (code) { input.value = code; return true; }
     return false;
   }
-
-  function fallbackPrompt() {
+  function askUser() {
     const text = prompt("Paste your game code:");
     apply(text);
   }
-
-  // Try the modern Clipboard API first (requires HTTPS or localhost)
   if (navigator.clipboard && navigator.clipboard.readText) {
-    navigator.clipboard
-      .readText()
-      .then((text) => {
-        if (!apply(text)) fallbackPrompt();
-      })
-      .catch(fallbackPrompt);
+    navigator.clipboard.readText().then((text) => {
+      if (!apply(text)) askUser();
+    }).catch(() => askUser());
   } else {
-    fallbackPrompt();
+    askUser();
   }
 }
 
@@ -2471,8 +2731,25 @@ function debugAddBananas() {
 }
 
 function _getBidMax() {
-  const me = gs && gs.players ? gs.players.find((p) => p.id === myId) : null;
-  return me ? me.money : 500;
+  const me = gs ? _gsPlayerMap[myId] : null;
+  if (!me) return 500;
+  let max = me.money;
+  // When lander is pitching a price, cap at second-richest player's money
+  // if the lander is the richest player
+  if (
+    gs.auction &&
+    (gs.auction.phase === "team-bid" || gs.auction.phase === "simple-bid") &&
+    myId === gs.auction.landingPlayer
+  ) {
+    const others = gs.players.filter((p) => p.id !== myId && !p.bankrupt);
+    if (others.length > 0) {
+      const maxOtherMoney = Math.max(...others.map((p) => p.money));
+      if (me.money >= maxOtherMoney) {
+        max = maxOtherMoney;
+      }
+    }
+  }
+  return max;
 }
 
 function bidKeyPress(digit) {
@@ -2523,7 +2800,7 @@ function setBidMax() {
 function setBidOpponentBankPlus1() {
   playTickSound();
   if (!gs || !gs.auction) return;
-  const me = gs.players.find((p) => p.id === myId);
+  const me = _gsPlayerMap[myId];
   if (!me) return;
   const opponents = gs.players.filter((p) => p.id !== myId && !p.bankrupt);
   if (!opponents.length) return;
@@ -2552,46 +2829,29 @@ function placeBid() {
   if (amount < 0) return;
 
   // Minimum 1 banana (unless player is broke)
-  const me = gs && gs.players && gs.players.find((p) => p.id === myId);
+  const me = gs && _gsPlayerMap[myId];
   if (amount < 1 && me && me.money > 0) {
     showBidToast("1🍌 minimum!");
     return;
   }
 
-  // Client-side check: challengers must bid more than lander's opening bid
+  // Client-side check: pitch price capped at second-richest player's money
   if (
     gs &&
     gs.auction &&
-    gs.auction.phase === "challenger-bid" &&
-    myId !== gs.auction.landingPlayer
-  ) {
-    if (
-      gs.auction.landerOpenBid != null &&
-      amount <= gs.auction.landerOpenBid
-    ) {
-      showBidToast(
-        `Bid too low! Must be more than ${gs.auction.landerOpenBid}🍌`,
-      );
-      return;
-    }
-  }
-  // Client-side check: lander second bid must exceed their opening bid
-  if (
-    gs &&
-    gs.auction &&
-    gs.auction.phase === "lander-second" &&
+    (gs.auction.phase === "team-bid" || gs.auction.phase === "simple-bid") &&
     myId === gs.auction.landingPlayer
   ) {
-    if (
-      gs.auction.landerOpenBid != null &&
-      amount <= gs.auction.landerOpenBid
-    ) {
+    const maxAllowed = _getBidMax();
+    if (amount > maxAllowed) {
       showBidToast(
-        `Bid too low! Must be more than ${gs.auction.landerOpenBid}🍌`,
+        `Max price is ${maxAllowed}🍌 (richest opponent's bank)`,
       );
+      input.value = String(maxAllowed);
       return;
     }
   }
+
   window._myLastBid = amount;
   socket.emit("place_bid", { gameId, amount });
   input.value = "0";
@@ -2612,8 +2872,6 @@ function updateAuctionPanel() {
     window._auctionBidPhase = null;
     window._myLastBid = null;
     window._auctionDelayShown = false;
-    window._challengerRevealDone = false;
-    window._challengerRevealTimer = null;
     return;
   }
   // Delay showing auction until dice animation finishes and token lands
@@ -2628,7 +2886,6 @@ function updateAuctionPanel() {
 
   const a = gs.auction;
   const myBid = a.bids[myId];
-  const isChallenger = a.phase === "challenger-bid" && myId !== a.landingPlayer;
 
   // Update auction title
   const titleEl = document.getElementById("auction-title");
@@ -2636,43 +2893,13 @@ function updateAuctionPanel() {
     titleEl.textContent =
       a.phase === "simple-tiebreak"
         ? "\uD83D\uDD07 SILENT AUCTION \uD83D\uDD07"
-        : a.teamAuction
-          ? "\uD83C\uDFF7\uFE0F PRICE IT \uD83C\uDFF7\uFE0F"
-          : a.simple
-            ? "\uD83C\uDFF7\uFE0F PRICE IT \uD83C\uDFF7\uFE0F"
-            : "\uD83C\uDF4C BANANA BID \uD83C\uDF4C";
-
-  // Challenger reveal delay: show lander's bid for 2s before showing controls
-  if (isChallenger && !window._challengerRevealDone) {
-    box.style.display = "block";
-    // Show the lander bid reveal splash
-    const propEl = document.getElementById("auction-prop");
-    propEl.textContent = `Farm #${a.position} (hidden)`;
-    propEl.className = "auction-prop";
-    const highEl = document.getElementById("auction-high");
-    const landerName =
-      gs.players.find((p) => p.id === a.landingPlayer)?.name || "Lander";
-    highEl.textContent = `${landerName} bid ${a.landerOpenBid}\uD83C\uDF4C`;
-    document.getElementById("auction-turn").textContent = "";
-    document.getElementById("auction-controls").style.display = "none";
-    const passBtn = document.getElementById("btn-pass");
-    if (passBtn) passBtn.style.display = "none";
-    document.getElementById("auction-bids").innerHTML = "";
-    if (!window._challengerRevealTimer) {
-      window._challengerRevealTimer = setTimeout(() => {
-        window._challengerRevealDone = true;
-        window._challengerRevealTimer = null;
-        updateAuctionPanel();
-      }, 2000);
-    }
-    return;
-  }
+        : "\uD83C\uDFF7\uFE0F PRICE IT \uD83C\uDFF7\uFE0F";
 
   box.style.display = "block";
 
   const propEl = document.getElementById("auction-prop");
   if (myId === a.landingPlayer && a.propName) {
-    propEl.textContent = `${a.propName} \u2014 ${Math.round(a.propPrice * (1 + getSideBonus(a.position)))}\uD83C\uDF4C yield`;
+    propEl.textContent = `${a.propName} \u2014 ${a.propPrice}\uD83C\uDF4C yield`;
     propEl.className = a.propGroup
       ? "auction-prop g-" + a.propGroup
       : "auction-prop";
@@ -2725,22 +2952,6 @@ function updateAuctionPanel() {
       highEl.textContent =
         "Silent auction in progress \u2014 waiting for bids...";
     }
-  } else if (a.phase === "lander-bid") {
-    highEl.textContent =
-      myId === a.landingPlayer
-        ? "You landed here \u2014 place your opening bid! \uD83C\uDF4C"
-        : "Waiting for lander to place their opening bid...";
-  } else if (a.phase === "challenger-bid") {
-    if (myId === a.landingPlayer) {
-      highEl.textContent = `You bid ${a.landerOpenBid}\uD83C\uDF4C \u2014 waiting for challengers...`;
-    } else {
-      highEl.textContent = `Lander bid ${a.landerOpenBid}\uD83C\uDF4C \u2014 outbid or pass! \uD83D\uDC12`;
-    }
-  } else if (a.phase === "lander-second") {
-    highEl.textContent =
-      myId === a.landingPlayer
-        ? "Challenger(s) outbid you! Pass or place your second bid. \uD83C\uDF4C"
-        : "Lander is placing a second bid...";
   }
 
   document.getElementById("auction-turn").textContent = "";
@@ -2766,9 +2977,6 @@ function updateAuctionPanel() {
     !(a.tiebreakBidders || []).includes(myId)
   )
     canBid = false;
-  if (a.phase === "lander-bid" && myId !== a.landingPlayer) canBid = false;
-  if (a.phase === "challenger-bid" && myId === a.landingPlayer) canBid = false;
-  if (a.phase === "lander-second" && myId !== a.landingPlayer) canBid = false;
   controls.style.display = canBid ? "flex" : "none";
 
   // Auto-bid debug toggle: automatically bid 1 when it's our turn to bid
@@ -2804,43 +3012,22 @@ function updateAuctionPanel() {
     }
   }
 
-  // Show/hide pass button (challengers can pass, lander on second bid can pass)
+  // Show/hide pass button (only for simple-tiebreak phase)
   const passBtn = document.getElementById("btn-pass");
   if (passBtn) {
-    const showPass =
-      canBid &&
-      (a.phase === "challenger-bid" ||
-        a.phase === "lander-second" ||
-        a.phase === "simple-tiebreak");
+    const showPass = canBid && a.phase === "simple-tiebreak";
     passBtn.style.display = showPass ? "inline-block" : "none";
   }
 
   // Bid input hint
   const bidInput = document.getElementById("bid-amount");
-  const me = gs.players.find((p) => p.id === myId);
-  const maxBid = me ? me.money : 500;
+  const me = _gsPlayerMap[myId];
+  const maxBid = _getBidMax();
   if (parseInt(bidInput.value) > maxBid) bidInput.value = String(maxBid);
   // Reset input when auction first appears or phase changes
   const phaseKey = a.phase;
   if (canBid && window._auctionBidPhase !== phaseKey) {
-    // Pre-fill challenger bid with lander's bid + 1
     if (
-      a.phase === "challenger-bid" &&
-      myId !== a.landingPlayer &&
-      a.landerOpenBid != null
-    ) {
-      const prefill = Math.min(a.landerOpenBid + 1, maxBid);
-      bidInput.value = String(prefill);
-      window._bidAutoFilled = true;
-    } else if (
-      a.phase === "lander-second" &&
-      myId === a.landingPlayer &&
-      a.landerOpenBid != null
-    ) {
-      const prefill = Math.min(a.landerOpenBid + 1, maxBid);
-      bidInput.value = String(prefill);
-      window._bidAutoFilled = true;
-    } else if (
       a.phase === "simple-tiebreak" &&
       (a.tiebreakBidders || []).includes(myId) &&
       a.landerOpenBid != null
@@ -2852,7 +3039,6 @@ function updateAuctionPanel() {
       // Default to 1 for opening bids (or 0 if player is broke)
       const defaultBid =
         a.phase === "simple-bid" ||
-        a.phase === "lander-bid" ||
         a.phase === "team-bid"
           ? Math.min(1, maxBid)
           : 0;
@@ -2875,7 +3061,7 @@ function updateAuctionPanel() {
   const bidsEl = document.getElementById("auction-bids");
   bidsEl.innerHTML = "";
   for (const pid of Object.keys(a.bids)) {
-    const player = gs.players.find((p) => p.id === pid);
+    const player = _gsPlayerMap[pid];
     const b = a.bids[pid];
     const d = document.createElement("div");
     const isLanding = pid === a.landingPlayer;
@@ -2907,12 +3093,6 @@ function updateAuctionPanel() {
       !isLanding
     ) {
       d.textContent = `${player?.name || "?"}${label}: Deciding...`;
-    } else if (a.phase === "lander-bid" && !isLanding) {
-      d.textContent = `${player?.name || "?"}${label}: Waiting...`;
-    } else if (a.phase === "challenger-bid" && isLanding) {
-      d.textContent = `${player?.name || "?"}${label}: Bid ${a.landerOpenBid}\uD83C\uDF4C`;
-    } else if (a.phase === "lander-second" && !isLanding) {
-      d.textContent = `${player?.name || "?"}${label}: Waiting for result...`;
     } else {
       d.textContent = `${player?.name || "?"}${label}: Bidding...`;
     }
@@ -3027,7 +3207,7 @@ function updatePokerTable() {
   const pk = gs.poker;
   const isMk = pk.monkeyPoker;
   const renderCard = isMk ? monkeyCardHTML : cardHTML;
-  const me = gs.players.find((p) => p.id === myId);
+  const me = _gsPlayerMap[myId];
   const amInPoker = pk.players[myId] != null;
   const myPoker = pk.players[myId];
   const opId = amInPoker
@@ -3038,8 +3218,8 @@ function updatePokerTable() {
   const myPkId = amInPoker ? myId : pk.sbPlayer;
   const opPoker = pk.players[opId];
   const myPk = pk.players[myPkId];
-  const opPlayer = gs.players.find((p) => p.id === opId);
-  const myPlayer = gs.players.find((p) => p.id === myPkId);
+  const opPlayer = _gsPlayerMap[opId];
+  const myPlayer = _gsPlayerMap[myPkId];
 
   // Detect if this is a brand-new poker game
   const justStarted = !_prevPokerActive;
@@ -3051,6 +3231,32 @@ function updatePokerTable() {
   _prevPokerActive = true;
   _prevPokerRound = pk.round;
   _prevPokerCommunityCount = pk.communityCards.length;
+
+  // Fire deferred poker deductions now that the table is visible
+  if (justStarted && window._pendingPokerDeductions) {
+    const deds = window._pendingPokerDeductions;
+    window._pendingPokerDeductions = null;
+    for (const d of deds) _showMoneyDeduction(d.playerId, d.amount);
+  }
+  // Unfreeze poker players' money display
+  if (justStarted && window._pokerMoneyFrozen) {
+    window._pokerMoneyFrozen = null;
+    // Update money displays to actual values
+    if (gs && gs.players) {
+      const _me = _gsPlayerMap[myId];
+      if (_me) {
+        const _moneyEl = document.getElementById("info-money");
+        if (_moneyEl) _moneyEl.textContent = `${_me.money}\uD83C\uDF4C`;
+      }
+      for (const _p of gs.players) {
+        const _pstat = document.querySelector(`.pstat[data-player-id="${_p.id}"]`);
+        if (_pstat) {
+          const _pm = _pstat.querySelector(".pstat-money");
+          if (_pm) _pm.textContent = `${_p.money}\uD83C\uDF4C`;
+        }
+      }
+    }
+  }
 
   // Header and guide
   document.getElementById("poker-header-text").textContent = isMk
@@ -3138,7 +3344,7 @@ function updatePokerTable() {
         _pokerDealQueue.push(
           setTimeout(
             () => {
-              oppCardsEl.innerHTML += renderCard(null, "poker-card-dealing");
+              oppCardsEl.insertAdjacentHTML('beforeend', renderCard(null, "poker-card-dealing"));
               playCardDraw();
             },
             200 + i * 300,
@@ -3152,11 +3358,14 @@ function updatePokerTable() {
     }
   }
 
-  // Opponent hand name at showdown
+  // Opponent hand name / card total
   const oppHandEl = document.getElementById("poker-opp-hand");
   if (pk.round === "showdown") {
     oppHandEl.textContent =
       opId === pk.bbPlayer ? pk.bbHandName || "" : pk.sbHandName || "";
+  } else if (isMk && opPoker.cards && opPoker.cards.length > 0) {
+    const opTotal = opPoker.cards.reduce((s, c) => s + c.value, 0);
+    oppHandEl.textContent = `Total: ${opTotal}`;
   } else {
     oppHandEl.textContent = "";
   }
@@ -3192,10 +3401,10 @@ function updatePokerTable() {
         _pokerDealQueue.push(
           setTimeout(
             () => {
-              myCardsEl.innerHTML += renderCard(
+              myCardsEl.insertAdjacentHTML('beforeend', renderCard(
                 myPk.cards[i],
                 "poker-card-dealing",
-              );
+              ));
               playCardDraw();
             },
             800 + i * 300,
@@ -3212,7 +3421,7 @@ function updatePokerTable() {
         _pokerDealQueue.push(
           setTimeout(
             () => {
-              myCardsEl.innerHTML += renderCard(null, "poker-card-dealing");
+              myCardsEl.insertAdjacentHTML('beforeend', renderCard(null, "poker-card-dealing"));
               playCardDraw();
             },
             800 + i * 300,
@@ -3224,11 +3433,14 @@ function updatePokerTable() {
     }
   }
 
-  // My hand name at showdown
+  // My hand name / card total
   const myHandEl = document.getElementById("poker-my-hand");
   if (pk.round === "showdown") {
     myHandEl.textContent =
       myPkId === pk.bbPlayer ? pk.bbHandName || "" : pk.sbHandName || "";
+  } else if (isMk && myPk.cards && myPk.cards.length > 0) {
+    const myTotal = myPk.cards.reduce((s, c) => s + c.value, 0);
+    myHandEl.textContent = `Total: ${myTotal}`;
   } else {
     myHandEl.textContent = "";
   }
@@ -3294,7 +3506,7 @@ function updatePokerTable() {
     if (pk.winner === "tie") {
       resultText.textContent = `🤝 It's a tie! Pot split!`;
     } else {
-      const winnerP = gs.players.find((p) => p.id === pk.winner);
+      const winnerP = _gsPlayerMap[pk.winner];
       resultText.textContent = `🏆 ${winnerP?.name || "?"} wins ${pk.pot}🍌!`;
     }
   } else if (amInPoker && pk.currentTurn === myId && !myPk.folded) {
@@ -3379,7 +3591,7 @@ function pokerRaise() {
 }
 
 function pokerAllIn() {
-  const me = gs.players.find((p) => p.id === myId);
+  const me = _gsPlayerMap[myId];
   const pk = gs.poker;
   if (!me || !pk || !pk.players[myId]) return;
   const total = me.money + pk.players[myId].bet;
@@ -3394,6 +3606,17 @@ function pokerDismiss() {
 function togglePokerGuide() {
   const guide = document.getElementById("poker-guide");
   guide.style.display = guide.style.display === "none" ? "" : "none";
+}
+
+function toggleAutoAll(on) {
+  const ids = ["chk-auto-roll", "chk-auto-end", "chk-auto-bid", "chk-auto-accept", "chk-auto-vine", "chk-auto-fold"];
+  for (const id of ids) {
+    const el = document.getElementById(id);
+    if (el) el.checked = on;
+  }
+  // Pet toggle uses dataset.armed instead of checked
+  const petBtn = document.getElementById("btn-auto-pet");
+  if (petBtn) petBtn.dataset.armed = on ? "true" : "false";
 }
 
 function toggleRevealAll() {
@@ -3429,7 +3652,6 @@ function toggleModeSettings() {
   const mode = document.getElementById("create-mode").value;
   const teamSettings = document.getElementById("team-settings");
   const maxSelect = document.getElementById("create-max");
-  const simpleLabel = document.getElementById("simple-auction-label");
   if (mode === "teams") {
     teamSettings.style.display = "";
     maxSelect.value = "4";
@@ -3437,20 +3659,6 @@ function toggleModeSettings() {
   } else {
     teamSettings.style.display = "none";
     maxSelect.disabled = false;
-  }
-  updateSimpleAuctionVisibility();
-}
-
-function updateSimpleAuctionVisibility() {
-  const mode = document.getElementById("create-mode").value;
-  const max = parseInt(document.getElementById("create-max").value);
-  const simpleLabel = document.getElementById("simple-auction-label");
-  const simpleCheckbox = document.getElementById("create-simple-auction");
-  if (mode === "ffa") {
-    simpleLabel.style.display = "";
-  } else {
-    simpleLabel.style.display = "none";
-    simpleCheckbox.checked = false;
   }
 }
 
@@ -3592,7 +3800,7 @@ function handleSellTileClick(tilePos) {
   const state = window._sellState;
   if (!state || !gs) return;
 
-  const prop = gs.properties && gs.properties.find((p) => p.id === tilePos);
+  const prop = _gsPropMap[tilePos];
   if (!prop || prop.owner !== myId) return;
 
   if (state.selectedTile === tilePos) {
@@ -3696,7 +3904,7 @@ function renderSellListings() {
   container.innerHTML = listings
     .map((listing) => {
       const isMine = listing.sellerId === myId;
-      const me = gs.players.find((p) => p.id === myId);
+      const me = _gsPlayerMap[myId];
       const canAfford = me && me.money >= listing.price;
       const dirClass = isMine ? "deal-sent" : "deal-received";
 
@@ -3737,7 +3945,7 @@ function updateSellListingsNotification() {
 
 function updateSendBananaAmount(val) {
   val = Math.max(1, Math.round(Number(val) || 0));
-  const me = gs && gs.players && gs.players.find((p) => p.id === myId);
+  const me = gs && _gsPlayerMap[myId];
   const maxSend = Math.max(1, (me ? me.money : 0) - 150);
   val = Math.min(val, maxSend);
   const display = document.getElementById("send-banana-display");
@@ -3775,6 +3983,7 @@ function sendTrade() {
     parseInt(document.getElementById("send-banana-input").value) || 0;
   if (amount <= 0) return;
   socket.emit("trade_bananas", { gameId, recipientId: mateId, amount });
+  bananaBurst(amount, myId);
   closeSendBananas();
 }
 
@@ -3810,12 +4019,12 @@ function populateFarmSwap() {
   myFarmSel.innerHTML = "";
   mateFarmSel.innerHTML = "";
 
-  const me = gs.players.find((p) => p.id === myId);
+  const me = _gsPlayerMap[myId];
   if (!me || !gs.teams) return;
 
   const myTeam = gs.teams.A.includes(myId) ? "A" : "B";
   const mateId = gs.teams[myTeam].find((id) => id !== myId);
-  const mate = gs.players.find((p) => p.id === mateId);
+  const mate = _gsPlayerMap[mateId];
   if (!mate) return;
 
   // My farms
@@ -3824,7 +4033,7 @@ function populateFarmSwap() {
     if (!tile || !tile.tileLabel) return;
     const opt = document.createElement("option");
     opt.value = pos;
-    opt.textContent = `${tile.tileLabel} (${Math.round(tile.price * (1 + getSideBonus(pos)))}🍌 yield)`;
+    opt.textContent = `${tile.tileLabel} (${tile.price}🍌 yield)`;
     myFarmSel.appendChild(opt);
   });
 
@@ -3834,7 +4043,7 @@ function populateFarmSwap() {
     if (!tile || !tile.tileLabel) return;
     const opt = document.createElement("option");
     opt.value = pos;
-    opt.textContent = `${tile.tileLabel} (${Math.round(tile.price * (1 + getSideBonus(pos)))}🍌 yield)`;
+    opt.textContent = `${tile.tileLabel} (${tile.price}🍌 yield)`;
     mateFarmSel.appendChild(opt);
   });
 
@@ -3857,8 +4066,10 @@ function leaveGame() {
   const goOverlay = document.getElementById("game-over-overlay");
   if (goOverlay) goOverlay.style.display = "none";
   if (gameId && gs && gs.state === "finished") {
-    // Return all players to the game lobby
+    // Signal this player is ready to return to lobby
+    window._returnedToLobby = true;
     socket.emit("return_to_lobby", { gameId });
+    route();
   } else {
     if (gameId) socket.emit("leave_game", { gameId });
     gameId = null;
@@ -3904,47 +4115,43 @@ function initFloaters() {
   }
 }
 
-function bananaBurst(amount) {
-  const container = document.getElementById("board-floaters");
-  if (!container) return;
-  const count = Math.max(5, Math.min(60, Math.round(amount / 10)));
+function bananaBurst(amount, playerId) {
+  playBananaWhoosh();
+  // Find the player's token on the board to use as burst origin
+  let anchor = null;
+  if (playerId) {
+    anchor = document.querySelector(`.token[data-player-id="${playerId}"]`);
+  }
+  // Fallback: try current player's token, then pstat monkey icon
+  if (!anchor) {
+    anchor = document.querySelector(".token-me");
+  }
+  if (!anchor) {
+    const mePstat = document.querySelector(".pstat-me .pstat-monkey");
+    if (mePstat) anchor = mePstat;
+  }
+  if (!anchor) return;
+
+  const rect = anchor.getBoundingClientRect();
+  const originX = rect.left + rect.width / 2;
+  const originY = rect.top + rect.height / 2;
+  const count = Math.max(1, Math.min(7, Math.round(amount)));
   for (let i = 0; i < count; i++) {
     const el = document.createElement("span");
-    el.className = "banana-burst";
+    el.className = "banana-burst-icon";
     el.textContent = "\ud83c\udf4c";
-    el.style.left = 30 + Math.random() * 40 + "%";
-    el.style.top = 30 + Math.random() * 40 + "%";
-    const angle = Math.random() * 360;
-    const dist = 80 + Math.random() * 220;
-    const dx = Math.cos((angle * Math.PI) / 180) * dist;
-    const dy = Math.sin((angle * Math.PI) / 180) * dist;
+    el.style.left = originX + "px";
+    el.style.top = originY + "px";
+    // Fly upward with some horizontal scatter
+    const dx = (Math.random() - 0.5) * 160;
+    const dy = -(60 + Math.random() * 140);
     el.style.setProperty("--dx", dx + "px");
     el.style.setProperty("--dy", dy + "px");
-    el.style.fontSize = 1.2 + Math.random() * 1.4 + "em";
-    el.style.animationDelay = Math.random() * 0.15 + "s";
-    container.appendChild(el);
+    el.style.fontSize = 0.9 + Math.random() * 0.9 + "em";
+    el.style.animationDelay = Math.random() * 0.2 + "s";
+    document.body.appendChild(el);
     el.addEventListener("animationend", () => el.remove());
   }
-}
-
-function checkBananaBurstTrigger() {
-  const log = gs.log || [];
-  if (log.length > _prevLogLen) {
-    const newEntries = log.slice(_prevLogLen);
-    for (const msg of newEntries) {
-      const m = msg.match(/(\d+)\ud83c\udf4c/);
-      if (!m) continue;
-      const amount = parseInt(m[1], 10);
-      if (
-        /won the banana bid|bought the (?:farm|desert)|paid .* yield|landed on GROW|slipped on/i.test(
-          msg,
-        )
-      ) {
-        bananaBurst(amount);
-      }
-    }
-  }
-  _prevLogLen = log.length;
 }
 
 function initBoardFloaters() {
@@ -3975,6 +4182,12 @@ window.addEventListener("DOMContentLoaded", () => {
   initBoardFloaters();
   showScreen("screen-menu");
 
+  // Close auction tooltip when clicking outside
+  document.addEventListener("click", (e) => {
+    const icon = document.querySelector(".auction-info-icon.open");
+    if (icon && !icon.contains(e.target)) icon.classList.remove("open");
+  });
+
   // Pet toggle button handler
   const petToggleBtn = document.getElementById("btn-auto-pet");
   if (petToggleBtn) {
@@ -3996,7 +4209,7 @@ window.addEventListener("DOMContentLoaded", () => {
       }
       // Energy/Strong/Magic pets activate off-turn — fire usePet immediately when toggled on
       if (now && gs) {
-        const me = gs.players && gs.players.find((p) => p.id === myId);
+        const me = _gsPlayerMap[myId];
         if (
           me &&
           (me.pet === "energy" || me.pet === "strong" || me.pet === "devil") &&

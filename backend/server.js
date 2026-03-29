@@ -92,16 +92,14 @@ io.on("connection", (socket) => {
       data.gameMode,
       data.teamTarget,
       data.petMode,
-      data.simpleAuction,
       data.bombMode,
       data.monkeyPoker,
-      data.sideBonuses,
     );
     games.set(code, game);
     game.onUpdate = () => emitGameUpdate(code, game);
 
     const player = game.addPlayer(socket.id, data.playerName);
-    if (!player)
+    if (!player || player.error)
       return socket.emit("game_error", { message: "Failed to create game." });
 
     currentGameId = code;
@@ -115,14 +113,25 @@ io.on("connection", (socket) => {
     if (!game) return socket.emit("game_error", { message: "Game not found." });
 
     const player = game.addPlayer(socket.id, data.playerName);
-    if (!player)
-      return socket.emit("game_error", {
-        message: "Cannot join — game full or already started.",
-      });
+    if (player && player.error) {
+      const msg = player.error === "full"
+        ? "This game is full. Please try joining another game or create your own!"
+        : "This game has already started. Please try joining another game or create your own!";
+      return socket.emit("game_error", { message: msg });
+    }
 
     currentGameId = data.gameId;
     socket.join(data.gameId);
     emitGameUpdate(data.gameId, game);
+  });
+
+  // ── Change color (lobby) ──────────────────────────────────────
+  socket.on("change_color", (data) => {
+    const game = games.get(data.gameId);
+    if (!game) return;
+    if (game.changeColor(socket.id, data.color)) {
+      emitGameUpdate(data.gameId, game);
+    }
   });
 
   // ── Select pet (lobby) ────────────────────────────────────────
@@ -429,7 +438,7 @@ io.on("connection", (socket) => {
 
   socket.on("return_to_lobby", (data) => {
     const game = games.get(data.gameId);
-    if (game && game.returnToLobby()) {
+    if (game && game.playerReadyForLobby(socket.id)) {
       emitGameUpdate(data.gameId, game);
     }
   });
