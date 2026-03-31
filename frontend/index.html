@@ -10,7 +10,7 @@
       href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@400;500;600;700;800&family=Bungee&family=Fredoka:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="styles.css?v=3" />
   </head>
   <body>
     <div id="app">
@@ -225,7 +225,7 @@
       <!-- ── Menu ─────────────────────────────────────────────── -->
       <div id="screen-menu" class="screen active">
         <div class="card menu-card">
-          <div class="menu-logo"><span class="monkey-caller">🐒<span class="monkey-phone">📱</span></span></div>
+          <div class="menu-logo"><span class="monkey-caller">🐒<span class="monkey-shades">🕶️</span><span class="monkey-phone">📱</span></span></div>
           <h1>🍍💣 MONKEY BUSINESS 💰</h1>
           <p class="menu-tagline">
             🌴 Buy farms. Grow bananas. Bomb monkeys. Achieve the
@@ -252,6 +252,9 @@
             </button>
             <button class="btn btn-big btn-alt" onclick="openBoardPreview()">
               🗺️ View Possible Variations and Rules
+            </button>
+            <button class="btn btn-big btn-alt" onclick="startTutorial()">
+              📖 How to Play (Tutorial)
             </button>
             <button
               class="btn btn-big btn-profile"
@@ -297,7 +300,6 @@
                 >Players
                 <select
                   id="create-max"
-                  onchange="updateSimpleAuctionVisibility()"
                 >
                   <option value="2">2</option>
                   <option value="3">3</option>
@@ -305,38 +307,17 @@
                 </select>
                 <span class="auction-info-icon" tabindex="0" onclick="event.preventDefault(); event.stopPropagation(); this.classList.toggle('open');">?
                   <div class="auction-tooltip">
-                    <div class="auction-tooltip-title">Auction Types by Player Count</div>
+                    <div class="auction-tooltip-title">Auction Rules</div>
                     <div class="auction-tooltip-section">
-                      <strong>2 bidders → FFA Auction</strong> (Simple Auction off)
-                      <ol>
-                        <li>Lander places a visible opening bid</li>
-                        <li>Challenger bids blindly (must beat lander's bid)</li>
-                        <li>Lander gets an optional second bid (wins ties)</li>
-                      </ol>
-                      <em>Desert tiles skip the lander's second bid.</em>
-                    </div>
-                    <div class="auction-tooltip-section">
-                      <strong>2 bidders → Simple Auction</strong> (Simple Auction on, FFA only)
+                      <strong>How it works (all player counts)</strong>
                       <ol>
                         <li>Lander names a price</li>
-                        <li>Opponent accepts or declines</li>
-                        <li>If accepted → opponent buys at that price</li>
-                        <li>If declined → lander buys at their own price</li>
+                        <li>A 5-second timer starts</li>
+                        <li>First player to accept buys the farm</li>
+                        <li>If everyone rejects or time runs out → lander buys at their own price</li>
                       </ol>
-                      <em>If multiple opponents accept, they enter a silent auction (min bid = lander's price). Ties go to the lander.</em>
                     </div>
-                    <div class="auction-tooltip-section">
-                      <strong>3+ bidders → Price-It Auction</strong>
-                      <ol>
-                        <li>Lander names a price</li>
-                        <li>All others accept or reject (odd-one-out)</li>
-                        <li>All accept OR all reject → lander buys</li>
-                        <li>Exactly 1 accepts → that player buys</li>
-                        <li>Exactly 1 rejects → that player buys</li>
-                      </ol>
-                      <em>Players who can't afford the price are excluded. If only 1 opponent remains, it falls back to Simple Auction rules.</em>
-                    </div>
-                    <div class="auction-tooltip-note">Bidder count = non-bankrupt players. With 2 players you always get 2 bidders. With 3-4 players you start with Price-It and may fall back if players go bankrupt.</div>
+                    <div class="auction-tooltip-note">Players who can't afford the pitched price are excluded. Only the lander sees a keypad — everyone else sees accept/reject. In 2v2 teams, the lander's teammate must wait 2s before they can accept.</div>
                   </div>
                 </span>
               </label>
@@ -691,11 +672,24 @@
               id="auction-tied-notification"
               class="auction-tied-notification"
             ></div>
+            <div id="poker-announce-notification" class="poker-announce-notification">
+              <div class="poker-announce-emoji">🐵⚔️🐵</div>
+              <div class="poker-announce-text">MONKEY POKER!</div>
+              <div class="poker-announce-players">
+                <span id="poker-announce-p1"></span> vs <span id="poker-announce-p2"></span>
+              </div>
+            </div>
             <div id="board" class="board">
               <!-- Auction Overlay (rendered in board center) -->
               <div id="auction-box" class="auction-box" style="display: none">
                 <h4 id="auction-title">🍌 BANANA BID 🍌</h4>
                 <div id="auction-prop" class="auction-prop"></div>
+                <div id="auction-timer-wrap" class="auction-timer-wrap" style="display: none">
+                  <div class="auction-timer-bar-bg">
+                    <div class="auction-timer-bar" id="auction-timer-bar"></div>
+                  </div>
+                  <div class="auction-timer-text" id="auction-timer-text">5.0s</div>
+                </div>
                 <div id="auction-high" class="auction-high"></div>
                 <div id="auction-turn" class="auction-turn"></div>
                 <div id="auction-controls" class="auction-controls">
@@ -1347,46 +1341,36 @@
                   <div class="trade-fee-notice">Transfer fee: 150🍌</div>
                   <div class="sell-price-header">Amount to Send</div>
                   <div class="sell-price-display" id="send-banana-display">
-                    50🍌
+                    0🍌
                   </div>
-                  <div class="sell-slider-row">
+                  <div class="sell-calculator" id="send-banana-calculator">
                     <input
-                      type="range"
-                      id="send-banana-slider"
-                      min="1"
-                      max="1000"
-                      value="50"
-                      step="1"
-                      oninput="updateSendBananaAmount(this.value)"
-                    />
-                  </div>
-                  <div class="sell-keypad">
-                    <input
-                      type="number"
+                      type="text"
                       id="send-banana-numpad"
-                      class="send-banana-numpad"
-                      min="1"
-                      max="99999"
-                      value="50"
-                      placeholder="Enter amount"
-                      oninput="updateSendBananaAmount(this.value)"
+                      class="sell-calc-input"
+                      value=""
+                      placeholder="Type amount..."
+                      oninput="onSendCalcInput(this.value)"
+                      autocomplete="off"
                     />
-                    <button
-                      class="sell-key sell-key-half"
-                      onclick="adjustSendBananaAmount(0.5)"
-                    >
-                      ½
-                    </button>
-                    <button
-                      class="sell-key sell-key-double"
-                      onclick="adjustSendBananaAmount(2)"
-                    >
-                      2×
-                    </button>
+                    <div class="sell-calc-grid">
+                      <button class="sell-calc-btn" onclick="sendCalcPress('1')">1</button>
+                      <button class="sell-calc-btn" onclick="sendCalcPress('2')">2</button>
+                      <button class="sell-calc-btn" onclick="sendCalcPress('3')">3</button>
+                      <button class="sell-calc-btn" onclick="sendCalcPress('4')">4</button>
+                      <button class="sell-calc-btn" onclick="sendCalcPress('5')">5</button>
+                      <button class="sell-calc-btn" onclick="sendCalcPress('6')">6</button>
+                      <button class="sell-calc-btn" onclick="sendCalcPress('7')">7</button>
+                      <button class="sell-calc-btn" onclick="sendCalcPress('8')">8</button>
+                      <button class="sell-calc-btn" onclick="sendCalcPress('9')">9</button>
+                      <button class="sell-calc-btn sell-calc-clear" onclick="sendCalcClear()">C</button>
+                      <button class="sell-calc-btn" onclick="sendCalcPress('0')">0</button>
+                      <button class="sell-calc-btn sell-calc-back" onclick="sendCalcBackspace()">⌫</button>
+                    </div>
                   </div>
-                  <input type="hidden" id="send-banana-input" value="50" />
+                  <input type="hidden" id="send-banana-input" value="0" />
                   <div class="trade-total" id="send-banana-total">
-                    Total cost: 200🍌
+                    Total cost: 150🍌
                   </div>
                   <button
                     class="btn btn-glow"
@@ -1424,56 +1408,32 @@
                   >
                     <div class="sell-price-header">Asking Price</div>
                     <div class="sell-price-display" id="sell-price-display">
-                      100🍌
+                      0🍌
                     </div>
-                    <div class="sell-slider-row">
+                    <div class="sell-calculator" id="sell-calculator">
                       <input
-                        type="range"
-                        id="sell-price-slider"
-                        min="10"
-                        max="5000"
-                        value="100"
-                        step="10"
-                        oninput="updateSellPrice(this.value)"
+                        type="text"
+                        id="sell-price-numpad"
+                        class="sell-calc-input"
+                        value=""
+                        placeholder="Type price..."
+                        oninput="onSellCalcInput(this.value)"
+                        autocomplete="off"
                       />
-                    </div>
-                    <div class="sell-keypad" id="sell-keypad">
-                      <button class="sell-key" onclick="setSellPrice(50)">
-                        50
-                      </button>
-                      <button class="sell-key" onclick="setSellPrice(100)">
-                        100
-                      </button>
-                      <button class="sell-key" onclick="setSellPrice(250)">
-                        250
-                      </button>
-                      <button class="sell-key" onclick="setSellPrice(500)">
-                        500
-                      </button>
-                      <button class="sell-key" onclick="setSellPrice(1000)">
-                        1K
-                      </button>
-                      <button class="sell-key" onclick="setSellPrice(2500)">
-                        2.5K
-                      </button>
-                      <button class="sell-key" onclick="setSellPrice(5000)">
-                        5K
-                      </button>
-                      <button class="sell-key" onclick="setSellPrice(10000)">
-                        10K
-                      </button>
-                      <button
-                        class="sell-key sell-key-half"
-                        onclick="adjustSellPrice(0.5)"
-                      >
-                        ½
-                      </button>
-                      <button
-                        class="sell-key sell-key-double"
-                        onclick="adjustSellPrice(2)"
-                      >
-                        2×
-                      </button>
+                      <div class="sell-calc-grid">
+                        <button class="sell-calc-btn" onclick="sellCalcPress('1')">1</button>
+                        <button class="sell-calc-btn" onclick="sellCalcPress('2')">2</button>
+                        <button class="sell-calc-btn" onclick="sellCalcPress('3')">3</button>
+                        <button class="sell-calc-btn" onclick="sellCalcPress('4')">4</button>
+                        <button class="sell-calc-btn" onclick="sellCalcPress('5')">5</button>
+                        <button class="sell-calc-btn" onclick="sellCalcPress('6')">6</button>
+                        <button class="sell-calc-btn" onclick="sellCalcPress('7')">7</button>
+                        <button class="sell-calc-btn" onclick="sellCalcPress('8')">8</button>
+                        <button class="sell-calc-btn" onclick="sellCalcPress('9')">9</button>
+                        <button class="sell-calc-btn sell-calc-clear" onclick="sellCalcClear()">C</button>
+                        <button class="sell-calc-btn" onclick="sellCalcPress('0')">0</button>
+                        <button class="sell-calc-btn sell-calc-back" onclick="sellCalcBackspace()">⌫</button>
+                      </div>
                     </div>
                     <input type="hidden" id="sell-price-input" value="100" />
                   </div>
@@ -1927,7 +1887,7 @@
 
               <div class="rules-formula">
                 <b>📐 Growth Formula:</b><br />
-                Growth = Yield × GROW% × Chain Multiplier × (1 + Side Bonus)
+                Growth = Yield × GROW% × Chain Multiplier
               </div>
               <p>
                 <b>🔗 Chain Multiplier:</b> If you own adjacent farms of the
@@ -1951,8 +1911,7 @@
               </div>
               <div class="rules-callout rules-callout-warn">
                 <b>🐒 Squatter Rule:</b> If an opponent is sitting on your farm
-                when it grows, <i>they</i> steal the growth instead of it going
-                to the banana pile!
+                when it grows, <i>they</i> steal the growth just by being there!
               </div>
             </div>
 
@@ -1961,13 +1920,13 @@
               <p>
                 <b>8 desert tiles</b> that produce no yield and
                 are excluded from GROW. Won through auctions like normal farms.
-                They can be strategically useful for blocking chains or as
-                placeholders.
+                They are dead tiles and are to trick other players into buying
+                what they think are farms.
               </p>
             </div>
 
             <div class="rules-section">
-              <h3>🍌 Tax Tiles</h3>
+              <h3>🍌 Tax Tile</h3>
               <p>Landing on a tax tile takes a percentage of your bananas:</p>
               <ul>
                 <li><b>🍌 Tax −10%</b> — Lose 10% of your bananas (1 tile)</li>
@@ -2023,89 +1982,43 @@
             </div>
 
             <div class="rules-section">
-              <h3>🔨 Banana Bid (Standard Auction)</h3>
+              <h3>🔨 Banana Bid</h3>
               <p>
-                When you land on an unowned farm, an auction begins with
-                <b>3 phases</b>:
+                When you land on an unowned farm, an auction begins:
               </p>
               <div class="rules-steps">
                 <div class="rules-step">
                   <span class="rules-step-num">1</span>
                   <span
-                    ><b>Lander bids</b> — You name your opening price (visible
-                    to all)</span
+                    ><b>Lander names a price</b> — You set the price for
+                    the farm (visible to all)</span
                   >
                 </div>
                 <div class="rules-step">
                   <span class="rules-step-num">2</span>
                   <span
-                    ><b>Challengers respond</b> — Other players can pass or
-                    place a <b>blind bid</b> (must be higher than yours)</span
+                    ><b>5-second timer starts</b> — All other players race to
+                    accept or reject</span
                   >
                 </div>
                 <div class="rules-step">
                   <span class="rules-step-num">3</span>
                   <span
-                    ><b>Lander's final bid</b> — If anyone challenged, you get
-                    one last <b>blind bid</b> to reclaim it</span
+                    ><b>First to accept wins</b> — The first player to click
+                    accept buys the farm at the lander's price</span
                   >
                 </div>
               </div>
               <p>
-                Highest bidder wins the farm and pays their bid.
-                <b>Ties go to the lander.</b>
+                If everyone rejects or the timer runs out, the
+                <b>lander pays their own price</b> to the bank and gets the
+                farm. This works the same in all modes and player counts.
               </p>
               <div class="rules-callout rules-callout-tip">
-                <b>Broke?</b> If you have 0🍌 and land on an unowned tile, the
-                richest opponent claims it free. If <i>everyone</i> is broke,
-                the lander gets it free.
+                <b>Broke?</b> If you have 0🍌 and land on an unowned tile,
+                it auto-lists for free. Players who can't afford the pitched
+                price are excluded from the auction.
               </div>
-            </div>
-
-            <div class="rules-section">
-              <h3>🏷️ Simple Auction (Optional)</h3>
-              <p>
-                A faster auction variant for <b>FFA games only</b>. When
-                enabled:
-              </p>
-              <div class="rules-steps">
-                <div class="rules-step">
-                  <span class="rules-step-num">1</span>
-                  <span
-                    ><b>Lander names a price</b> — You set the sale price for
-                    the farm</span
-                  >
-                </div>
-                <div class="rules-step">
-                  <span class="rules-step-num">2</span>
-                  <span
-                    ><b>Opponents accept or decline</b> — Each opponent chooses
-                    whether to buy it at your price</span
-                  >
-                </div>
-                <div class="rules-step">
-                  <span class="rules-step-num">3</span>
-                  <span
-                    ><b>Tiebreaker</b> — If multiple opponents accept, they
-                    enter a <b>blind bid</b> to decide who gets the right to
-                    buy</span
-                  >
-                </div>
-              </div>
-              <p>
-                If no one accepts, the <b>lander pays their own price</b> and
-                gets the farm. Great for speeding up games!
-              </p>
-            </div>
-
-            <div class="rules-section">
-              <h3>🤝 Teams Auction</h3>
-              <p>
-                In <b>Teams mode</b>, auctions are always <b>1v1</b>: you vs.
-                the <b>closest opponent</b> (ties broken by who has more 🍌).
-                Same 3-phase flow as the standard auction, just with fewer
-                bidders.
-              </p>
             </div>
 
             <!-- ═══ CATEGORY: ENCOUNTERS ═══ -->
@@ -2370,7 +2283,7 @@
                   farm is safe
                 </li>
                 <li>Teammate banana piles are <b>collected, not stolen</b></li>
-                <li>Auctions are <b>1v1</b> against closest opponent</li>
+                <li>Auctions work the same — lander prices, 5s timer, first accept wins</li>
               </ul>
 
               <h4 class="rules-sub-heading">🤝 Team Actions</h4>
@@ -2431,9 +2344,9 @@
                     <td>2–4 players (locked to 4 in Teams)</td>
                   </tr>
                   <tr>
-                    <td>🏷️ Simple Auction</td>
+                    <td>🔨 Banana Bid</td>
                     <td>On</td>
-                    <td>Faster auction format (FFA only)</td>
+                    <td>Price-it auction with 5s timer</td>
                   </tr>
                   <tr>
                     <td>🍍 Pineapple Bomb Mode</td>
@@ -2472,11 +2385,27 @@
           </button>
         </div>
       </div>
+
+      <!-- ── Tutorial Mode ───────────────────────────────────────── -->
+      <div id="screen-tutorial" class="screen">
+        <div class="card tutorial-card">
+          <div class="tutorial-progress">
+            <div class="tutorial-progress-bar" id="tutorial-progress-bar"></div>
+          </div>
+          <div class="tutorial-step-counter" id="tutorial-step-counter">Step 1 / 10</div>
+          <div id="tutorial-content"></div>
+          <div class="tutorial-nav">
+            <button class="btn btn-alt" id="tutorial-prev" onclick="tutorialPrev()">← Back</button>
+            <div class="tutorial-dots" id="tutorial-dots"></div>
+            <button class="btn btn-glow" id="tutorial-next" onclick="tutorialNext()">Next →</button>
+          </div>
+        </div>
+      </div>
     </div>
 
     <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
-    <script src="board.js"></script>
-    <script src="auth.js"></script>
-    <script src="game.js"></script>
+    <script src="board.js?v=2"></script>
+    <script src="auth.js?v=2"></script>
+    <script src="game.js?v=3"></script>
   </body>
 </html>

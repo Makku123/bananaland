@@ -611,7 +611,8 @@ class MonopolyGame {
     this.log = []; // recent action log
     this.properties = new Map();
     this.board = [...BOARD]; // will be shuffled on start
-    this.auction = null; // { position, propName, bids: {playerId: {amount, count}}, order: [], currentIndex, highBid, highBidder }
+    this.auction = null;
+    this._auctionTimer = null;
     this.mushroomPending = null; // { mushroomPos, swapPos } — waiting for 3s delay before swap
     this.petCoinFlip = null; // { playerName, petType, result: "heads"|"tails", targetName? }
     this.pendingPetMove = null; // deferred move after coin flip animation
@@ -807,6 +808,20 @@ class MonopolyGame {
     }
 
     return false;
+  }
+
+  cancelPet(socketId) {
+    if (this.state !== "playing") return false;
+    const player = this.players.find((p) => p.id === socketId);
+    if (!player || !player.pendingPet) return false;
+    // Refund the use if in limited mode
+    if (this.petMode === "limited") {
+      player.petUses = (player.petUses || 0) + 1;
+    }
+    player.pendingPet = null;
+    this.lastPetUsed = null;
+    this._log(`${player.name} cancelled their pet ability.`);
+    return true;
   }
 
   _resolvePendingPets() {
@@ -1264,7 +1279,9 @@ class MonopolyGame {
     this.log = [];
     this.properties = new Map();
     this.board = [...BOARD];
+    if (this._auctionTimer) clearTimeout(this._auctionTimer);
     this.auction = null;
+    this._auctionTimer = null;
     this.mushroomPending = null;
     this.petCoinFlip = null;
     this.pendingPetMove = null;
@@ -1285,9 +1302,9 @@ class MonopolyGame {
     this.bombSelfDamage = null;
     this.diceMatchTiles = null;
     this.diceMatchGrownAmounts = null;
+    this.diceMatchEarlyPickup = null;
     this.growSquatterSteals = null;
     this.superBananaWin = null;
-    this.silentAuctionTied = false;
     this.autoEndDelay = false;
     this.autoEndDelayMs = 0;
     this.lastPetUsed = null;
@@ -1481,6 +1498,7 @@ class MonopolyGame {
     this.bombSelfDamage = null;
     this.diceMatchTiles = null;
     this.diceMatchGrownAmounts = null;
+    this.diceMatchEarlyPickup = null;
     this.growSquatterSteals = null;
     const cur = this.getCurrentPlayer();
     if (
@@ -1533,9 +1551,36 @@ class MonopolyGame {
     // Dice-match grow: if dice sum matches a farm label number you own, 100% grow
     this._processDiceMatchGrow(cur, diceSum);
 
-    // Collect dice-match-grown piles if the player walked past those tiles this turn
+    // Flag early pickup: player was sitting on a dice-match tile they own
+    if (this.diceMatchTiles && this.diceMatchTiles.includes(oldPos)) {
+      const prop = this.properties.get(oldPos);
+      if (prop && prop.owner === cur.id) {
+        this.diceMatchEarlyPickup = oldPos;
+      }
+    }
+
+    // Check if player landed on a bomb (eliminates victims, placer takes loot)
+    if (this._checkBombDetonation(cur)) {
+      if (cur.bankrupt || this.state === "finished") {
+        return { dice: this.dice, moved: true };
+      }
+    }
+
+    // Timer-based bomb explosion: explode any bomb whose timer has expired
+    if (this._explodeExpiredBombs()) {
+      if (cur.bankrupt || this.state === "finished") {
+        return { dice: this.dice, moved: true };
+      }
+    }
+
+    this._processLanding(cur);
+
+    // Collect dice-match-grown piles if the player walked past or started on those tiles
+    // (runs after _processLanding so GROW tile growth stacks on top of dice-match growth)
     if (this.diceMatchTiles && this.diceMatchTiles.length > 0) {
       const pathTiles = new Set();
+      // Include the starting tile — the player was standing here when the grow happened
+      pathTiles.add(oldPos);
       const pathSteps = (cur.position - oldPos + BOARD_SIZE) % BOARD_SIZE;
       for (let s = 1; s <= pathSteps; s++) {
         pathTiles.add((oldPos + s) % BOARD_SIZE);
@@ -1560,27 +1605,12 @@ class MonopolyGame {
       }
     }
 
-    // Check if player landed on a bomb (eliminates victims, placer takes loot)
-    if (this._checkBombDetonation(cur)) {
-      if (cur.bankrupt || this.state === "finished") {
-        return { dice: this.dice, moved: true };
-      }
-    }
-
-    // Timer-based bomb explosion: explode any bomb whose timer has expired
-    if (this._explodeExpiredBombs()) {
-      if (cur.bankrupt || this.state === "finished") {
-        return { dice: this.dice, moved: true };
-      }
-    }
-
-    this._processLanding(cur);
-
     // Auto-end turn if no auction, vine swing, or poker was started
     // Delay accounts for frontend dice animation (550ms) + dice-match anim (1200ms if applicable) + token walk (steps*150ms) + post-walk pause (500ms) + buffer
     const diceMatchDelayMs =
       this.diceMatchTiles && this.diceMatchTiles.length > 0 ? 1200 : 0;
-    const walkAnimMs = 550 + diceMatchDelayMs + diceSum * 150 + 500;
+    const earlyPickupDelayMs = this.diceMatchEarlyPickup != null ? 1000 : 0;
+    const walkAnimMs = 550 + diceMatchDelayMs + earlyPickupDelayMs + diceSum * 150 + 500;
     if (
       !this.auction &&
       !this.vineSwing &&
@@ -2185,29 +2215,15 @@ class MonopolyGame {
     if (!prop || prop.owner) return;
 
     const bidders = [];
-    const n = this.players.length;
-    if (this.gameMode === "teams" && this.teams) {
-      // Team mode: all non-bankrupt players participate
-      bidders.push(pushedPlayer.id);
-      for (const p of this.players) {
-        if (!p.bankrupt && p.id !== pushedPlayer.id) bidders.push(p.id);
-      }
-    } else {
-      for (let i = 0; i < n; i++) {
-        const idx = (this.currentPlayerIndex + i) % n;
-        const p = this.players[idx];
-        if (!p.bankrupt) bidders.push(p.id);
-      }
+    bidders.push(pushedPlayer.id);
+    for (const p of this.players) {
+      if (!p.bankrupt && p.id !== pushedPlayer.id) bidders.push(p.id);
     }
 
     const bids = {};
     for (const id of bidders)
       bids[id] = { amount: 0, placed: false, passed: false };
 
-    this.silentAuctionTied = false;
-
-    // Use team auction when there are 3+ bidders, simple auction for 2
-    const usePriceIt = bidders.length >= 3;
     this.auction = {
       position: pos,
       propName: prop.name,
@@ -2217,17 +2233,13 @@ class MonopolyGame {
       devilUser: devilUserId,
       bidders,
       bids,
-      phase: usePriceIt ? "team-bid" : "simple-bid",
+      phase: "pitch",
       highBid: 0,
       highBidder: null,
-      simple: !usePriceIt,
-      teamAuction: usePriceIt,
     };
 
     this._log(
-      usePriceIt
-        ? `\ud83d\udd2e Magic auction! ${pushedPlayer.name} was pushed onto an unowned farm! Name your price!`
-        : `\ud83d\udd2e Magic auction! ${pushedPlayer.name} was pushed onto an unowned farm! Name your price!`,
+      `\ud83d\udd2e Magic auction! ${pushedPlayer.name} was pushed onto an unowned farm! Name your price!`,
     );
 
     // Auto-list at 0 if lander is broke
@@ -2253,28 +2265,15 @@ class MonopolyGame {
     if (!prop) return false;
 
     const bidders = [];
-    const n = this.players.length;
-
-    if (this.gameMode === "teams" && this.teams) {
-      // Team mode: all non-bankrupt players participate
-      bidders.push(cur.id);
-      for (const p of this.players) {
-        if (!p.bankrupt && p.id !== cur.id) bidders.push(p.id);
-      }
-    } else {
-      for (let i = 0; i < n; i++) {
-        const idx = (this.currentPlayerIndex + i) % n;
-        const p = this.players[idx];
-        if (!p.bankrupt) bidders.push(p.id);
-      }
+    bidders.push(cur.id);
+    for (const p of this.players) {
+      if (!p.bankrupt && p.id !== cur.id) bidders.push(p.id);
     }
 
     const bids = {};
     for (const id of bidders)
       bids[id] = { amount: 0, placed: false, passed: false };
 
-    // Use team auction when there are 3+ bidders, simple auction for 2
-    const usePriceIt = bidders.length >= 3;
     this.auction = {
       position: pos,
       propName: prop.name,
@@ -2283,11 +2282,9 @@ class MonopolyGame {
       landingPlayer: bidders[0],
       bidders,
       bids,
-      phase: usePriceIt ? "team-bid" : "simple-bid",
+      phase: "pitch",
       highBid: 0,
       highBidder: null,
-      simple: !usePriceIt,
-      teamAuction: usePriceIt,
     };
 
     this._log(`\ud83c\udf4c Banana bid! Lander, name your price.`);
@@ -2309,8 +2306,8 @@ class MonopolyGame {
     const a = this.auction;
     if (!a) return;
 
-    // -- Team Auction: Lander names a price --
-    if (a.phase === "team-bid") {
+    // -- Pitch phase: Lander names a price --
+    if (a.phase === "pitch") {
       const lb = a.bids[a.landingPlayer];
       if (!lb.placed) return;
 
@@ -2344,163 +2341,79 @@ class MonopolyGame {
         return;
       }
 
-      // Move to respond phase; 1 remaining other → simple 2-player format
+      // Move to respond phase — start 5s timer
       for (const id of others) {
         a.bids[id].placed = false;
         a.bids[id].passed = false;
       }
-      if (others.length === 1) {
-        a.phase = "simple-respond";
-        a.simple = true;
-      } else {
-        a.phase = "team-respond";
-      }
+      a.phase = "respond";
+      a.respondDeadline = Date.now() + 5000;
+      a.respondStartTime = Date.now();
       this._log(
-        `Lander priced it at ${lb.amount}\ud83c\udf4c \u2014 accept or reject?`,
+        `Lander priced it at ${lb.amount}\ud83c\udf4c \u2014 5 seconds to accept!`,
       );
+
+      // Start the 5s timer — when it expires, lander buys
+      if (this._auctionTimer) clearTimeout(this._auctionTimer);
+      this._auctionTimer = setTimeout(() => {
+        this._auctionTimer = null;
+        if (!this.auction || this.auction.phase !== "respond") return;
+        // Timer expired — lander buys
+        this._log(`\u23f0 Time's up! Lander buys the farm!`);
+        this.auction.highBidder = this.auction.landingPlayer;
+        this.auction.highBid = this.auction.landerOpenBid;
+        this._resolveAuction();
+        if (this.onUpdate) this.onUpdate();
+      }, 5000);
       return;
     }
 
-    // -- Team Auction: Others respond (odd-one-out logic) --
-    if (a.phase === "team-respond") {
+    // -- Respond phase: first accept wins, all reject = lander buys --
+    if (a.phase === "respond") {
       const others = a.bidders.filter((id) => id !== a.landingPlayer);
+
+      // Check if someone accepted — first accept wins (by bidTime)
+      const acceptors = others.filter((id) => a.bids[id].placed);
+      if (acceptors.length > 0) {
+        // First player to accept (earliest bidTime) wins
+        acceptors.sort((x, y) => (a.bids[x].bidTime || 0) - (a.bids[y].bidTime || 0));
+        const winnerId = acceptors[0];
+        a.highBidder = winnerId;
+        a.highBid = a.landerOpenBid;
+        const winner = this.players.find((p) => p.id === winnerId);
+        const reactionMs = a.respondStartTime ? (a.bids[winnerId].bidTime - a.respondStartTime) : 0;
+        const reactionSec = (reactionMs / 1000).toFixed(1);
+        a.acceptTime = reactionSec;
+        this._log(
+          `${winner?.name || "?"} accepted in ${reactionSec}s \u2014 they buy the farm!`,
+        );
+        // Clear the timer
+        if (this._auctionTimer) {
+          clearTimeout(this._auctionTimer);
+          this._auctionTimer = null;
+        }
+        this._resolveAuction();
+        return;
+      }
+
+      // Check if everyone rejected
       const allDone = others.every(
         (id) => a.bids[id].placed || a.bids[id].passed,
       );
-      if (!allDone) return;
-
-      const acceptors = others.filter((id) => a.bids[id].placed);
-      const rejecters = others.filter((id) => a.bids[id].passed);
-
-      if (
-        acceptors.length === others.length ||
-        rejecters.length === others.length
-      ) {
-        // Everyone agreed or everyone rejected → lander buys
+      if (allDone) {
+        // Everyone rejected — lander buys
         a.highBidder = a.landingPlayer;
         a.highBid = a.landerOpenBid;
-        if (acceptors.length === others.length) {
-          this._log(`Everyone accepted \u2014 lander buys the farm!`);
-        } else {
-          this._log(`Everyone rejected \u2014 lander buys the farm!`);
+        this._log(`Everyone rejected \u2014 lander buys the farm!`);
+        if (this._auctionTimer) {
+          clearTimeout(this._auctionTimer);
+          this._auctionTimer = null;
         }
-      } else if (acceptors.length === 1) {
-        // Only one person accepted → that person buys
-        a.highBidder = acceptors[0];
-        a.highBid = a.landerOpenBid;
-        const winner = this.players.find((p) => p.id === acceptors[0]);
-        this._log(
-          `${winner?.name || "?"} was the only one to accept \u2014 they buy the farm!`,
-        );
-      } else if (rejecters.length === 1) {
-        // Only one person rejected → that person buys
-        a.highBidder = rejecters[0];
-        a.highBid = a.landerOpenBid;
-        const winner = this.players.find((p) => p.id === rejecters[0]);
-        this._log(
-          `${winner?.name || "?"} was the only one to reject \u2014 they buy the farm!`,
-        );
-      }
-
-      this._resolveAuction();
-      return;
-    }
-
-    // -- Simple Auction: Lander names a price --
-    if (a.phase === "simple-bid") {
-      const lb = a.bids[a.landingPlayer];
-      if (!lb.placed) return;
-
-      a.landerOpenBid = lb.amount;
-      a.highBid = lb.amount;
-      a.highBidder = a.landingPlayer;
-
-      // Move to opponent response phase
-      a.phase = "simple-respond";
-      const opponents = a.bidders.filter((id) => id !== a.landingPlayer);
-      for (const id of opponents) {
-        a.bids[id].placed = false;
-        a.bids[id].passed = false;
-      }
-      this._log(
-        `Lander priced it at ${lb.amount}\ud83c\udf4c \u2014 accept or decline?`,
-      );
-      return;
-    }
-
-    // -- Simple Auction: Opponents respond --
-    if (a.phase === "simple-respond") {
-      const opponents = a.bidders.filter((id) => id !== a.landingPlayer);
-      const allDone = opponents.every(
-        (id) => a.bids[id].placed || a.bids[id].passed,
-      );
-      if (!allDone) return;
-
-      const acceptors = opponents.filter((id) => a.bids[id].placed);
-      if (acceptors.length > 1) {
-        // Multiple acceptors go into silent auction
-        a.phase = "simple-tiebreak";
-        a.tiebreakBidders = acceptors;
-        for (const id of acceptors) {
-          a.bids[id].placed = false;
-          a.bids[id].passed = false;
-          a.bids[id].amount = 0;
-        }
-        this._log(
-          `More than one person accepted, it's time for silent auction!`,
-        );
+        this._resolveAuction();
         return;
-      } else if (acceptors.length === 1) {
-        a.highBidder = acceptors[0];
-        a.highBid = a.landerOpenBid;
-      } else {
-        // All opponents declined � lander pays and gets the farm
-        a.highBidder = a.landingPlayer;
-        a.highBid = a.landerOpenBid;
       }
 
-      this._resolveAuction();
-      return;
-    }
-
-    // -- Simple Auction: Tiebreak silent bid --
-    if (a.phase === "simple-tiebreak") {
-      const tb = a.tiebreakBidders || [];
-      const allDone = tb.every((id) => a.bids[id].placed || a.bids[id].passed);
-      if (!allDone) return;
-
-      // Find highest tiebreak bid (ties award farm to lander)
-      let highBid = -1;
-      let winner = null;
-      let tied = false;
-      for (const id of tb) {
-        const b = a.bids[id];
-        if (!b.placed) continue;
-        if (b.amount > highBid) {
-          highBid = b.amount;
-          winner = id;
-          tied = false;
-        } else if (b.amount === highBid) {
-          tied = true;
-        }
-      }
-
-      if (tied) {
-        // Acceptors tied — farm goes to the lander at their original price
-        a.highBidder = a.landingPlayer;
-        a.highBid = a.landerOpenBid;
-        this.silentAuctionTied = true;
-        this._log(`Bidders tied! Lander buys the farm.`);
-      } else if (winner) {
-        a.highBidder = winner;
-        a.highBid = highBid;
-      } else {
-        // All tiebreakers passed � lander gets it
-        a.highBidder = a.landingPlayer;
-        a.highBid = a.landerOpenBid;
-      }
-
-      this._resolveAuction();
+      // Otherwise, still waiting for responses (timer still running)
       return;
     }
 
@@ -2514,27 +2427,14 @@ class MonopolyGame {
     if (a.highBidder) {
       const winner = this.players.find((p) => p.id === a.highBidder);
       if (winner && prop) {
-        // Cap the price: if the winning bid exceeds all opponents' money,
-        // the winner only pays (richest opponent's money + 1)
         let finalPrice = a.highBid;
-        const opponents = this.players.filter(
-          (p) => !p.bankrupt && p.id !== winner.id,
-        );
-        if (opponents.length > 0) {
-          const maxOpponentMoney = Math.max(...opponents.map((p) => p.money));
-          if (finalPrice > maxOpponentMoney && maxOpponentMoney >= 0) {
-            finalPrice = maxOpponentMoney + 1;
-          }
-        }
         winner.money -= finalPrice;
         prop.owner = winner.id;
         winner.properties.push(a.position);
         for (const p of this.players) p.revealedTiles.add(a.position);
         const typeLabel = prop.group === "desert" ? "desert" : "farm";
         this._log(
-          a.simple
-            ? `\ud83d\udd28 ${winner.name} bought the ${typeLabel} ${prop.name} for ${finalPrice}\ud83c\udf4c!`
-            : `\ud83d\udd28 ${winner.name} won the banana bid for ${prop.name} at ${finalPrice}\ud83c\udf4c!`,
+          `\ud83d\udd28 ${winner.name} bought the ${typeLabel} ${prop.name} for ${finalPrice}\ud83c\udf4c!`,
         );
         // Super Banana win condition
         if (prop.group === "mushroom") {
@@ -2567,9 +2467,12 @@ class MonopolyGame {
       );
     }
 
+    if (this._auctionTimer) {
+      clearTimeout(this._auctionTimer);
+      this._auctionTimer = null;
+    }
     const turnPlayer = this.getCurrentPlayer();
     this.auction = null;
-    this.silentAuctionTied = false;
     if (turnPlayer) {
       this._scheduleAutoEnd(turnPlayer, 2000);
     }
@@ -2578,96 +2481,62 @@ class MonopolyGame {
   placeBid(socketId, amount) {
     if (!this.auction) return false;
     const a = this.auction;
+    if (a.phase !== "pitch") return false; // only lander pitches
+    if (socketId !== a.landingPlayer) return false;
     const b = a.bids[socketId];
     if (!b || b.placed || b.passed) return false;
 
-    // Phase-based access control
-    if (a.phase === "team-bid" && socketId !== a.landingPlayer) return false;
-    if (a.phase === "team-respond") return false; // use respondAuction instead
-    if (a.phase === "simple-bid" && socketId !== a.landingPlayer) return false;
-    if (a.phase === "simple-respond") return false; // use respondAuction instead
-    if (
-      a.phase === "simple-tiebreak" &&
-      !(a.tiebreakBidders || []).includes(socketId)
-    )
-      return false;
     const player = this.players.find((p) => p.id === socketId);
     amount = Math.floor(amount);
     if (!player || amount > player.money || amount < 0) return false;
 
-    // When lander is pitching a price (team-bid or simple-bid), cap at the
-    // second-richest player's money if the lander is the richest.  This
-    // prevents the richest player from naming a price nobody else can match.
-    if (
-      (a.phase === "team-bid" || a.phase === "simple-bid") &&
-      socketId === a.landingPlayer
-    ) {
-      const others = this.players.filter(
-        (p) => p.id !== socketId && !p.bankrupt,
-      );
-      if (others.length > 0) {
-        const maxOtherMoney = Math.max(...others.map((p) => p.money));
-        if (player.money >= maxOtherMoney && amount > maxOtherMoney) {
-          return false;
-        }
+    // Cap at richest opponent's money so lander can't name an impossible price
+    const others = this.players.filter(
+      (p) => p.id !== socketId && !p.bankrupt,
+    );
+    if (others.length > 0) {
+      const maxOtherMoney = Math.max(...others.map((p) => p.money));
+      if (player.money >= maxOtherMoney && amount > maxOtherMoney) {
+        return false;
       }
     }
 
-    // Minimum bid is 1 banana; 0 only allowed when lander is broke in simple-bid or team-bid
-    if (
-      amount < 1 &&
-      !(
-        (a.phase === "simple-bid" || a.phase === "team-bid") &&
-        player.money === 0
-      )
-    )
-      return false;
-
-    // Silent auction tiebreak bids must be at least the lander's price
-    if (a.phase === "simple-tiebreak" && amount < (a.landerOpenBid || 0))
-      return false;
+    // Minimum bid is 1 banana; 0 only allowed when lander is broke
+    if (amount < 1 && player.money !== 0) return false;
 
     b.amount = amount;
     b.placed = true;
     b.bidTime = Date.now();
-    this._log(`${player.name} placed a bid for Farm #${a.position}.`);
+    this._log(`${player.name} set the price for Farm #${a.position}.`);
 
     this._checkPhaseComplete();
     return true;
   }
 
   passBid(socketId) {
-    if (!this.auction) return false;
-    const a = this.auction;
-    const b = a.bids[socketId];
-    if (!b || b.placed || b.passed) return false;
-
-    // Lander cannot pass their opening bid
-    if (a.phase === "team-bid") return false;
-    if (a.phase === "team-respond") return false; // use respondAuction instead
-    if (a.phase === "simple-bid") return false;
-    if (a.phase === "simple-respond") return false; // use respondAuction instead
-    if (
-      a.phase === "simple-tiebreak" &&
-      !(a.tiebreakBidders || []).includes(socketId)
-    )
-      return false;
-    b.passed = true;
-    const player = this.players.find((p) => p.id === socketId);
-    this._log(`${player?.name || "?"} passed on Farm #${a.position}.`);
-
-    this._checkPhaseComplete();
-    return true;
+    // No passing in the new auction system — use respondAuction to reject
+    return false;
   }
 
   respondAuction(socketId, accept) {
     if (!this.auction) return false;
     const a = this.auction;
-    if (a.phase !== "simple-respond" && a.phase !== "team-respond")
-      return false;
+    if (a.phase !== "respond") return false;
     if (socketId === a.landingPlayer) return false;
     const b = a.bids[socketId];
     if (!b || b.placed || b.passed) return false;
+
+    // In teams mode, the lander's teammate must wait 2 seconds before accepting
+    if (accept && this.gameMode === "teams" && this.teams && a.respondStartTime) {
+      const landerTeam = this.getTeamOf(a.landingPlayer);
+      const responderTeam = this.getTeamOf(socketId);
+      if (landerTeam && landerTeam === responderTeam) {
+        const elapsed = Date.now() - a.respondStartTime;
+        if (elapsed < 2000) {
+          return false; // too early — teammate must wait
+        }
+      }
+    }
 
     if (accept) {
       b.placed = true;
@@ -3394,7 +3263,7 @@ class MonopolyGame {
     this.bombs.push({
       placedBy: player.id,
       position: idx,
-      turnsLeft: 5,
+      turnsLeft: 6,
     });
     this._log(
       `${player.name} planted a pineapple bomb! \ud83c\udf4d (arms after your next turn, detonates in 5!)`,
@@ -3547,6 +3416,7 @@ class MonopolyGame {
     this.petUsedThisTurn = false;
     this.diceMatchTiles = null;
     this.diceMatchGrownAmounts = null;
+    this.diceMatchEarlyPickup = null;
     this.growSquatterSteals = null;
     this.lastPetUsed = null;
 
@@ -4029,13 +3899,12 @@ class MonopolyGame {
             propPrice: this.auction.propPrice,
             propGroup: this.auction.propGroup,
             phase: this.auction.phase,
-            simple: this.auction.simple || false,
-            teamAuction: this.auction.teamAuction || false,
             landingPlayer: this.auction.landingPlayer,
             devilUser: this.auction.devilUser || null,
             landerOpenBid: this.auction.landerOpenBid ?? null,
-            tiebreakBidders: this.auction.tiebreakBidders || null,
-            highBid: null,
+            respondDeadline: this.auction.respondDeadline || null,
+            respondStartTime: this.auction.respondStartTime || null,
+            acceptTime: this.auction.acceptTime || null,
             bids: Object.fromEntries(
               Object.entries(this.auction.bids).map(([id, b]) => [
                 id,
@@ -4074,10 +3943,10 @@ class MonopolyGame {
       bombSelfDamage: this.bombSelfDamage || null,
       diceMatchTiles: this.diceMatchTiles || null,
       diceMatchGrownAmounts: this.diceMatchGrownAmounts || null,
+      diceMatchEarlyPickup: this.diceMatchEarlyPickup != null ? this.diceMatchEarlyPickup : null,
       growSquatterSteals: this.growSquatterSteals || null,
       superBananaWin: this.superBananaWin || null,
       sellListings: this.sellListings.map((l) => ({ ...l })),
-      silentAuctionTied: this.silentAuctionTied || false,
       lobbyReady: this._lobbyReady ? [...this._lobbyReady] : [],
     };
   }

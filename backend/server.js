@@ -152,6 +152,15 @@ io.on("connection", (socket) => {
     }
   });
 
+  // ── Cancel pet ability ────────────────────────────────────────
+  socket.on("cancel_pet", (data) => {
+    const game = games.get(data.gameId);
+    if (!game) return;
+    if (game.cancelPet(socket.id)) {
+      emitGameUpdate(data.gameId, game);
+    }
+  });
+
   // ── Update settings (host only, in lobby) ────────────────────
   socket.on("update_settings", (data) => {
     const game = games.get(data.gameId);
@@ -280,7 +289,7 @@ io.on("connection", (socket) => {
     }
   });
 
-  // ── Respond to Simple Auction ────────────────────────────────
+  // ── Respond to Auction (accept/reject) ──────────────────────
   socket.on("respond_auction", (data) => {
     const game = games.get(data.gameId);
     if (!game) return;

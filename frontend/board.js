@@ -110,6 +110,7 @@ function spaceRect(i) {
 // ——— Free Bananas popup tracking ——————————————————————————————————
 let _prevFreeBananasTiles = new Set(); // positions where freebananas is known
 let _freeBananasShown = new Set(); // positions already shown this walk
+window._freeBananasShown = _freeBananasShown;
 
 // ——— Banana pile tracking for collection animation ————————————————
 let _prevBananaPiles = {}; // { tileIndex: amount }
@@ -295,6 +296,7 @@ function walkStepUpdate(gs) {
   }
 
   // Detect collected piles and show floating animation (once per tile per turn)
+  // Delay burst by 150ms so the token CSS transition finishes before the explosion
   const currentPiles = {};
   for (const pile of _bananaPiles) {
     currentPiles[pile.tileIndex] = pile.amount;
@@ -305,68 +307,63 @@ function walkStepUpdate(gs) {
       _collectShown.add(Number(idx));
       const collected = oldAmount - newAmount;
       const r = spaceRect(Number(idx));
-      const floater = document.createElement("div");
-      floater.className = "banana-pile-collected";
-      floater.textContent = "+" + collected + "\ud83c\udf4c";
-      if (r.side === "bottom") {
-        floater.style.left = r.l + r.w / 2 + "%";
-        floater.style.top = r.t - 0.3 + "%";
-      } else if (r.side === "top") {
-        floater.style.left = r.l + r.w / 2 + "%";
-        floater.style.top = r.t + r.h + 0.3 + "%";
-      } else if (r.side === "left") {
-        floater.style.left = r.l + r.w + 0.3 + "%";
-        floater.style.top = r.t + r.h / 2 + "%";
-      } else if (r.side === "right") {
-        floater.style.left = r.l - 0.3 + "%";
-        floater.style.top = r.t + r.h / 2 + "%";
-      } else {
-        floater.style.left = r.l + r.w / 2 + "%";
-        floater.style.top = r.t + r.h / 2 + "%";
-      }
-      board.appendChild(floater);
-      floater.addEventListener("animationend", () => floater.remove());
       const collectorId = gs.currentPlayer && gs.currentPlayer.id;
-      // Flying banana burst for pile collection
-      bananaBurst(collected, collectorId);
-      window._walkPileCollected = (window._walkPileCollected || 0) + collected;
+      // Flying banana burst for pile collection — delayed to sync with token arrival
       const stolenProp = _propById[Number(idx)];
-      if (stolenProp && stolenProp.owner && stolenProp.owner !== collectorId && !_stealShown.has(Number(idx))) {
-        _stealShown.add(Number(idx));
-        const stealFloater = document.createElement("div");
-        stealFloater.className = "steal-floater";
-        stealFloater.textContent = "Steal!";
-        stealFloater.style.left = floater.style.left;
-        stealFloater.style.top = floater.style.top;
-        board.appendChild(stealFloater);
-        stealFloater.addEventListener("animationend", () => stealFloater.remove());
-      }
-      const collectorIsMe =
-        typeof myId !== "undefined" && collectorId === myId;
-      if (collectorIsMe || !collectorId) {
-        showPopupAtBananaBox("+" + collected + "\uD83C\uDF4C", "pile-collect-popup-player");
-      } else {
-        const pstat = document.querySelector(
-          `.pstat[data-player-id="${collectorId}"]`,
-        );
-        const anchor = pstat && pstat.querySelector(".pstat-money");
-        if (anchor) {
-          const rect = anchor.getBoundingClientRect();
-          const floater2 = document.createElement("div");
-          floater2.className = "pile-collect-popup-player";
-          floater2.textContent = "+" + collected + "\uD83C\uDF4C";
-          floater2.style.position = "fixed";
-          floater2.style.left = rect.left + rect.width / 2 + "px";
-          floater2.style.top = rect.top + "px";
-          floater2.style.pointerEvents = "none";
-          floater2.style.zIndex = "1000";
-          document.body.appendChild(floater2);
-          floater2.addEventListener("animationend", () => floater2.remove());
+      const isSteal = stolenProp && stolenProp.owner && stolenProp.owner !== collectorId && !gs.vineSwing && !window._vineSwingJustLanded && !_stealShown.has(Number(idx));
+      if (isSteal) _stealShown.add(Number(idx));
+      const fireBurst = () => {
+        bananaBurst(collected, collectorId);
+        // Show floater near the collector's account score
+        const _isMe = typeof myId !== "undefined" && collectorId === myId;
+        if (_isMe) {
+          showPopupAtBananaBox("+" + collected + "\uD83C\uDF4C", "free-bananas-popup-player");
+        } else if (collectorId) {
+          const _pstat = document.querySelector(`.pstat[data-player-id="${collectorId}"]`);
+          const _anchor = _pstat && _pstat.querySelector(".pstat-money");
+          if (_anchor) {
+            const _aRect = _anchor.getBoundingClientRect();
+            const _floater = document.createElement("div");
+            _floater.className = "free-bananas-popup-player";
+            _floater.textContent = "+" + collected + "\uD83C\uDF4C";
+            _floater.style.position = "fixed";
+            _floater.style.left = _aRect.left + _aRect.width / 2 + "px";
+            _floater.style.top = _aRect.top + "px";
+            _floater.style.pointerEvents = "none";
+            _floater.style.zIndex = "1000";
+            document.body.appendChild(_floater);
+            _floater.addEventListener("animationend", () => _floater.remove());
+          }
+        }
+        if (isSteal) {
+          const stealFloater = document.createElement("div");
+          stealFloater.className = "steal-floater";
+          stealFloater.textContent = "Steal!";
+          const boardRect = board.getBoundingClientRect();
+          stealFloater.style.position = "fixed";
+          stealFloater.style.left = boardRect.left + (r.l + r.w / 2) / 100 * boardRect.width + "px";
+          stealFloater.style.top = boardRect.top + (r.t + r.h / 2) / 100 * boardRect.height + "px";
+          stealFloater.style.zIndex = "9999";
+          document.body.appendChild(stealFloater);
+          setTimeout(() => stealFloater.remove(), 2200);
+        }
+      };
+      setTimeout(fireBurst, 150);
+      window._walkPileCollected = (window._walkPileCollected || 0) + collected;
+      // Sync pstat-pile counter: subtract collected amount from frozen total
+      if (window._frozenPileTotals && collectorId) {
+        window._frozenPileTotals[collectorId] = Math.max(0,
+          (window._frozenPileTotals[collectorId] || 0) - collected);
+        const pileEl = document.querySelector(`.pstat[data-player-id="${collectorId}"] .pstat-pile`);
+        if (pileEl) {
+          const remaining = window._frozenPileTotals[collectorId];
+          pileEl.textContent = remaining > 0 ? remaining + "\uD83C\uDF4C" : "";
         }
       }
     }
   }
   _prevBananaPiles = currentPiles;
+  window._vineSwingJustLanded = false;
 
   // Free Bananas pass-through detection
   const layout = gs && gs.boardLayout;
@@ -920,22 +917,24 @@ function renderBoard(gs) {
       board.appendChild(growFloater);
       growFloater.addEventListener("animationend", () => growFloater.remove());
       // After 1 second, show "Steal!" floater and banana burst for squatter
-      const stealLeft = growFloater.style.left;
-      const stealTop = growFloater.style.top;
       setTimeout(() => {
         const stealFloater = document.createElement("div");
         stealFloater.className = "steal-floater";
         stealFloater.textContent = "Steal!";
-        stealFloater.style.left = stealLeft;
-        stealFloater.style.top = stealTop;
-        board.appendChild(stealFloater);
-        stealFloater.addEventListener("animationend", () => stealFloater.remove());
+        const boardRect = board.getBoundingClientRect();
+        stealFloater.style.position = "fixed";
+        stealFloater.style.left = boardRect.left + (r.l + r.w / 2) / 100 * boardRect.width + "px";
+        stealFloater.style.top = boardRect.top + (r.t + r.h / 2) / 100 * boardRect.height + "px";
+        stealFloater.style.zIndex = "9999";
+        document.body.appendChild(stealFloater);
+        setTimeout(() => stealFloater.remove(), 2200);
         bananaBurst(steal.amount, steal.squatterId);
       }, 1000);
     }
   }
 
   // Detect collected piles and show floating animation (once per tile per turn)
+  // Delay burst by 150ms so the token CSS transition finishes before the explosion
   const currentPiles = {};
   for (const pile of _bananaPiles) {
     currentPiles[pile.tileIndex] = pile.amount;
@@ -946,73 +945,63 @@ function renderBoard(gs) {
       _collectShown.add(Number(idx));
       const collected = oldAmount - newAmount;
       const r = spaceRect(Number(idx));
-      const floater = document.createElement("div");
-      floater.className = "banana-pile-collected";
-      floater.textContent = "+" + collected + "\ud83c\udf4c";
-      // Position at the same spot as the pile indicator
-      if (r.side === "bottom") {
-        floater.style.left = r.l + r.w / 2 + "%";
-        floater.style.top = r.t - 0.3 + "%";
-      } else if (r.side === "top") {
-        floater.style.left = r.l + r.w / 2 + "%";
-        floater.style.top = r.t + r.h + 0.3 + "%";
-      } else if (r.side === "left") {
-        floater.style.left = r.l + r.w + 0.3 + "%";
-        floater.style.top = r.t + r.h / 2 + "%";
-      } else if (r.side === "right") {
-        floater.style.left = r.l - 0.3 + "%";
-        floater.style.top = r.t + r.h / 2 + "%";
-      } else {
-        floater.style.left = r.l + r.w / 2 + "%";
-        floater.style.top = r.t + r.h / 2 + "%";
-      }
-      board.appendChild(floater);
-      floater.addEventListener("animationend", () => floater.remove());
-
-      // The collector is always the current player (they collect own piles and steal from others)
       const collectorId = gs.currentPlayer && gs.currentPlayer.id;
-      // Flying banana burst for pile collection
-      bananaBurst(collected, collectorId);
-      window._walkPileCollected = (window._walkPileCollected || 0) + collected;
-
-      // Show "Steal!" floater if the pile belonged to another player (once per tile per turn)
+      // Flying banana burst for pile collection — delayed to sync with token arrival
       const stolenProp = _propById[Number(idx)];
-      if (stolenProp && stolenProp.owner && stolenProp.owner !== collectorId && !_stealShown.has(Number(idx))) {
-        _stealShown.add(Number(idx));
-        const stealFloater = document.createElement("div");
-        stealFloater.className = "steal-floater";
-        stealFloater.textContent = "Steal!";
-        stealFloater.style.left = floater.style.left;
-        stealFloater.style.top = floater.style.top;
-        board.appendChild(stealFloater);
-        stealFloater.addEventListener("animationend", () => stealFloater.remove());
-      }
-      const collectorIsMe =
-        typeof myId !== "undefined" && collectorId === myId;
-      if (collectorIsMe || !collectorId) {
-        showPopupAtBananaBox("+" + collected + "\uD83C\uDF4C", "pile-collect-popup-player");
-      } else {
-        const pstat = document.querySelector(
-          `.pstat[data-player-id="${collectorId}"]`,
-        );
-        const anchor = pstat && pstat.querySelector(".pstat-money");
-        if (anchor) {
-          const rect = anchor.getBoundingClientRect();
-          const floater2 = document.createElement("div");
-          floater2.className = "pile-collect-popup-player";
-          floater2.textContent = "+" + collected + "\uD83C\uDF4C";
-          floater2.style.position = "fixed";
-          floater2.style.left = rect.left + rect.width / 2 + "px";
-          floater2.style.top = rect.top + "px";
-          floater2.style.pointerEvents = "none";
-          floater2.style.zIndex = "1000";
-          document.body.appendChild(floater2);
-          floater2.addEventListener("animationend", () => floater2.remove());
+      const isSteal = stolenProp && stolenProp.owner && stolenProp.owner !== collectorId && !gs.vineSwing && !window._vineSwingJustLanded && !_stealShown.has(Number(idx));
+      if (isSteal) _stealShown.add(Number(idx));
+      const fireBurst = () => {
+        bananaBurst(collected, collectorId);
+        // Show floater near the collector's account score
+        const _isMe = typeof myId !== "undefined" && collectorId === myId;
+        if (_isMe) {
+          showPopupAtBananaBox("+" + collected + "\uD83C\uDF4C", "free-bananas-popup-player");
+        } else if (collectorId) {
+          const _pstat = document.querySelector(`.pstat[data-player-id="${collectorId}"]`);
+          const _anchor = _pstat && _pstat.querySelector(".pstat-money");
+          if (_anchor) {
+            const _aRect = _anchor.getBoundingClientRect();
+            const _floater = document.createElement("div");
+            _floater.className = "free-bananas-popup-player";
+            _floater.textContent = "+" + collected + "\uD83C\uDF4C";
+            _floater.style.position = "fixed";
+            _floater.style.left = _aRect.left + _aRect.width / 2 + "px";
+            _floater.style.top = _aRect.top + "px";
+            _floater.style.pointerEvents = "none";
+            _floater.style.zIndex = "1000";
+            document.body.appendChild(_floater);
+            _floater.addEventListener("animationend", () => _floater.remove());
+          }
+        }
+        if (isSteal) {
+          const stealFloater = document.createElement("div");
+          stealFloater.className = "steal-floater";
+          stealFloater.textContent = "Steal!";
+          const boardRect = board.getBoundingClientRect();
+          stealFloater.style.position = "fixed";
+          stealFloater.style.left = boardRect.left + (r.l + r.w / 2) / 100 * boardRect.width + "px";
+          stealFloater.style.top = boardRect.top + (r.t + r.h / 2) / 100 * boardRect.height + "px";
+          stealFloater.style.zIndex = "9999";
+          document.body.appendChild(stealFloater);
+          setTimeout(() => stealFloater.remove(), 2200);
+        }
+      };
+      setTimeout(fireBurst, 150);
+      window._walkPileCollected = (window._walkPileCollected || 0) + collected;
+      // Sync pstat-pile counter: subtract collected amount from frozen total
+      if (window._frozenPileTotals && collectorId) {
+        window._frozenPileTotals[collectorId] = Math.max(0,
+          (window._frozenPileTotals[collectorId] || 0) - collected);
+        const pileEl = document.querySelector(`.pstat[data-player-id="${collectorId}"] .pstat-pile`);
+        if (pileEl) {
+          const remaining = window._frozenPileTotals[collectorId];
+          pileEl.textContent = remaining > 0 ? remaining + "\uD83C\uDF4C" : "";
         }
       }
     }
   }
   _prevBananaPiles = currentPiles;
+  window._vineSwingJustLanded = false;
 
   // Free Bananas +500 popup — show at player's banana score when triggered
   if (layout) {
@@ -1027,6 +1016,7 @@ function renderBoard(gs) {
     const walking = !!window._tokenWalking;
     if (walking && !_wasTokenWalking) {
       _freeBananasShown = new Set();
+      window._freeBananasShown = _freeBananasShown;
       _stealShown = new Set();
       _collectShown = new Set();
     }
@@ -1048,7 +1038,26 @@ function renderBoard(gs) {
         const tileRevealed = !myRevealed || myRevealed.has(pos);
         if (currentFB.has(pos) && !_freeBananasShown.has(pos) && tileRevealed) {
           _freeBananasShown.add(pos);
-          showPopupAtBananaBox("+500\uD83C\uDF4C", "free-bananas-popup-player");
+          const isMe = typeof myId !== "undefined" && playerId === myId;
+          if (isMe) {
+            showPopupAtBananaBox("+500\uD83C\uDF4C", "free-bananas-popup-player");
+          } else {
+            const pstat = document.querySelector(`.pstat[data-player-id="${playerId}"]`);
+            const anchor = pstat && pstat.querySelector(".pstat-money");
+            if (anchor) {
+              const rect = anchor.getBoundingClientRect();
+              const floater = document.createElement("div");
+              floater.className = "free-bananas-popup-player";
+              floater.textContent = "+500\uD83C\uDF4C";
+              floater.style.position = "fixed";
+              floater.style.left = rect.left + rect.width / 2 + "px";
+              floater.style.top = rect.top + "px";
+              floater.style.pointerEvents = "none";
+              floater.style.zIndex = "1000";
+              document.body.appendChild(floater);
+              floater.addEventListener("animationend", () => floater.remove());
+            }
+          }
         }
       }
     }
@@ -1058,13 +1067,29 @@ function renderBoard(gs) {
       for (const pos of currentFB) {
         if (!_prevFreeBananasTiles.has(pos) && !_freeBananasShown.has(pos)) {
           _freeBananasShown.add(pos);
-          // For passive reveal, try to show at current player's money
+          // For passive reveal, show at the player who is on the tile
           const currentPlayer = gs.players.find((p) => p.position === pos);
           if (currentPlayer) {
-            showPopupAtBananaBox(
-              "+500\uD83C\uDF4C",
-              "free-bananas-popup-player",
-            );
+            const isMe = typeof myId !== "undefined" && currentPlayer.id === myId;
+            if (isMe) {
+              showPopupAtBananaBox("+500\uD83C\uDF4C", "free-bananas-popup-player");
+            } else {
+              const pstat = document.querySelector(`.pstat[data-player-id="${currentPlayer.id}"]`);
+              const anchor = pstat && pstat.querySelector(".pstat-money");
+              if (anchor) {
+                const rect = anchor.getBoundingClientRect();
+                const floater = document.createElement("div");
+                floater.className = "free-bananas-popup-player";
+                floater.textContent = "+500\uD83C\uDF4C";
+                floater.style.position = "fixed";
+                floater.style.left = rect.left + rect.width / 2 + "px";
+                floater.style.top = rect.top + "px";
+                floater.style.pointerEvents = "none";
+                floater.style.zIndex = "1000";
+                document.body.appendChild(floater);
+                floater.addEventListener("animationend", () => floater.remove());
+              }
+            }
           }
         }
       }
