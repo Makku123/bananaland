@@ -347,6 +347,9 @@ function initSocket() {
     gs = state;
     gameId = state.gameId;
     myId = socket.id;
+    // Sync no-timer toggle with server state
+    const noTimerChk = document.getElementById("chk-no-timer");
+    if (noTimerChk) noTimerChk.checked = !!gs.noAuctionTimer;
     // Rebuild lookup maps for O(1) access
     _gsPlayerMap = {};
     if (gs.players) for (const p of gs.players) _gsPlayerMap[p.id] = p;
@@ -3021,23 +3024,33 @@ function _startAuctionTimer() {
     const now = Date.now();
     const deadline = gs.auction.respondDeadline;
     const remaining = Math.max(0, deadline - now);
-    const pct = Math.max(0, Math.min(100, (remaining / 5000) * 100));
+    const pct = Math.max(0, Math.min(100, (remaining / 15000) * 100));
     const secs = (remaining / 1000).toFixed(1);
 
     const bar = document.getElementById("auction-timer-bar");
     const text = document.getElementById("auction-timer-text");
+    const ring = document.getElementById("auction-timer-ring");
     const timerWrap = document.getElementById("auction-timer-wrap");
     if (timerWrap) timerWrap.style.display = "";
 
+    const urgencyClass = pct <= 20 ? " timer-urgent" : pct <= 40 ? " timer-low" : "";
+
     if (bar) {
       bar.style.width = pct + "%";
-      bar.className = "auction-timer-bar" +
-        (pct <= 20 ? " timer-urgent" : pct <= 40 ? " timer-low" : "");
+      bar.className = "auction-timer-bar" + urgencyClass;
+    }
+    if (ring) {
+      const circumference = 2 * Math.PI * 52;
+      const offset = circumference * (1 - pct / 100);
+      ring.style.strokeDashoffset = offset;
+      ring.className.baseVal = "auction-timer-ring-progress" + urgencyClass;
     }
     if (text) {
-      text.textContent = secs + "s";
-      text.className = "auction-timer-text" +
-        (pct <= 20 ? " timer-urgent" : pct <= 40 ? " timer-low" : "");
+      text.textContent = Math.ceil(remaining / 1000);
+      text.className = "auction-timer-text" + urgencyClass;
+    }
+    if (timerWrap) {
+      timerWrap.className = "auction-timer-wrap" + urgencyClass;
     }
 
     // Tick sound each second
@@ -3121,9 +3134,13 @@ function updateAuctionPanel() {
         : "Waiting for lander to name a price...";
   } else if (a.phase === "respond") {
     // Respond phase — timer is running, others accept or reject
-    // Start timer animation if not already running
-    if (!window._auctionTimerStarted) {
+    // Start timer animation if not already running (skip if no timer)
+    if (!window._auctionTimerStarted && !gs.noAuctionTimer) {
       _startAuctionTimer();
+    }
+    if (gs.noAuctionTimer) {
+      const tw = document.getElementById("auction-timer-wrap");
+      if (tw) tw.style.display = "none";
     }
 
     // Player was excluded (can't afford)
@@ -3132,10 +3149,10 @@ function updateAuctionPanel() {
     } else if (myId === a.landingPlayer) {
       highEl.textContent = `You priced it at ${a.landerOpenBid}\uD83C\uDF4C \u2014 waiting for responses...`;
     } else {
-      // Check if I'm the lander's teammate (2s delay in teams mode)
+      // Check if I'm the lander's teammate (5s delay in teams mode)
       const isTeammate = gs.gameMode === "teams" && gs.teams && a.respondStartTime &&
         _getMyTeamKey() === _getLanderTeamKey(a);
-      const teammateDelay = isTeammate ? Math.max(0, (a.respondStartTime + 2000) - Date.now()) : 0;
+      const teammateDelay = isTeammate ? Math.max(0, (a.respondStartTime + 5000) - Date.now()) : 0;
 
       if (teammateDelay > 0) {
         highEl.textContent = `Priced at ${a.landerOpenBid}\uD83C\uDF4C \u2014 opponents get a head start!`;
@@ -3972,6 +3989,13 @@ function toggleAutoAll(on) {
   if (petBtn) petBtn.dataset.armed = on ? "true" : "false";
 }
 
+function toggleNoTimer() {
+  const checked = document.getElementById("chk-no-timer").checked;
+  if (socket && gameId) {
+    socket.emit("toggle_no_timer", { gameId, noTimer: checked });
+  }
+}
+
 function toggleRevealAll() {
   revealAll = document.getElementById("chk-reveal").checked;
   if (gs) renderBoard(gs);
@@ -4567,6 +4591,12 @@ window.addEventListener("DOMContentLoaded", () => {
   initBoardFloaters();
   showScreen("screen-menu");
 
+  // Sync twemoji toggle checkbox with saved preference
+  var twToggle = document.getElementById("twemoji-toggle");
+  if (twToggle && typeof twemojiIsEnabled === "function") {
+    twToggle.checked = twemojiIsEnabled();
+  }
+
   // Close auction tooltip when clicking outside
   document.addEventListener("click", (e) => {
     const icon = document.querySelector(".auction-info-icon.open");
@@ -4644,14 +4674,18 @@ window.addEventListener("DOMContentLoaded", () => {
   }
   if (chatToggle && chatEl) {
     chatToggle.addEventListener("click", () => {
-      chatEl.classList.remove("board-chat-hidden");
-      chatToggle.classList.remove("has-unread");
-      // Open near the toggle button (bottom-right of board)
-      chatEl.style.left = "auto";
-      chatEl.style.right = "2%";
-      chatEl.style.top = "auto";
-      chatEl.style.bottom = "12%";
-      chatEl.style.transform = "none";
+      if (chatEl.classList.contains("board-chat-hidden")) {
+        chatEl.classList.remove("board-chat-hidden");
+        chatToggle.classList.remove("has-unread");
+        // Open near the toggle button (bottom-right of board)
+        chatEl.style.left = "auto";
+        chatEl.style.right = "2%";
+        chatEl.style.top = "auto";
+        chatEl.style.bottom = "12%";
+        chatEl.style.transform = "none";
+      } else {
+        chatEl.classList.add("board-chat-hidden");
+      }
     });
   }
 
@@ -4932,7 +4966,7 @@ const TUTORIAL_STEPS = [
         <p>Here's how it works:</p>
         <p>1️⃣ <strong>You bid</strong> — enter the amount you're willing to pay</p>
         <p>2️⃣ <strong>Owner decides</strong> — they can <span style="color:#4caf50;">accept</span> your bid (sell the farm) or <span style="color:#e74c3c;">reject</span> it</p>
-        <p>3️⃣ <strong>5-second timer</strong> — decisions must be fast!</p>
+        <p>3️⃣ <strong>15-second timer</strong> — decisions must be fast!</p>
         <div class="tut-tip"><strong>Strategy:</strong> Bid high enough to tempt the owner, but not so high that you overpay. Watch your opponents' banana counts to know what they can afford to reject!</div>
         <p>If the owner doesn't respond in time, the auction <span class="tut-highlight">automatically resolves</span> based on the bid amount.</p>`;
     },

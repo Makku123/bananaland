@@ -197,6 +197,8 @@ function renderProfile() {
   ).toLocaleString();
   document.getElementById("stat-farms-owned").textContent = s.farmsOwned || 0;
   document.getElementById("stat-auctions-won").textContent = s.auctionsWon || 0;
+  document.getElementById("stat-games-lost").textContent = s.gamesLost || 0;
+  document.getElementById("stat-karma").textContent = s.karma || 0;
 }
 
 async function saveProfileName() {

@@ -12,3 +12,4 @@ build/
 *.swo
 *~
 backend/users.json
+backend/*.db

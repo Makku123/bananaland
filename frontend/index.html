@@ -202,6 +202,14 @@
                 <div class="profile-stat-val" id="stat-auctions-won">0</div>
                 <div class="profile-stat-label">Auctions Won</div>
               </div>
+              <div class="profile-stat">
+                <div class="profile-stat-val" id="stat-games-lost">0</div>
+                <div class="profile-stat-label">Games Lost</div>
+              </div>
+              <div class="profile-stat">
+                <div class="profile-stat-val" id="stat-karma">0</div>
+                <div class="profile-stat-label">Karma</div>
+              </div>
             </div>
           </div>
 
@@ -265,6 +273,16 @@
               👤 My Profile
             </button>
           </div>
+          <div class="menu-settings">
+            <label class="toggle-label">
+              <input
+                type="checkbox"
+                id="twemoji-toggle"
+                onchange="twemojiSetEnabled(this.checked)"
+              />
+              <span>Consistent Emojis (same on all devices)</span>
+            </label>
+          </div>
           <div id="menu-auth-btns" class="menu-auth-btns">
             <button
               class="btn btn-alt btn-auth-link"
@@ -312,7 +330,7 @@
                       <strong>How it works (all player counts)</strong>
                       <ol>
                         <li>Lander names a price</li>
-                        <li>A 5-second timer starts</li>
+                        <li>A 15-second timer starts</li>
                         <li>First player to accept buys the farm</li>
                         <li>If everyone rejects or time runs out → lander buys at their own price</li>
                       </ol>
@@ -685,10 +703,16 @@
                 <h4 id="auction-title">🍌 BANANA BID 🍌</h4>
                 <div id="auction-prop" class="auction-prop"></div>
                 <div id="auction-timer-wrap" class="auction-timer-wrap" style="display: none">
+                  <div class="auction-timer-ring-container">
+                    <svg class="auction-timer-ring" viewBox="0 0 120 120">
+                      <circle class="auction-timer-ring-bg" cx="60" cy="60" r="52" />
+                      <circle class="auction-timer-ring-progress" id="auction-timer-ring" cx="60" cy="60" r="52" />
+                    </svg>
+                    <div class="auction-timer-text" id="auction-timer-text">10</div>
+                  </div>
                   <div class="auction-timer-bar-bg">
                     <div class="auction-timer-bar" id="auction-timer-bar"></div>
                   </div>
-                  <div class="auction-timer-text" id="auction-timer-text">5.0s</div>
                 </div>
                 <div id="auction-high" class="auction-high"></div>
                 <div id="auction-turn" class="auction-turn"></div>
@@ -1545,7 +1569,30 @@
               <input type="checkbox" id="chk-auto-fold" />
               Auto Fold
             </label>
+            <label
+              class="toggle-reveal"
+              title="Disable the auction timer for a more relaxed experience"
+            >
+              <input type="checkbox" id="chk-no-timer" onchange="toggleNoTimer()" />
+              No Timer
+            </label>
           </aside>
+        </div>
+      </div>
+
+      <!-- ── Tutorial Mode ───────────────────────────────────────── -->
+      <div id="screen-tutorial" class="screen">
+        <div class="card tutorial-card">
+          <div class="tutorial-progress">
+            <div class="tutorial-progress-bar" id="tutorial-progress-bar"></div>
+          </div>
+          <div class="tutorial-step-counter" id="tutorial-step-counter">Step 1 / 10</div>
+          <div id="tutorial-content"></div>
+          <div class="tutorial-nav">
+            <button class="btn btn-alt" id="tutorial-prev" onclick="tutorialPrev()">← Back</button>
+            <div class="tutorial-dots" id="tutorial-dots"></div>
+            <button class="btn btn-glow" id="tutorial-next" onclick="tutorialNext()">Next →</button>
+          </div>
         </div>
       </div>
     </div>
@@ -1997,7 +2044,7 @@
                 <div class="rules-step">
                   <span class="rules-step-num">2</span>
                   <span
-                    ><b>5-second timer starts</b> — All other players race to
+                    ><b>15-second timer starts</b> — All other players race to
                     accept or reject</span
                   >
                 </div>
@@ -2283,7 +2330,7 @@
                   farm is safe
                 </li>
                 <li>Teammate banana piles are <b>collected, not stolen</b></li>
-                <li>Auctions work the same — lander prices, 5s timer, first accept wins</li>
+                <li>Auctions work the same — lander prices, 15s timer, first accept wins</li>
               </ul>
 
               <h4 class="rules-sub-heading">🤝 Team Actions</h4>
@@ -2346,7 +2393,7 @@
                   <tr>
                     <td>🔨 Banana Bid</td>
                     <td>On</td>
-                    <td>Price-it auction with 5s timer</td>
+                    <td>Price-it auction with 15s timer</td>
                   </tr>
                   <tr>
                     <td>🍍 Pineapple Bomb Mode</td>
@@ -2386,26 +2433,11 @@
         </div>
       </div>
 
-      <!-- ── Tutorial Mode ───────────────────────────────────────── -->
-      <div id="screen-tutorial" class="screen">
-        <div class="card tutorial-card">
-          <div class="tutorial-progress">
-            <div class="tutorial-progress-bar" id="tutorial-progress-bar"></div>
-          </div>
-          <div class="tutorial-step-counter" id="tutorial-step-counter">Step 1 / 10</div>
-          <div id="tutorial-content"></div>
-          <div class="tutorial-nav">
-            <button class="btn btn-alt" id="tutorial-prev" onclick="tutorialPrev()">← Back</button>
-            <div class="tutorial-dots" id="tutorial-dots"></div>
-            <button class="btn btn-glow" id="tutorial-next" onclick="tutorialNext()">Next →</button>
-          </div>
-        </div>
-      </div>
-    </div>
-
     <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@twemoji/api@15.1.0/dist/twemoji.min.js"></script>
     <script src="board.js?v=2"></script>
     <script src="auth.js?v=2"></script>
     <script src="game.js?v=3"></script>
+    <script src="twemoji-init.js?v=1"></script>
   </body>
 </html>

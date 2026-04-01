@@ -170,6 +170,23 @@ io.on("connection", (socket) => {
     }
   });
 
+  // ── Toggle no-auction-timer (any player, any time) ──────────
+  socket.on("toggle_no_timer", (data) => {
+    const game = games.get(data.gameId);
+    if (!game) return;
+    game.noAuctionTimer = !!data.noTimer;
+    // If turning on mid-auction, clear any running timer
+    if (game.noAuctionTimer && game._auctionTimer) {
+      clearTimeout(game._auctionTimer);
+      game._auctionTimer = null;
+      if (game.auction) {
+        game.auction.respondDeadline = null;
+        game.auction.respondStartTime = null;
+      }
+    }
+    emitGameUpdate(data.gameId, game);
+  });
+
   // ── Start game ───────────────────────────────────────────────
   socket.on("start_game", (data) => {
     const game = games.get(data.gameId);

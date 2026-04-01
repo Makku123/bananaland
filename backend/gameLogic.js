@@ -601,6 +601,7 @@ class MonopolyGame {
     );
     this.bombMode = bombMode !== false; // on by default
     this.monkeyPoker = monkeyPoker !== false; // on by default
+    this.noAuctionTimer = false;
     this.state = "waiting"; // waiting | playing | finished
     this.admin = null;
     this.players = [];
@@ -699,6 +700,9 @@ class MonopolyGame {
     }
     if (settings.petMode === "limited" || settings.petMode === "cooldown") {
       this.petMode = settings.petMode;
+    }
+    if (settings.noAuctionTimer != null) {
+      this.noAuctionTimer = !!settings.noAuctionTimer;
     }
     return true;
   }
@@ -2341,30 +2345,40 @@ class MonopolyGame {
         return;
       }
 
-      // Move to respond phase — start 5s timer
+      // Move to respond phase — start 10s timer
       for (const id of others) {
         a.bids[id].placed = false;
         a.bids[id].passed = false;
       }
       a.phase = "respond";
-      a.respondDeadline = Date.now() + 5000;
-      a.respondStartTime = Date.now();
-      this._log(
-        `Lander priced it at ${lb.amount}\ud83c\udf4c \u2014 5 seconds to accept!`,
-      );
+      if (this.noAuctionTimer) {
+        a.respondDeadline = null;
+        a.respondStartTime = null;
+        this._log(
+          `Lander priced it at ${lb.amount}\ud83c\udf4c \u2014 accept or reject!`,
+        );
+      } else {
+        a.respondDeadline = Date.now() + 15000;
+        a.respondStartTime = Date.now();
+        this._log(
+          `Lander priced it at ${lb.amount}\ud83c\udf4c \u2014 15 seconds to accept!`,
+        );
+      }
 
-      // Start the 5s timer — when it expires, lander buys
+      // Start the 15s timer — when it expires, lander buys (unless noTimer is on)
       if (this._auctionTimer) clearTimeout(this._auctionTimer);
-      this._auctionTimer = setTimeout(() => {
-        this._auctionTimer = null;
-        if (!this.auction || this.auction.phase !== "respond") return;
-        // Timer expired — lander buys
-        this._log(`\u23f0 Time's up! Lander buys the farm!`);
-        this.auction.highBidder = this.auction.landingPlayer;
-        this.auction.highBid = this.auction.landerOpenBid;
-        this._resolveAuction();
-        if (this.onUpdate) this.onUpdate();
-      }, 5000);
+      if (!this.noAuctionTimer) {
+        this._auctionTimer = setTimeout(() => {
+          this._auctionTimer = null;
+          if (!this.auction || this.auction.phase !== "respond") return;
+          // Timer expired — lander buys
+          this._log(`\u23f0 Time's up! Lander buys the farm!`);
+          this.auction.highBidder = this.auction.landingPlayer;
+          this.auction.highBid = this.auction.landerOpenBid;
+          this._resolveAuction();
+          if (this.onUpdate) this.onUpdate();
+        }, 15000);
+      }
       return;
     }
 
@@ -2526,13 +2540,13 @@ class MonopolyGame {
     const b = a.bids[socketId];
     if (!b || b.placed || b.passed) return false;
 
-    // In teams mode, the lander's teammate must wait 2 seconds before accepting
+    // In teams mode, the lander's teammate must wait 5 seconds before accepting
     if (accept && this.gameMode === "teams" && this.teams && a.respondStartTime) {
       const landerTeam = this.getTeamOf(a.landingPlayer);
       const responderTeam = this.getTeamOf(socketId);
       if (landerTeam && landerTeam === responderTeam) {
         const elapsed = Date.now() - a.respondStartTime;
-        if (elapsed < 2000) {
+        if (elapsed < 5000) {
           return false; // too early — teammate must wait
         }
       }
@@ -3873,6 +3887,7 @@ class MonopolyGame {
       maxPlayers: this.maxPlayers,
       startingMoney: this.startingMoney,
       bombMode: this.bombMode,
+      noAuctionTimer: this.noAuctionTimer,
       monkeyPoker: this.monkeyPoker,
       petMode: this.petMode,
       turn: this.turn,
