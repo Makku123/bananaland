@@ -4,56 +4,56 @@ const BOARD_SIZE = 52;
 
 const SPACE_DATA = {
   // Cavendish (12)
-  1: { name: "Mediterranean", group: "yellow", price: 50 },
-  3: { name: "Baltic Ave", group: "yellow", price: 50 },
-  4: { name: "Vine Street", group: "yellow", price: 50 },
-  5: { name: "CV12", group: "yellow", price: 50 },
-  15: { name: "Lady Finger Ln", group: "yellow", price: 50 },
-  35: { name: "Banana Bend", group: "yellow", price: 50 },
-  47: { name: "Monkey Trail", group: "yellow", price: 50 },
+  1: { name: "Mediterranean", group: "yellow", price: 40 },
+  3: { name: "Baltic Ave", group: "yellow", price: 40 },
+  4: { name: "Vine Street", group: "yellow", price: 40 },
+  5: { name: "CV12", group: "yellow", price: 40 },
+  15: { name: "Lady Finger Ln", group: "yellow", price: 40 },
+  35: { name: "Banana Bend", group: "yellow", price: 40 },
+  47: { name: "Monkey Trail", group: "yellow", price: 40 },
   // Blue Java (7)
-  6: { name: "Reading Ave", group: "lightblue", price: 100 },
-  7: { name: "Oriental Ave", group: "lightblue", price: 100 },
-  9: { name: "Vermont Ave", group: "lightblue", price: 100 },
-  10: { name: "Connecticut", group: "lightblue", price: 100 },
-  11: { name: "Belmont Ave", group: "lightblue", price: 100 },
-  19: { name: "Penn. Ave", group: "lightblue", price: 100 },
-  32: { name: "B&O Ave", group: "lightblue", price: 100 },
+  6: { name: "Reading Ave", group: "lightblue", price: 80 },
+  7: { name: "Oriental Ave", group: "lightblue", price: 80 },
+  9: { name: "Vermont Ave", group: "lightblue", price: 80 },
+  10: { name: "Connecticut", group: "lightblue", price: 80 },
+  11: { name: "Belmont Ave", group: "lightblue", price: 80 },
+  19: { name: "Penn. Ave", group: "lightblue", price: 80 },
+  32: { name: "B&O Ave", group: "lightblue", price: 80 },
   // Red Dacca (5)
-  14: { name: "St. Charles", group: "red", price: 200 },
-  16: { name: "States Ave", group: "red", price: 200 },
-  17: { name: "Virginia Ave", group: "red", price: 200 },
-  18: { name: "Festival Ave", group: "red", price: 200 },
+  14: { name: "St. Charles", group: "red", price: 160 },
+  16: { name: "States Ave", group: "red", price: 160 },
+  17: { name: "Virginia Ave", group: "red", price: 160 },
+  18: { name: "Festival Ave", group: "red", price: 160 },
   // Lady Finger (5)
-  20: { name: "St. James", group: "pink", price: 200 },
-  22: { name: "Tennessee", group: "pink", price: 200 },
-  23: { name: "New York Ave", group: "pink", price: 200 },
-  24: { name: "Riverside Dr", group: "pink", price: 200 },
-  27: { name: "Kentucky Ave", group: "yellow", price: 50 },
-  29: { name: "Indiana Ave", group: "yellow", price: 50 },
-  30: { name: "Illinois Ave", group: "yellow", price: 50 },
-  31: { name: "Sunset Strip", group: "yellow", price: 50 },
+  20: { name: "St. James", group: "pink", price: 160 },
+  22: { name: "Tennessee", group: "pink", price: 160 },
+  23: { name: "New York Ave", group: "pink", price: 160 },
+  24: { name: "Riverside Dr", group: "pink", price: 160 },
+  27: { name: "Kentucky Ave", group: "yellow", price: 40 },
+  29: { name: "Indiana Ave", group: "yellow", price: 40 },
+  30: { name: "Illinois Ave", group: "yellow", price: 40 },
+  31: { name: "Sunset Strip", group: "yellow", price: 40 },
   // Gros Michel (4)
-  33: { name: "Atlantic Ave", group: "darkblue", price: 360 },
-  34: { name: "Ventnor Ave", group: "darkblue", price: 360 },
-  36: { name: "Marvin Gdns", group: "darkblue", price: 360 },
-  37: { name: "Lakeshore Dr", group: "darkblue", price: 360 },
+  33: { name: "Atlantic Ave", group: "darkblue", price: 320 },
+  34: { name: "Ventnor Ave", group: "darkblue", price: 320 },
+  36: { name: "Marvin Gdns", group: "darkblue", price: 320 },
+  37: { name: "Lakeshore Dr", group: "darkblue", price: 320 },
   // Red Dacca (5th)
-  40: { name: "Red Dacca Ln", group: "red", price: 200 },
+  40: { name: "Red Dacca Ln", group: "red", price: 160 },
   // Lady Finger (5th)
-  41: { name: "Cavendish Dr", group: "pink", price: 200 },
+  41: { name: "Cavendish Dr", group: "pink", price: 160 },
   // Goldfinger (3)
-  48: { name: "Park Place", group: "orange", price: 500 },
-  49: { name: "Fifth Avenue", group: "orange", price: 500 },
-  51: { name: "Boardwalk", group: "orange", price: 500 },
+  48: { name: "Park Place", group: "orange", price: 480 },
+  49: { name: "Fifth Avenue", group: "orange", price: 480 },
+  51: { name: "Boardwalk", group: "orange", price: 480 },
 };
 
 const SPECIAL_SPACES = {
   // Corners
-  0: { name: "GROW\n100%", type: "corner" },
-  13: { name: "GROW\n25%", type: "corner" },
-  26: { name: "GROW\n50%", type: "corner" },
-  39: { name: "GROW\n75%", type: "corner" },
+  0: { name: "GROW\n25%", type: "corner" },
+  13: { name: "GROW\n50%", type: "corner" },
+  26: { name: "GROW\n75%", type: "corner" },
+  39: { name: "GROW\n100%", type: "corner" },
   // Community Chest
   2: { name: "\ud83c\udf4c\n-10%", type: "tax10" },
   21: { name: "\u2b50", type: "special" },
@@ -197,6 +197,8 @@ function _setupBoardDelegation() {
 // Call this instead of renderBoard() for intermediate walk steps.
 function walkStepUpdate(gs) {
   window._gs = gs;
+  // Capture flag before pile detection clears it — used for steal suppression
+  const vineSwingLanding = !!window._vineSwingJustLanded;
   const board = document.getElementById("board");
   if (!board) return;
 
@@ -310,7 +312,7 @@ function walkStepUpdate(gs) {
       const collectorId = gs.currentPlayer && gs.currentPlayer.id;
       // Flying banana burst for pile collection — delayed to sync with token arrival
       const stolenProp = _propById[Number(idx)];
-      const isSteal = stolenProp && stolenProp.owner && stolenProp.owner !== collectorId && !gs.vineSwing && !window._vineSwingJustLanded && !_stealShown.has(Number(idx));
+      const isSteal = stolenProp && stolenProp.owner && stolenProp.owner !== collectorId && !gs.vineSwing && !vineSwingLanding && !_stealShown.has(Number(idx));
       if (isSteal) _stealShown.add(Number(idx));
       const fireBurst = () => {
         bananaBurst(collected, collectorId);
@@ -412,9 +414,12 @@ function walkStepUpdate(gs) {
   const activePlayerIds = new Set();
   if (gs && gs.players) {
     const frozenPos = window._diceRollingPositions || null;
+    // Keep bomb victims visible while walking and until the explosion plays
+    const bombPendingExplosion =
+      !!(gs.lastExplosion && !window._explosionShown);
     const posMap = {};
     gs.players.forEach((p) => {
-      if (p.bankrupt) return;
+      if (p.bankrupt && !bombPendingExplosion) return;
       const pos =
         frozenPos && frozenPos[p.id] != null ? frozenPos[p.id] : p.position;
       if (!posMap[pos]) posMap[pos] = [];
@@ -458,6 +463,14 @@ function walkStepUpdate(gs) {
 
 function renderBoard(gs) {
   window._gs = gs;
+  // Capture vine-swing-just-landed flag before pile detection clears it —
+  // needed later for token no-transition (teleport) and steal suppression.
+  const vineSwingLanding = !!window._vineSwingJustLanded;
+  // Capture bomb-pending state BEFORE the explosion animation block sets
+  // _explosionShown — used by the player-token block below to keep victims
+  // visible until the explosion fires on the same frame.
+  const _bombWasPendingThisFrame =
+    !!(gs && gs.lastExplosion && !window._explosionShown);
   const board = document.getElementById("board");
   _setupBoardDelegation();
   // Preserve overlays across re-renders
@@ -469,6 +482,11 @@ function renderBoard(gs) {
   const tradeDealsToggle = document.getElementById("board-trade-deals-toggle");
   const pokerTable = document.getElementById("poker-table");
   const auctionBox = document.getElementById("auction-box");
+  const helpPanel = document.getElementById("board-help");
+  const helpToggle = document.getElementById("board-help-toggle");
+  const emojiToggle = document.getElementById("board-emoji-toggle");
+  const emojiPicker = document.getElementById("emoji-picker");
+  const phoneToggle = document.getElementById("phone-toggle");
   if (chat) chat.remove();
   if (chatToggle) chatToggle.remove();
   if (logPanel) logPanel.remove();
@@ -477,6 +495,11 @@ function renderBoard(gs) {
   if (tradeDealsToggle) tradeDealsToggle.remove();
   if (pokerTable) pokerTable.remove();
   if (auctionBox) auctionBox.remove();
+  if (helpPanel) helpPanel.remove();
+  if (helpToggle) helpToggle.remove();
+  if (emojiToggle) emojiToggle.remove();
+  if (emojiPicker) emojiPicker.remove();
+  if (phoneToggle) phoneToggle.remove();
   // Detach persistent token layer before clearing
   let tokenLayer = document.getElementById("token-layer");
   if (tokenLayer) tokenLayer.remove();
@@ -496,6 +519,11 @@ function renderBoard(gs) {
   if (logPanel) board.appendChild(logPanel);
   if (tradeDealsToggle) board.appendChild(tradeDealsToggle);
   if (tradeDealsPanel) board.appendChild(tradeDealsPanel);
+  if (helpToggle) board.appendChild(helpToggle);
+  if (helpPanel) board.appendChild(helpPanel);
+  if (emojiToggle) board.appendChild(emojiToggle);
+  if (emojiPicker) board.appendChild(emojiPicker);
+  if (phoneToggle) board.appendChild(phoneToggle);
   if (pokerTable) board.appendChild(pokerTable);
   if (auctionBox) board.appendChild(auctionBox);
 
@@ -948,7 +976,7 @@ function renderBoard(gs) {
       const collectorId = gs.currentPlayer && gs.currentPlayer.id;
       // Flying banana burst for pile collection — delayed to sync with token arrival
       const stolenProp = _propById[Number(idx)];
-      const isSteal = stolenProp && stolenProp.owner && stolenProp.owner !== collectorId && !gs.vineSwing && !window._vineSwingJustLanded && !_stealShown.has(Number(idx));
+      const isSteal = stolenProp && stolenProp.owner && stolenProp.owner !== collectorId && !gs.vineSwing && !vineSwingLanding && !_stealShown.has(Number(idx));
       if (isSteal) _stealShown.add(Number(idx));
       const fireBurst = () => {
         bananaBurst(collected, collectorId);
@@ -1113,9 +1141,8 @@ function renderBoard(gs) {
   centerTitle.className = "board-center-title";
   centerTitle.innerHTML =
     '<div class="jungle-canopy">🌴🌳🍌🌳🌴</div>' +
-    '<span class="banana-land-emoji"><span class="monkey-caller">🐒<span class="monkey-phone">📱</span></span></span>' +
     '<span class="banana-land-name">MONKEY<br>BUSINESS</span>' +
-    '<div class="jungle-floor">🍌🌿🐵🌿🍌</div>' +
+    '<div class="jungle-floor">🍌🌿🌿🍌</div>' +
     '<div class="center-vine">🌱🍃🌱</div>';
   board.appendChild(centerTitle);
 
@@ -1124,13 +1151,15 @@ function renderBoard(gs) {
     for (const bomb of gs.bombs) {
       const r = spaceRect(bomb.position);
       const bombEl = document.createElement("div");
-      const isArming = bomb.turnsLeft > 5;
+      const isArming = bomb.pending || bomb.turnsLeft > 5;
       bombEl.className = "bomb-indicator" + (isArming ? " bomb-arming" : "");
       bombEl.textContent = "\uD83C\uDF4D";
       const activeTurns = isArming ? 0 : bomb.turnsLeft;
-      bombEl.title = isArming
-        ? "Pineapple Bomb (arming...)"
-        : `Pineapple Bomb (${activeTurns} turn${activeTurns !== 1 ? "s" : ""} until detonation)`;
+      bombEl.title = bomb.pending
+        ? "Pineapple Bomb (activates on your next turn)"
+        : isArming
+          ? "Pineapple Bomb (arming...)"
+          : `Pineapple Bomb (${activeTurns} turn${activeTurns !== 1 ? "s" : ""} until detonation)`;
       bombEl.style.left = r.l + r.w - 2 + "%";
       bombEl.style.top = r.t + r.h - 2 + "%";
       const timerBadge = document.createElement("span");
@@ -1141,99 +1170,190 @@ function renderBoard(gs) {
     }
   }
 
-  // Keep showing the bomb at the explosion position until the explosion animation fires
+  // Keep showing bombs at each explosion position until the explosion animation fires
   if (
     gs &&
     gs.lastExplosion &&
+    Array.isArray(gs.lastExplosion.explosions) &&
+    gs.lastExplosion.explosions.length > 0 &&
     !window._explosionShown
   ) {
-    const r = spaceRect(gs.lastExplosion.position);
-    const phantomBomb = document.createElement("div");
-    phantomBomb.className = "bomb-indicator";
-    phantomBomb.textContent = "\uD83C\uDF4D";
-    phantomBomb.style.left = r.l + r.w - 2 + "%";
-    phantomBomb.style.top = r.t + r.h - 2 + "%";
-    const timerBadge = document.createElement("span");
-    timerBadge.className = "bomb-timer";
-    timerBadge.textContent = "0";
-    phantomBomb.appendChild(timerBadge);
-    board.appendChild(phantomBomb);
+    for (const exp of gs.lastExplosion.explosions) {
+      const r = spaceRect(exp.position);
+      const phantomBomb = document.createElement("div");
+      phantomBomb.className = "bomb-indicator";
+      phantomBomb.textContent = "\uD83C\uDF4D";
+      phantomBomb.style.left = r.l + r.w - 2 + "%";
+      phantomBomb.style.top = r.t + r.h - 2 + "%";
+      const timerBadge = document.createElement("span");
+      timerBadge.className = "bomb-timer";
+      timerBadge.textContent = "0";
+      phantomBomb.appendChild(timerBadge);
+      board.appendChild(phantomBomb);
+    }
   }
 
   // Bomb explosion animation (wait for token walk to finish)
   if (
     gs &&
     gs.lastExplosion &&
+    Array.isArray(gs.lastExplosion.explosions) &&
+    gs.lastExplosion.explosions.length > 0 &&
     !window._explosionShown &&
     !window._tokenWalking &&
     !window._diceRollingPositions
   ) {
-    window._explosionShown = gs.lastExplosion.position;
+    window._explosionShown = true;
 
-    // Screen shake
+    // Explosion sound effect (once for the whole batch)
+    if (typeof playExplosionSound === "function") playExplosionSound();
+
+    // Trigger deferred bomb-win game-over flow (announcement + credits)
+    if (typeof _runDeferredBombGameOver === "function") {
+      _runDeferredBombGameOver();
+    }
+
+    // Screen shake (once for the whole batch)
     board.classList.add("board-shake");
     setTimeout(() => board.classList.remove("board-shake"), 800);
 
-    // Full-board flash overlay
+    // Full-board flash overlay (once for the whole batch)
     const flash = document.createElement("div");
     flash.className = "bomb-flash";
     board.appendChild(flash);
     flash.addEventListener("animationend", () => flash.remove());
 
-    // Shockwave ring from center tile
-    const cr = spaceRect(gs.lastExplosion.position);
-    const shockwave = document.createElement("div");
-    shockwave.className = "bomb-shockwave";
-    shockwave.style.left = cr.l + cr.w / 2 + "%";
-    shockwave.style.top = cr.t + cr.h / 2 + "%";
-    board.appendChild(shockwave);
-    shockwave.addEventListener("animationend", () => shockwave.remove());
+    // Per-explosion effects: shockwave, tile overlays, debris, kills
+    let killCounter = 0;
+    for (const exp of gs.lastExplosion.explosions) {
+      // Shockwave ring from center tile
+      const cr = spaceRect(exp.position);
+      const shockwave = document.createElement("div");
+      shockwave.className = "bomb-shockwave";
+      shockwave.style.left = cr.l + cr.w / 2 + "%";
+      shockwave.style.top = cr.t + cr.h / 2 + "%";
+      board.appendChild(shockwave);
+      shockwave.addEventListener("animationend", () => shockwave.remove());
 
-    // Tile overlays (existing behavior, enhanced)
-    for (const tile of gs.lastExplosion.tiles) {
-      const r = spaceRect(tile);
-      const fx = document.createElement("div");
-      fx.className =
-        tile === gs.lastExplosion.position
-          ? "bomb-explosion bomb-explosion-center"
-          : "bomb-explosion";
-      fx.style.left = r.l + "%";
-      fx.style.top = r.t + "%";
-      fx.style.width = r.w + "%";
-      fx.style.height = r.h + "%";
-      fx.textContent = tile === gs.lastExplosion.position ? "\ud83d\udca5" : "";
-      fx.style.display = "flex";
-      fx.style.alignItems = "center";
-      fx.style.justifyContent = "center";
-      fx.style.fontSize = tile === gs.lastExplosion.position ? "28px" : "18px";
-      board.appendChild(fx);
-      fx.addEventListener("animationend", () => fx.remove());
-    }
+      // Tile overlays
+      for (const tile of exp.tiles) {
+        const r = spaceRect(tile);
+        const fx = document.createElement("div");
+        fx.className =
+          tile === exp.position
+            ? "bomb-explosion bomb-explosion-center"
+            : "bomb-explosion";
+        fx.style.left = r.l + "%";
+        fx.style.top = r.t + "%";
+        fx.style.width = r.w + "%";
+        fx.style.height = r.h + "%";
+        fx.textContent = tile === exp.position ? "\ud83d\udca5" : "";
+        fx.style.display = "flex";
+        fx.style.alignItems = "center";
+        fx.style.justifyContent = "center";
+        fx.style.fontSize = tile === exp.position ? "28px" : "18px";
+        board.appendChild(fx);
+        fx.addEventListener("animationend", () => fx.remove());
+      }
 
-    // Flying debris particles from the center
-    const cx = cr.l + cr.w / 2;
-    const cy = cr.t + cr.h / 2;
-    const debris = [
-      "\ud83c\udf4d",
-      "\ud83d\udca5",
-      "\ud83d\udd25",
-      "\u2728",
-      "\ud83c\udf4c",
-      "\ud83d\udca8",
-    ];
-    for (let i = 0; i < 18; i++) {
-      const particle = document.createElement("div");
-      particle.className = "bomb-particle";
-      particle.textContent = debris[i % debris.length];
-      const angle = (Math.PI * 2 * i) / 18 + (Math.random() - 0.5) * 0.4;
-      const dist = 12 + Math.random() * 20;
-      particle.style.left = cx + "%";
-      particle.style.top = cy + "%";
-      particle.style.setProperty("--fly-x", Math.cos(angle) * dist + "%");
-      particle.style.setProperty("--fly-y", Math.sin(angle) * dist + "%");
-      particle.style.animationDelay = Math.random() * 0.15 + "s";
-      board.appendChild(particle);
-      particle.addEventListener("animationend", () => particle.remove());
+      // Flying debris particles from the center
+      const cx = cr.l + cr.w / 2;
+      const cy = cr.t + cr.h / 2;
+      const debris = [
+        "\ud83c\udf4d",
+        "\ud83d\udca5",
+        "\ud83d\udd25",
+        "\u2728",
+        "\ud83c\udf4c",
+        "\ud83d\udca8",
+      ];
+      for (let i = 0; i < 18; i++) {
+        const particle = document.createElement("div");
+        particle.className = "bomb-particle";
+        particle.textContent = debris[i % debris.length];
+        const angle = (Math.PI * 2 * i) / 18 + (Math.random() - 0.5) * 0.4;
+        const dist = 12 + Math.random() * 20;
+        particle.style.left = cx + "%";
+        particle.style.top = cy + "%";
+        particle.style.setProperty("--fly-x", Math.cos(angle) * dist + "%");
+        particle.style.setProperty("--fly-y", Math.sin(angle) * dist + "%");
+        particle.style.animationDelay = Math.random() * 0.15 + "s";
+        board.appendChild(particle);
+        particle.addEventListener("animationend", () => particle.remove());
+      }
+
+      // Kill announcements + transferred-tile glow
+      const kills = Array.isArray(exp.kills) ? exp.kills : [];
+      for (let k = 0; k < kills.length; k++) {
+        const kill = kills[k];
+        const placer = (gs.players || []).find((p) => p.id === kill.placerId);
+        const placerColor = placer && placer.color ? placer.color : null;
+
+        // Announcement banner
+        const banner = document.createElement("div");
+        banner.className = "bomb-kill-announcement";
+        if (placerColor) banner.classList.add("kill-c-" + placerColor);
+        banner.style.animationDelay = 0.35 + killCounter * 0.9 + "s";
+        const icon = document.createElement("span");
+        icon.className = "bomb-kill-icon";
+        icon.textContent = "\uD83D\uDCA5";
+        const text = document.createElement("span");
+        text.className = "bomb-kill-text";
+        const placerEl = document.createElement("span");
+        placerEl.className = "bomb-kill-name bomb-kill-placer";
+        placerEl.textContent = kill.placerName || "Someone";
+        const verbEl = document.createElement("span");
+        verbEl.className = "bomb-kill-verb";
+        verbEl.textContent = " ELIMINATED ";
+        const victimEl = document.createElement("span");
+        victimEl.className = "bomb-kill-name bomb-kill-victim";
+        victimEl.textContent = kill.victimName || "someone";
+        const bang = document.createElement("span");
+        bang.textContent = "!";
+        text.appendChild(placerEl);
+        text.appendChild(verbEl);
+        text.appendChild(victimEl);
+        text.appendChild(bang);
+        banner.appendChild(icon);
+        banner.appendChild(text);
+        if (kill.loot || (kill.tiles && kill.tiles.length)) {
+          const loot = document.createElement("div");
+          loot.className = "bomb-kill-loot";
+          const tileCount = (kill.tiles || []).length;
+          loot.textContent =
+            "+" +
+            (kill.loot || 0) +
+            "\uD83C\uDF4C" +
+            (tileCount
+              ? " and " + tileCount + " farm" + (tileCount !== 1 ? "s" : "")
+              : "") +
+            " stolen!";
+          banner.appendChild(loot);
+        }
+        board.appendChild(banner);
+        const thisKillIdx = killCounter;
+        setTimeout(
+          () => banner.remove(),
+          3600 + thisKillIdx * 900,
+        );
+
+        // Glow transferred tiles sequentially
+        (kill.tiles || []).forEach((pos, idx) => {
+          const tr = spaceRect(pos);
+          const glow = document.createElement("div");
+          glow.className = "bomb-kill-glow";
+          if (placerColor) glow.classList.add("glow-c-" + placerColor);
+          glow.style.left = tr.l + "%";
+          glow.style.top = tr.t + "%";
+          glow.style.width = tr.w + "%";
+          glow.style.height = tr.h + "%";
+          glow.style.animationDelay =
+            0.5 + thisKillIdx * 0.2 + idx * 0.07 + "s";
+          board.appendChild(glow);
+          glow.addEventListener("animationend", () => glow.remove());
+        });
+        killCounter++;
+      }
     }
   }
   if (gs && !gs.lastExplosion) {
@@ -1248,9 +1368,14 @@ function renderBoard(gs) {
     // Group players by position for stacking
     // If dice are still rolling, use the pre-roll positions to freeze tokens
     const frozenPos = window._diceRollingPositions || null;
+    // Keep bomb victims visible while walking and until the explosion plays.
+    // Captured before the explosion block above (which sets _explosionShown)
+    // so the victims still render on the same frame the explosion fires —
+    // they then disappear on the next render once _explosionShown is set.
+    const bombPendingExplosion = _bombWasPendingThisFrame;
     const posMap = {};
     gs.players.forEach((p) => {
-      if (p.bankrupt) return;
+      if (p.bankrupt && !bombPendingExplosion) return;
       const pos =
         frozenPos && frozenPos[p.id] != null ? frozenPos[p.id] : p.position;
       if (!posMap[pos]) posMap[pos] = [];
@@ -1279,7 +1404,9 @@ function renderBoard(gs) {
           tok.classList.add("token-active");
 
         // Disable transition for vine swing (teleport) or brand new tokens
-        if (gs.vineSwing || isNew) {
+        // vineSwingLanding catches the completion frame where gs.vineSwing is
+        // already null but the player just teleported to a new tile.
+        if (gs.vineSwing || vineSwingLanding || isNew) {
           tok.classList.add("token-notransition");
         }
 
@@ -1293,7 +1420,7 @@ function renderBoard(gs) {
         if (!tok.parentNode) tokenLayer.appendChild(tok);
 
         // Re-enable transition after layout paint
-        if (gs.vineSwing || isNew) {
+        if (gs.vineSwing || vineSwingLanding || isNew) {
           void tok.offsetWidth;
           tok.classList.remove("token-notransition");
         }
@@ -1412,10 +1539,10 @@ function buildPreviewLayout() {
 
   const corners = new Set([0, 13, 26, 39]);
   const cornerData = {
-    0: { id: 0, type: "grow", name: "GROW\n100%" },
-    13: { id: 13, type: "grow", name: "GROW\n25%" },
-    26: { id: 26, type: "grow", name: "GROW\n50%" },
-    39: { id: 39, type: "grow", name: "GROW\n75%" },
+    0: { id: 0, type: "grow", name: "GROW\n25%" },
+    13: { id: 13, type: "grow", name: "GROW\n50%" },
+    26: { id: 26, type: "grow", name: "GROW\n75%" },
+    39: { id: 39, type: "grow", name: "GROW\n100%" },
   };
 
   // Collect non-corner tiles from SPACE_DATA and SPECIAL_SPACES

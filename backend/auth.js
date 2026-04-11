@@ -6,8 +6,15 @@ const crypto = require("crypto");
 const Database = require("better-sqlite3");
 
 const DB_PATH = path.join(__dirname, "bananaland.db");
-const JWT_SECRET =
-  process.env.JWT_SECRET || crypto.randomBytes(32).toString("hex");
+if (!process.env.JWT_SECRET) {
+  console.error(
+    "\n[FATAL] JWT_SECRET is not set in your environment.\n" +
+    "  All sessions would be invalidated on every server restart.\n" +
+    "  Add JWT_SECRET=<long random string> to your .env file and restart.\n"
+  );
+  process.exit(1);
+}
+const JWT_SECRET = process.env.JWT_SECRET;
 const TOKEN_EXPIRY = "30d";
 
 const DEFAULT_AVATARS = [
@@ -50,6 +57,8 @@ db.exec(`
     password      TEXT NOT NULL,
     displayName   TEXT NOT NULL,
     avatar        TEXT NOT NULL,
+    profilePicture TEXT DEFAULT NULL,
+    bio           TEXT NOT NULL DEFAULT '',
     createdAt     INTEGER NOT NULL,
     gamesPlayed   INTEGER NOT NULL DEFAULT 0,
     gamesWon      INTEGER NOT NULL DEFAULT 0,
@@ -62,18 +71,58 @@ db.exec(`
   )
 `);
 
+// Migrations for existing DBs
+try { db.exec("ALTER TABLE users ADD COLUMN profilePicture TEXT DEFAULT NULL"); } catch (_) {}
+try { db.exec("ALTER TABLE users ADD COLUMN bio TEXT NOT NULL DEFAULT ''"); } catch (_) {}
+try { db.exec("ALTER TABLE users ADD COLUMN emailVerified INTEGER NOT NULL DEFAULT 0"); } catch (_) {}
+
+// Email verification tokens
+db.exec(`
+  CREATE TABLE IF NOT EXISTS email_verification_tokens (
+    token     TEXT PRIMARY KEY,
+    userId    TEXT NOT NULL,
+    expiresAt INTEGER NOT NULL,
+    FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE
+  )
+`);
+
+// Password reset tokens
+db.exec(`
+  CREATE TABLE IF NOT EXISTS password_reset_tokens (
+    token     TEXT PRIMARY KEY,
+    userId    TEXT NOT NULL,
+    expiresAt INTEGER NOT NULL,
+    FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE
+  )
+`);
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS oauth_accounts (
+    id         TEXT PRIMARY KEY,
+    userId     TEXT NOT NULL,
+    provider   TEXT NOT NULL,
+    providerId TEXT NOT NULL,
+    email      TEXT,
+    createdAt  INTEGER NOT NULL,
+    FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE,
+    UNIQUE(provider, providerId)
+  )
+`);
+
 // ── Prepared statements ──────────────────────────────────────────────
 
 const stmts = {
   insertUser: db.prepare(`
-    INSERT INTO users (id, email, password, displayName, avatar, createdAt)
-    VALUES (@id, @email, @password, @displayName, @avatar, @createdAt)
+    INSERT INTO users (id, email, password, displayName, avatar, profilePicture, bio, createdAt)
+    VALUES (@id, @email, @password, @displayName, @avatar, @profilePicture, @bio, @createdAt)
   `),
   findByEmail: db.prepare(`SELECT * FROM users WHERE email = ?`),
   findById: db.prepare(`SELECT * FROM users WHERE id = ?`),
   updateDisplayName: db.prepare(`UPDATE users SET displayName = ? WHERE id = ?`),
   updateAvatar: db.prepare(`UPDATE users SET avatar = ? WHERE id = ?`),
   updatePassword: db.prepare(`UPDATE users SET password = ? WHERE id = ?`),
+  updateProfilePicture: db.prepare(`UPDATE users SET profilePicture = ? WHERE id = ?`),
+  updateBio: db.prepare(`UPDATE users SET bio = ? WHERE id = ?`),
   updateStats: db.prepare(`
     UPDATE users SET
       gamesPlayed   = gamesPlayed   + @gamesPlayed,
@@ -86,13 +135,29 @@ const stmts = {
       karma         = karma         + @karma
     WHERE id = @id
   `),
+  // OAuth
+  findOAuth: db.prepare(`SELECT * FROM oauth_accounts WHERE provider = ? AND providerId = ?`),
+  insertOAuth: db.prepare(`
+    INSERT INTO oauth_accounts (id, userId, provider, providerId, email, createdAt)
+    VALUES (@id, @userId, @provider, @providerId, @email, @createdAt)
+  `),
+  findOAuthByUser: db.prepare(`SELECT provider, email, createdAt FROM oauth_accounts WHERE userId = ?`),
+  // Email verification
+  setEmailVerified: db.prepare(`UPDATE users SET emailVerified = 1 WHERE id = ?`),
+  insertVerifyToken: db.prepare(`INSERT INTO email_verification_tokens (token, userId, expiresAt) VALUES (?, ?, ?)`),
+  findVerifyToken: db.prepare(`SELECT * FROM email_verification_tokens WHERE token = ?`),
+  deleteVerifyTokens: db.prepare(`DELETE FROM email_verification_tokens WHERE userId = ?`),
+  // Password reset
+  insertResetToken: db.prepare(`INSERT INTO password_reset_tokens (token, userId, expiresAt) VALUES (?, ?, ?)`),
+  findResetToken: db.prepare(`SELECT * FROM password_reset_tokens WHERE token = ?`),
+  deleteResetTokens: db.prepare(`DELETE FROM password_reset_tokens WHERE userId = ?`),
 };
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
-function isValidGmail(email) {
+function isValidEmail(email) {
   if (typeof email !== "string") return false;
-  return /^[a-zA-Z0-9._%+\-]+@gmail\.com$/i.test(email.trim());
+  return /^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$/i.test(email.trim());
 }
 
 function generateUserId() {
@@ -111,10 +176,14 @@ function verifyToken(token) {
   }
 }
 
+// Placeholder password for OAuth-only accounts (unguessable)
+function oauthPlaceholderPassword() {
+  return bcrypt.hashSync(crypto.randomBytes(32).toString("hex"), 10);
+}
+
 function sanitizeUser(row) {
   if (!row) return null;
   const { password, ...safe } = row;
-  // Nest stats for backward-compat with frontend
   safe.stats = {
     gamesPlayed: row.gamesPlayed,
     gamesWon: row.gamesWon,
@@ -125,7 +194,6 @@ function sanitizeUser(row) {
     auctionsWon: row.auctionsWon,
     karma: row.karma,
   };
-  // Remove flat stat fields from top-level
   delete safe.gamesPlayed;
   delete safe.gamesWon;
   delete safe.gamesLost;
@@ -134,14 +202,18 @@ function sanitizeUser(row) {
   delete safe.farmsOwned;
   delete safe.auctionsWon;
   delete safe.karma;
+
+  // Include connected OAuth providers
+  safe.connectedProviders = stmts.findOAuthByUser.all(row.id).map((o) => o.provider);
+
   return safe;
 }
 
 // ── Auth operations ──────────────────────────────────────────────────
 
 function register(email, password, displayName) {
-  if (!isValidGmail(email)) {
-    return { error: "Only Gmail addresses are supported for now." };
+  if (!isValidEmail(email)) {
+    return { error: "Please enter a valid email address." };
   }
   if (!password || password.length < 6) {
     return { error: "Password must be at least 6 characters." };
@@ -168,13 +240,16 @@ function register(email, password, displayName) {
     password: hashedPw,
     displayName: name,
     avatar: avatar,
+    profilePicture: null,
+    bio: "",
     createdAt: Date.now(),
   });
 
-  const token = createToken(userId);
-  const user = stmts.findById.get(userId);
+  // Create email verification token
+  const verifyToken = crypto.randomBytes(32).toString("hex");
+  stmts.insertVerifyToken.run(verifyToken, userId, Date.now() + 24 * 60 * 60 * 1000);
 
-  return { token, user: sanitizeUser(user) };
+  return { needsVerification: true, verifyToken, email: cleanEmail };
 }
 
 function login(email, password) {
@@ -190,6 +265,14 @@ function login(email, password) {
 
   if (!bcrypt.compareSync(password, user.password)) {
     return { error: "Invalid email or password." };
+  }
+
+  if (!user.emailVerified) {
+    // Generate a fresh verification token so they can re-verify
+    stmts.deleteVerifyTokens.run(user.id);
+    const verifyToken = crypto.randomBytes(32).toString("hex");
+    stmts.insertVerifyToken.run(verifyToken, user.id, Date.now() + 24 * 60 * 60 * 1000);
+    return { error: "Please verify your email before logging in.", unverified: true, verifyToken, email: cleanEmail };
   }
 
   const token = createToken(user.id);
@@ -224,6 +307,19 @@ function updateProfile(token, updates) {
     const av = String(updates.avatar).trim();
     if (av.length > 4) return { error: "Invalid avatar." };
     stmts.updateAvatar.run(av, user.id);
+  }
+
+  if (updates.profilePicture !== undefined) {
+    const pic = updates.profilePicture === null ? null : String(updates.profilePicture).trim().slice(0, 500);
+    if (pic && !/^https?:\/\/.+/i.test(pic)) {
+      return { error: "Profile picture must be a valid URL." };
+    }
+    stmts.updateProfilePicture.run(pic, user.id);
+  }
+
+  if (updates.bio !== undefined) {
+    const bio = String(updates.bio).trim().slice(0, 200);
+    stmts.updateBio.run(bio, user.id);
   }
 
   if (updates.newPassword !== undefined) {
@@ -266,6 +362,160 @@ function getUserByToken(token) {
   return stmts.findById.get(payload.uid) || null;
 }
 
+// ── OAuth login/register ─────────────────────────────────────────────
+
+function oauthLoginOrRegister(provider, profile) {
+  // Check if this OAuth account already linked
+  const existing = stmts.findOAuth.get(provider, profile.providerId);
+  if (existing) {
+    const user = stmts.findById.get(existing.userId);
+    if (!user) return { error: "Linked user not found." };
+
+    // Update profile picture from provider if user doesn't have one
+    if (!user.profilePicture && profile.picture) {
+      stmts.updateProfilePicture.run(profile.picture, user.id);
+    }
+
+    // OAuth proves email ownership — auto-verify
+    if (!user.emailVerified) {
+      stmts.setEmailVerified.run(user.id);
+    }
+
+    const token = createToken(user.id);
+    const fresh = stmts.findById.get(user.id);
+    return { token, user: sanitizeUser(fresh) };
+  }
+
+  // Check if a user with the same email exists — auto-link
+  let user = null;
+  if (profile.email) {
+    user = stmts.findByEmail.get(profile.email.trim().toLowerCase());
+  }
+
+  if (user) {
+    // Link OAuth to existing account
+    stmts.insertOAuth.run({
+      id: generateUserId(),
+      userId: user.id,
+      provider,
+      providerId: profile.providerId,
+      email: profile.email,
+      createdAt: Date.now(),
+    });
+
+    if (!user.profilePicture && profile.picture) {
+      stmts.updateProfilePicture.run(profile.picture, user.id);
+    }
+
+    // OAuth proves email ownership — auto-verify
+    if (!user.emailVerified) {
+      stmts.setEmailVerified.run(user.id);
+    }
+
+    const token = createToken(user.id);
+    const fresh = stmts.findById.get(user.id);
+    return { token, user: sanitizeUser(fresh) };
+  }
+
+  // Create new user from OAuth profile
+  const userId = generateUserId();
+  const name = (profile.name || "User").slice(0, 16);
+  const email = profile.email
+    ? profile.email.trim().toLowerCase()
+    : `${provider}_${profile.providerId}@oauth.local`;
+  const avatar =
+    DEFAULT_AVATARS[Math.floor(Math.random() * DEFAULT_AVATARS.length)];
+
+  stmts.insertUser.run({
+    id: userId,
+    email,
+    password: oauthPlaceholderPassword(),
+    displayName: name,
+    avatar,
+    profilePicture: profile.picture || null,
+    bio: "",
+    createdAt: Date.now(),
+  });
+
+  stmts.insertOAuth.run({
+    id: generateUserId(),
+    userId,
+    provider,
+    providerId: profile.providerId,
+    email: profile.email,
+    createdAt: Date.now(),
+  });
+
+  // OAuth proves email ownership — auto-verify
+  stmts.setEmailVerified.run(userId);
+
+  const token = createToken(userId);
+  const newUser = stmts.findById.get(userId);
+  return { token, user: sanitizeUser(newUser) };
+}
+
+// ── Email verification ────────────────────────────────────────────
+
+function verifyEmail(token) {
+  const row = stmts.findVerifyToken.get(token);
+  if (!row) return { error: "Invalid or expired verification link." };
+  if (row.expiresAt < Date.now()) {
+    stmts.deleteVerifyTokens.run(row.userId);
+    return { error: "Verification link has expired. Please log in to receive a new one." };
+  }
+
+  stmts.setEmailVerified.run(row.userId);
+  stmts.deleteVerifyTokens.run(row.userId);
+
+  const user = stmts.findById.get(row.userId);
+  if (!user) return { error: "User not found." };
+
+  const authToken = createToken(user.id);
+  return { token: authToken, user: sanitizeUser(user) };
+}
+
+// ── Password reset ───────────────────────────────────────────────
+
+function requestPasswordReset(email) {
+  if (!email) return { error: "Email is required." };
+  const cleanEmail = email.trim().toLowerCase();
+  const user = stmts.findByEmail.get(cleanEmail);
+
+  // Always return success to avoid email enumeration
+  if (!user) return { success: true };
+
+  stmts.deleteResetTokens.run(user.id);
+  const token = crypto.randomBytes(32).toString("hex");
+  stmts.insertResetToken.run(token, user.id, Date.now() + 60 * 60 * 1000); // 1 hour
+
+  return { success: true, resetToken: token, email: cleanEmail };
+}
+
+function resetPassword(token, newPassword) {
+  if (!token || !newPassword) return { error: "Token and new password are required." };
+  if (newPassword.length < 6) return { error: "Password must be at least 6 characters." };
+
+  const row = stmts.findResetToken.get(token);
+  if (!row) return { error: "Invalid or expired reset link." };
+  if (row.expiresAt < Date.now()) {
+    stmts.deleteResetTokens.run(row.userId);
+    return { error: "Reset link has expired. Please request a new one." };
+  }
+
+  const hashedPw = bcrypt.hashSync(newPassword, 10);
+  stmts.updatePassword.run(hashedPw, row.userId);
+  stmts.deleteResetTokens.run(row.userId);
+
+  // Also verify email if not yet verified (they proved ownership)
+  stmts.setEmailVerified.run(row.userId);
+
+  const user = stmts.findById.get(row.userId);
+  if (!user) return { error: "User not found." };
+
+  const authToken = createToken(user.id);
+  return { token: authToken, user: sanitizeUser(user) };
+}
+
 module.exports = {
   register,
   login,
@@ -273,5 +523,9 @@ module.exports = {
   updateProfile,
   updateStats,
   getUserByToken,
+  oauthLoginOrRegister,
+  verifyEmail,
+  requestPasswordReset,
+  resetPassword,
   DEFAULT_AVATARS,
 };

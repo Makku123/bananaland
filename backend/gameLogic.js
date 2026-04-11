@@ -3,7 +3,7 @@
 
 const BOARD_SIZE = 52;
 const CORNER_POSITIONS = new Set([0, 13, 26, 39]);
-const GROW_PERCENTAGES = { 0: 1.0, 13: 0.25, 26: 0.5, 39: 0.75 };
+const GROW_PERCENTAGES = { 0: 0.25, 13: 0.5, 26: 0.75, 39: 1.0 };
 
 // --- Poker Helpers -----------------------------------------------
 const POKER_SUITS = ["h", "d", "c", "s"];
@@ -386,7 +386,7 @@ PROPERTIES.forEach((p) => _BUYABLE_MAP.set(p.id, { ...p, type: "property" }));
 
 const BOARD = [
   // -- Bottom row: GO -> JAIL (positions 0-12) --
-  { id: 0, name: "\ud83c\udf34 GROW 100%", type: "grow" },
+  { id: 0, name: "\ud83c\udf34 GROW 25%", type: "grow" },
   { id: 1, type: "property", buyable: _BUYABLE_MAP.get(1) },
   { id: 2, name: "\ud83c\udf4c -10%", type: "tax10" },
   { id: 3, type: "property", buyable: _BUYABLE_MAP.get(3) },
@@ -422,7 +422,7 @@ const BOARD = [
     },
   },
   // -- Left column: CAGE -> BANANA BREAK (positions 13-25) --
-  { id: 13, name: "\ud83c\udf34 GROW 25%", type: "grow" },
+  { id: 13, name: "\ud83c\udf34 GROW 50%", type: "grow" },
   { id: 14, type: "property", buyable: _BUYABLE_MAP.get(14) },
   { id: 15, type: "property", buyable: _BUYABLE_MAP.get(15) },
   { id: 16, type: "property", buyable: _BUYABLE_MAP.get(16) },
@@ -447,7 +447,7 @@ const BOARD = [
   { id: 24, type: "property", buyable: _BUYABLE_MAP.get(24) },
   { id: 25, name: "Vine Swing", type: "bus" },
   // -- Top row: BANANA BREAK -> GO TO CAGE (positions 26-38) --
-  { id: 26, name: "\ud83c\udf34 GROW 50%", type: "grow" },
+  { id: 26, name: "\ud83c\udf34 GROW 75%", type: "grow" },
   { id: 27, type: "property", buyable: _BUYABLE_MAP.get(27) },
   {
     id: 28,
@@ -483,7 +483,7 @@ const BOARD = [
     },
   },
   // -- Right column: GO TO CAGE -> GO BANANAS (positions 39-51) --
-  { id: 39, name: "\ud83c\udf34 GROW 75%", type: "grow" },
+  { id: 39, name: "\ud83c\udf34 GROW 100%", type: "grow" },
   { id: 40, type: "property", buyable: _BUYABLE_MAP.get(40) },
   { id: 41, type: "property", buyable: _BUYABLE_MAP.get(41) },
   { id: 42, name: "+500", type: "freebananas" },
@@ -559,19 +559,13 @@ const PET_TYPES = {
     cooldown: 7,
     description: "Flip a coin to move forward 1 space. 7 roll cooldown.",
   },
-  devil: {
+  magic: {
     name: "Magic Pet",
     emoji: "??",
     cooldown: 15,
     description:
       "Flip a coin: heads move forward 1, tails move backward 1. 15 roll cooldown.",
   },
-};
-
-const PET_LIMITED_USES = {
-  strong: 1,
-  energy: 3,
-  devil: 2,
 };
 
 // --- Game Class ----------------------------------------------------
@@ -583,13 +577,13 @@ class MonopolyGame {
     startingMoney,
     gameMode,
     teamTarget,
-    petMode,
     bombMode,
     monkeyPoker,
+    isPublic,
   ) {
     this.gameId = gameId;
+    this.isPublic = !!isPublic;
     this.gameMode = gameMode === "teams" ? "teams" : "ffa";
-    this.petMode = petMode === "limited" ? "limited" : "cooldown";
     if (this.gameMode === "teams") {
       this.maxPlayers = 4;
     } else {
@@ -670,9 +664,8 @@ class MonopolyGame {
       revealedTiles: new Set([...CORNER_POSITIONS, 0]),
       pet: null,
       petCooldown: 0,
-      petUses: 0,
       pendingPet: null,
-      bomb: false,
+      bomb: 0,
       hasRolled: false,
     };
     this.players.push(player);
@@ -698,12 +691,42 @@ class MonopolyGame {
       const mp = Math.min(Math.max(Math.floor(settings.maxPlayers) || 2, 2), 4);
       this.maxPlayers = Math.max(mp, this.players.length);
     }
-    if (settings.petMode === "limited" || settings.petMode === "cooldown") {
-      this.petMode = settings.petMode;
+    if (settings.teamTarget != null && this.gameMode === "teams") {
+      this.teamTarget = Math.min(
+        Math.max(Math.floor(settings.teamTarget) || 5000, 2000),
+        20000,
+      );
+    }
+    if (settings.bombMode != null) {
+      this.bombMode = !!settings.bombMode;
+    }
+    if (settings.monkeyPoker != null) {
+      this.monkeyPoker = !!settings.monkeyPoker;
     }
     if (settings.noAuctionTimer != null) {
       this.noAuctionTimer = !!settings.noAuctionTimer;
     }
+    if (settings.isPublic != null) {
+      this.isPublic = !!settings.isPublic;
+    }
+    return true;
+  }
+
+  transferHost(adminId, targetId) {
+    if (this.state !== "waiting" || this.admin !== adminId) return false;
+    if (adminId === targetId) return false;
+    const target = this.players.find((p) => p.id === targetId);
+    if (!target) return false;
+    this.admin = targetId;
+    return true;
+  }
+
+  kickPlayer(adminId, targetId) {
+    if (this.state !== "waiting" || this.admin !== adminId) return false;
+    if (adminId === targetId) return false;
+    const idx = this.players.findIndex((p) => p.id === targetId);
+    if (idx === -1) return false;
+    this.players.splice(idx, 1);
     return true;
   }
 
@@ -733,18 +756,10 @@ class MonopolyGame {
     if (this.state !== "playing") return false;
     const player = this.players.find((p) => p.id === socketId);
     if (!player || player.bankrupt || !player.pet) return false;
-    // Check availability based on pet mode
-    if (this.petMode === "limited") {
-      if ((player.petUses || 0) <= 0) return false;
-    } else {
-      if (player.petCooldown > 0) return false;
-    }
-    // Must have rolled at least once before using pet
-    if (!player.hasRolled) return false;
+    if (player.petCooldown > 0) return false;
 
     const petType = player.pet;
     const cooldown = PET_TYPES[petType].cooldown;
-    const isLimited = this.petMode === "limited";
 
     // Energy pet: activate OFF-turn. Coin flip + move resolves at start of player's next turn.
     if (petType === "energy") {
@@ -755,13 +770,7 @@ class MonopolyGame {
       if (player.pendingPet) return false;
       if (this.auction || this.poker || this.vineSwing) return false;
 
-      if (isLimited) {
-        player.petUses = Math.max(0, (player.petUses || 0) - 1);
-      }
       // Cooldown is set when coin flip resolves at start of next turn, not here
-      const costLabel = isLimited
-        ? `${player.petUses} use${player.petUses !== 1 ? "s" : ""} left`
-        : `${cooldown} roll cooldown`;
       player.pendingPet = { type: "energy", cooldown };
       this.lastPetUsed = { playerId: player.id, playerName: player.name, petType: "energy" };
       this._log();
@@ -777,13 +786,7 @@ class MonopolyGame {
       if (player.pendingPet) return false;
       if (this.auction || this.poker || this.vineSwing) return false;
 
-      if (isLimited) {
-        player.petUses = Math.max(0, (player.petUses || 0) - 1);
-      }
       // Cooldown is set when effect resolves at start of next turn, not here
-      const costLabel = isLimited
-        ? `${player.petUses} use${player.petUses !== 1 ? "s" : ""} left`
-        : `${cooldown} roll cooldown`;
       player.pendingPet = { type: "strong", cooldown };
       this.lastPetUsed = { playerId: player.id, playerName: player.name, petType: "strong" };
       this._log();
@@ -791,7 +794,9 @@ class MonopolyGame {
     }
 
     // Devil (Magic Pet): activate OFF-turn. Coin flip + move resolves at start of player's next turn.
-    if (petType === "devil") {
+    if (petType === "magic") {
+      // Magic pet requires the player to have rolled at least once
+      if (!player.hasRolled) return false;
       const cur = this.getCurrentPlayer();
       // Magic pet can only be activated when it's NOT your turn
       if (cur && cur.id === socketId) return false;
@@ -799,14 +804,8 @@ class MonopolyGame {
       if (player.pendingPet) return false;
       if (this.auction || this.poker || this.vineSwing) return false;
 
-      if (isLimited) {
-        player.petUses = Math.max(0, (player.petUses || 0) - 1);
-      }
-      const costLabel = isLimited
-        ? `${player.petUses} use${player.petUses !== 1 ? "s" : ""} left`
-        : `${cooldown} roll cooldown`;
-      player.pendingPet = { type: "devil", cooldown };
-      this.lastPetUsed = { playerId: player.id, playerName: player.name, petType: "devil" };
+      player.pendingPet = { type: "magic", cooldown };
+      this.lastPetUsed = { playerId: player.id, playerName: player.name, petType: "magic" };
       this._log();
       return true;
     }
@@ -818,10 +817,6 @@ class MonopolyGame {
     if (this.state !== "playing") return false;
     const player = this.players.find((p) => p.id === socketId);
     if (!player || !player.pendingPet) return false;
-    // Refund the use if in limited mode
-    if (this.petMode === "limited") {
-      player.petUses = (player.petUses || 0) + 1;
-    }
     player.pendingPet = null;
     this.lastPetUsed = null;
     this._log(`${player.name} cancelled their pet ability.`);
@@ -895,13 +890,13 @@ class MonopolyGame {
       const coinFlip = Math.random() < 0.5;
       this.petCoinFlip = {
         playerName: mp.userName,
-        petType: "devil",
+        petType: "magic",
         result: coinFlip ? "heads" : "tails",
         targetName: mp.targetName,
       };
       if (coinFlip) {
         this.pendingPetMove = {
-          type: "devil_on_turn",
+          type: "magic_on_turn",
           playerId: mp.userId,
           userName: mp.userName,
           targetId: mp.targetId,
@@ -927,7 +922,7 @@ class MonopolyGame {
 
   _executeMagicPetOnTurn() {
     const pending = this.pendingPetMove;
-    if (!pending || pending.type !== "devil_on_turn") {
+    if (!pending || pending.type !== "magic_on_turn") {
       this._resolvePendingPets();
       return;
     }
@@ -947,6 +942,20 @@ class MonopolyGame {
     this._log(
       `\u{1F984} ${pending.userName}'s Magic Pet flipped HEADS \u2014 pushed ${pending.targetName} forward 1!`,
     );
+    if (this._checkBombDetonation(target)) {
+      if (target.bankrupt || this.state === "finished") {
+        this._resolvePendingPets();
+        if (this.onUpdate) this.onUpdate();
+        return;
+      }
+    }
+    if (this._explodeExpiredBombs()) {
+      if (target.bankrupt || this.state === "finished") {
+        this._resolvePendingPets();
+        if (this.onUpdate) this.onUpdate();
+        return;
+      }
+    }
     this._processLandingPassive(target, pending.playerId);
     this._resolvePendingPets();
     if (this.onUpdate) this.onUpdate();
@@ -958,9 +967,7 @@ class MonopolyGame {
 
     if (pp.type === "strong") {
       // Set cooldown now that the effect is resolving
-      if (this.petMode !== "limited") {
-        player.petCooldown = pp.cooldown;
-      }
+      player.petCooldown = pp.cooldown;
       const oldPos = player.position;
       player.position = (player.position + 1) % BOARD_SIZE;
       player.revealedTiles.add(player.position);
@@ -968,6 +975,20 @@ class MonopolyGame {
       this._log(
         `\u{1F981} ${player.name}'s Strong Pet pushed them forward 1 space! (${pp.cooldown} roll cooldown)`,
       );
+      if (this._checkBombDetonation(player)) {
+        if (player.bankrupt || this.state === "finished") {
+          this._resolvePendingPets();
+          if (this.onUpdate) this.onUpdate();
+          return;
+        }
+      }
+      if (this._explodeExpiredBombs()) {
+        if (player.bankrupt || this.state === "finished") {
+          this._resolvePendingPets();
+          if (this.onUpdate) this.onUpdate();
+          return;
+        }
+      }
       this._processLandingPassive(player, player.id);
       this._resolvePendingPets();
       if (this.onUpdate) this.onUpdate();
@@ -976,9 +997,7 @@ class MonopolyGame {
 
     if (pp.type === "energy") {
       // Set cooldown now that the coin flip is resolving
-      if (this.petMode !== "limited") {
-        player.petCooldown = pp.cooldown;
-      }
+      player.petCooldown = pp.cooldown;
       // Show "Your Turn" for 2s before coin flip
       this.petTurnDelay = true;
       if (this.onUpdate) this.onUpdate();
@@ -1019,11 +1038,9 @@ class MonopolyGame {
       return;
     }
 
-    if (pp.type === "devil") {
+    if (pp.type === "magic") {
       // Set cooldown now that the coin flip is resolving
-      if (this.petMode !== "limited") {
-        player.petCooldown = pp.cooldown;
-      }
+      player.petCooldown = pp.cooldown;
       // Show "Your Turn" for 2s before coin flip
       this.petTurnDelay = true;
       if (this.onUpdate) this.onUpdate();
@@ -1032,12 +1049,12 @@ class MonopolyGame {
         const coinFlip = Math.random() < 0.5;
         this.petCoinFlip = {
           playerName: player.name,
-          petType: "devil",
+          petType: "magic",
           result: coinFlip ? "heads" : "tails",
         };
         if (coinFlip) {
           this.pendingPetMove = {
-            type: "devil_self_forward",
+            type: "magic_self_forward",
             playerId: player.id,
             cooldown: pp.cooldown,
           };
@@ -1047,7 +1064,7 @@ class MonopolyGame {
           }, 5000);
         } else {
           this.pendingPetMove = {
-            type: "devil_self_backward",
+            type: "magic_self_backward",
             playerId: player.id,
             cooldown: pp.cooldown,
           };
@@ -1086,6 +1103,20 @@ class MonopolyGame {
     this._log(
       `\u{1F406} ${player.name}'s Energy Pet flipped HEADS \u2014 moved forward 1! (${pending.cooldown} roll cooldown)`,
     );
+    if (this._checkBombDetonation(player)) {
+      if (player.bankrupt || this.state === "finished") {
+        this._resolvePendingPets();
+        if (this.onUpdate) this.onUpdate();
+        return;
+      }
+    }
+    if (this._explodeExpiredBombs()) {
+      if (player.bankrupt || this.state === "finished") {
+        this._resolvePendingPets();
+        if (this.onUpdate) this.onUpdate();
+        return;
+      }
+    }
     // Full landing: allows auctions/pitching on unowned tiles
     this._processLanding(player);
 
@@ -1109,8 +1140,8 @@ class MonopolyGame {
     const pending = this.pendingPetMove;
     if (
       !pending ||
-      (pending.type !== "devil_self_forward" &&
-        pending.type !== "devil_self_backward")
+      (pending.type !== "magic_self_forward" &&
+        pending.type !== "magic_self_backward")
     ) {
       this._resolvePendingPets();
       return;
@@ -1139,6 +1170,20 @@ class MonopolyGame {
       this._log(
         `\u{1F984} ${player.name}'s Magic Pet flipped TAILS \u2014 moved backward 1!`,
       );
+    }
+    if (this._checkBombDetonation(player)) {
+      if (player.bankrupt || this.state === "finished") {
+        this._resolvePendingPets();
+        if (this.onUpdate) this.onUpdate();
+        return;
+      }
+    }
+    if (this._explodeExpiredBombs()) {
+      if (player.bankrupt || this.state === "finished") {
+        this._resolvePendingPets();
+        if (this.onUpdate) this.onUpdate();
+        return;
+      }
     }
     this._processLanding(player);
 
@@ -1189,7 +1234,6 @@ class MonopolyGame {
 
   _petReady(player) {
     if (!player || !player.pet) return false;
-    if (this.petMode === "limited") return (player.petUses || 0) > 0;
     return player.petCooldown <= 0;
   }
 
@@ -1230,6 +1274,11 @@ class MonopolyGame {
       this._checkPhaseComplete();
     }
 
+    // Track whether this player is the one whose turn it currently is
+    const wasCurrentPlayer =
+      this.state === "playing" && idx === this.currentPlayerIndex;
+    const leavingName = this.players[idx].name;
+
     // Release properties and clear banana piles
     for (const pid of this.players[idx].properties) {
       const prop = this.properties.get(pid);
@@ -1238,11 +1287,45 @@ class MonopolyGame {
         prop.bananaPile = 0;
       }
     }
+
+    // Remove any pending magic pets that involve this player (as caster or target)
+    this.pendingMagicPets = this.pendingMagicPets.filter(
+      (mp) => mp.userId !== socketId && mp.targetId !== socketId,
+    );
+
     this.players.splice(idx, 1);
     if (this.currentPlayerIndex >= this.players.length)
       this.currentPlayerIndex = 0;
     if (this.admin === socketId && this.players.length > 0)
       this.admin = this.players[0].id;
+
+    // If the current player left mid-turn, clear their turn state so the next
+    // player isn't stuck waiting for actions that will never arrive.
+    if (wasCurrentPlayer && this.players.length > 0) {
+      this._cancelAutoEnd();
+      this.diceRolled = false;
+      this.petUsedThisTurn = false;
+      this.petResolving = false;
+      this.petCoinFlip = null;
+      this.lastPetUsed = null;
+      if (this.vineSwing === socketId) this.vineSwing = null;
+      if (this.mushroomPending && this.mushroomPending.playerId === socketId)
+        this.mushroomPending = null;
+      if (this.superBananaWin && this.superBananaWin.playerId === socketId)
+        this.superBananaWin = null;
+      if (
+        this.pendingPetMove &&
+        (this.pendingPetMove.playerId === socketId ||
+          this.pendingPetMove.targetId === socketId)
+      )
+        this.pendingPetMove = null;
+      const next = this.players[this.currentPlayerIndex];
+      if (next) {
+        this._log(
+          `⚠️ ${leavingName} disconnected — ${next.name}'s turn now.`,
+        );
+      }
+    }
 
     // If only one non-bankrupt player remains during an active game, they win
     if (this.state === "playing" || this.state === "revealing") {
@@ -1253,6 +1336,7 @@ class MonopolyGame {
         this._log(
           `🏆 ${alive[0].name} is the last monkey standing and wins! 👑`,
         );
+        this._revealAllTiles();
       }
     }
   }
@@ -1330,9 +1414,8 @@ class MonopolyGame {
       p.revealedTiles = new Set([...CORNER_POSITIONS, 0]);
       p.pet = null;
       p.petCooldown = 0;
-      p.petUses = 0;
       p.pendingPet = null;
-      p.bomb = false;
+      p.bomb = 0;
       p.hasRolled = false;
     }
     this._initProperties();
@@ -1343,10 +1426,6 @@ class MonopolyGame {
     if (this.gameMode === "teams" && this.players.length !== 4) return false;
     // All players must have selected a pet
     if (this.players.some((p) => !p.pet)) return false;
-    for (const p of this.players) {
-      // Initialize pet uses for limited mode
-      p.petUses = PET_LIMITED_USES[p.pet] || 0;
-    }
     // Assign teams in team mode (players 0,1 = Team A, players 2,3 = Team B)
     if (this.gameMode === "teams") {
       this.teams = {
@@ -1464,9 +1543,6 @@ class MonopolyGame {
     const player = this.players.find((p) => p.id === socketId);
     if (!player || !player.pet) return false;
     player.petCooldown = 0;
-    if (this.petMode === "limited") {
-      player.petUses = PET_LIMITED_USES[player.pet] || 3;
-    }
     this._log(`\ud83d\udc3e ${player.name}'s pet cooldown reset! (debug)`);
     return true;
   }
@@ -1516,11 +1592,11 @@ class MonopolyGame {
 
     // Validate paid dice override (1 or 3)
     let numDice = 2;
-    if (diceCount === 1 && cur.money >= 500) {
-      cur.money -= 500;
+    if (diceCount === 1 && cur.money >= 300) {
+      cur.money -= 300;
       numDice = 1;
-    } else if (diceCount === 3 && cur.money >= 500) {
-      cur.money -= 500;
+    } else if (diceCount === 3 && cur.money >= 300) {
+      cur.money -= 300;
       numDice = 3;
     }
 
@@ -1533,11 +1609,9 @@ class MonopolyGame {
     cur.hasRolled = true;
     this.petCoinFlip = null;
 
-    // Tick pet cooldowns for all players (cooldown mode only)
-    if (this.petMode !== "limited") {
-      for (const p of this.players) {
-        if (p.petCooldown > 0) p.petCooldown--;
-      }
+    // Tick pet cooldowns for all players
+    for (const p of this.players) {
+      if (p.petCooldown > 0) p.petCooldown--;
     }
 
     const diceSum = rolls.reduce((a, b) => a + b, 0);
@@ -1551,6 +1625,13 @@ class MonopolyGame {
       oldPos,
       cur.position,
     );
+
+    // Award crossed freebananas money immediately so that landing checks (e.g. super banana
+    // affordability) use the correct post-collection balance. The log/UI notification is still
+    // deferred below so the animation fires at the right visual moment.
+    if (crossedFreeBananas.length > 0) {
+      cur.money += crossedFreeBananas.length * 500;
+    }
 
     // Dice-match grow: if dice sum matches a farm label number you own, 100% grow
     this._processDiceMatchGrow(cur, diceSum);
@@ -1566,6 +1647,15 @@ class MonopolyGame {
     // Check if player landed on a bomb (eliminates victims, placer takes loot)
     if (this._checkBombDetonation(cur)) {
       if (cur.bankrupt || this.state === "finished") {
+        // If the current player got eliminated but the game isn't over,
+        // schedule an auto-end so the next player can take their turn.
+        // Without this the game freezes: the bankrupt player can no longer
+        // act, and endTurn is only callable by the current player.
+        if (cur.bankrupt && this.state !== "finished") {
+          const walkMs = 550 + diceSum * 150 + 500;
+          const explosionMs = 1500;
+          this._scheduleAutoEnd(cur, walkMs + explosionMs + 1000, 2000);
+        }
         return { dice: this.dice, moved: true };
       }
     }
@@ -1573,6 +1663,11 @@ class MonopolyGame {
     // Timer-based bomb explosion: explode any bomb whose timer has expired
     if (this._explodeExpiredBombs()) {
       if (cur.bankrupt || this.state === "finished") {
+        if (cur.bankrupt && this.state !== "finished") {
+          const walkMs = 550 + diceSum * 150 + 500;
+          const explosionMs = 1500;
+          this._scheduleAutoEnd(cur, walkMs + explosionMs + 1000, 2000);
+        }
         return { dice: this.dice, moved: true };
       }
     }
@@ -1621,10 +1716,10 @@ class MonopolyGame {
       !this.poker &&
       !this.mushroomPending
     ) {
-      // Defer awarding +500 for crossing revealed freebananas until after walk animation
+      // Defer the log/UI notification for crossed freebananas until after walk animation
+      // (money was already applied above so landing checks like super banana use the right balance)
       setTimeout(() => {
         for (const pos of crossedFreeBananas) {
-          cur.money += 500;
           this._log(
             `${cur.name} crossed Free Bananas +500 and collected 500\ud83c\udf4c! \ud83c\udf4c`,
           );
@@ -1650,11 +1745,17 @@ class MonopolyGame {
     this._collectBananasOnPath(cur, oldPos, cur.position);
     if (this._checkBombDetonation(cur)) {
       if (cur.bankrupt || this.state === "finished") {
+        if (cur.bankrupt && this.state !== "finished") {
+          this._scheduleAutoEnd(cur, 2500, 2000);
+        }
         return { dice: this.dice, moved: true };
       }
     }
     if (this._explodeExpiredBombs()) {
       if (cur.bankrupt || this.state === "finished") {
+        if (cur.bankrupt && this.state !== "finished") {
+          this._scheduleAutoEnd(cur, 2500, 2000);
+        }
         return { dice: this.dice, moved: true };
       }
     }
@@ -1898,6 +1999,7 @@ class MonopolyGame {
               `\u2728 ${player.name} found the Super Banana, ${player.name} now has good luck for all eternity! \u2728`,
             );
           }
+          this._revealAllTiles();
           if (this.onUpdate) this.onUpdate();
         }, 3000);
       }, 4000);
@@ -1940,12 +2042,16 @@ class MonopolyGame {
         if (winner) {
           this._log(`?? ${winner.name} is the richest monkey and wins! ???`);
         }
+        this._revealAllTiles();
       }
       return;
     }
 
     if (prop.owner && prop.owner !== player.id) {
-      // No rent in this game — just a visit
+      // No rent in this game — just a visit.
+      // Reveal the tile to all players so the owner (and any teammate) can
+      // see their partner / opponent standing on the farm.
+      for (const p of this.players) p.revealedTiles.add(player.position);
     } else if (!prop.owner) {
       if (player.money <= 0) {
         // Broke player -- give to opponent if they have money, otherwise landing player gets it free
@@ -1994,7 +2100,7 @@ class MonopolyGame {
   // Passive landing — only handles non-interactive effects (tax, rent, grow).
   // Used when a player is pushed onto a tile by an opponent's pet so it
   // doesn't trigger poker, vine swing, auctions, or mushroom swaps.
-  _processLandingPassive(player, devilUserId = null) {
+  _processLandingPassive(player, magicUserId = null) {
     const space = this.board[player.position];
     if (!space) return;
 
@@ -2078,8 +2184,8 @@ class MonopolyGame {
     // No rent in this game
 
     // Magic auction: pushed onto unowned tile
-    if (!prop.owner && devilUserId && player.money > 0) {
-      this._startDevilAuction(player, devilUserId);
+    if (!prop.owner && magicUserId && player.money > 0) {
+      this._startDevilAuction(player, magicUserId);
     }
   }
 
@@ -2213,7 +2319,7 @@ class MonopolyGame {
 
   // -- Auction System ---------------------------------------------
 
-  _startDevilAuction(pushedPlayer, devilUserId) {
+  _startDevilAuction(pushedPlayer, magicUserId) {
     const pos = pushedPlayer.position;
     const prop = this.properties.get(pos);
     if (!prop || prop.owner) return;
@@ -2234,7 +2340,7 @@ class MonopolyGame {
       propPrice: prop.price,
       propGroup: prop.group || null,
       landingPlayer: pushedPlayer.id,
-      devilUser: devilUserId,
+      magicUser: magicUserId,
       bidders,
       bids,
       phase: "pitch",
@@ -2473,6 +2579,7 @@ class MonopolyGame {
               `\u2728 ${winner.name} found the Super Banana, ${winner.name} now has good luck for all eternity! \u2728`,
             );
           }
+          this._revealAllTiles();
         }
       }
     } else {
@@ -2579,8 +2686,13 @@ class MonopolyGame {
     if (!prop || prop.owner !== socketId) return false;
 
     this.vineSwing = null;
+    // Clear any lingering grow-squatter-steal state from this turn so the
+    // frontend doesn't re-trigger the steal animation on the vine landing.
+    this.growSquatterSteals = null;
     player.position = position;
     player.revealedTiles.add(position);
+    // Reveal the vine-swing destination to all players
+    for (const p of this.players) p.revealedTiles.add(position);
     this._log(`${player.name} swung to tile ${position}! \ud83e\udea2`);
 
     // Vine Swing is a teleport — only steal/collect at landing tile, no crossing
@@ -2684,8 +2796,13 @@ class MonopolyGame {
         prop.price * chainMult,
       );
       if (amount > 0) {
-        // Check if a non-teammate opponent is sitting on this tile
-        const squatter = this.players.find(
+        // If the tile owner is standing on their own tile, they get the bananas
+        // (pile grows normally), regardless of any opponent also being present.
+        const ownerOnTile = prop.owner && this.players.some(
+          (p) => !p.bankrupt && p.position === propId && p.id === prop.owner,
+        );
+        // Otherwise, check if a non-teammate opponent is sitting on this tile
+        const squatter = ownerOnTile ? null : this.players.find(
           (p) => !p.bankrupt && p.position === propId && !teamIds.has(p.id),
         );
         if (squatter) {
@@ -3254,10 +3371,8 @@ class MonopolyGame {
     const player = this.players.find((p) => p.id === socketId);
     if (!player || player.bankrupt) return false;
     if (player.money < 5000) return false;
-    if (player.bomb) return false; // already holding a bomb
     player.money -= 5000;
-    player.bomb = true;
-    player.bombBoughtTurn = this.turn;
+    player.bomb = (player.bomb || 0) + 1;
     this._log(
       `${player.name} bought a pineapple bomb for 5000\ud83c\udf4c! \ud83c\udf4d`,
     );
@@ -3272,26 +3387,51 @@ class MonopolyGame {
     if (idx < 0 || idx >= BOARD_SIZE) return false;
     // Can't place on a tile that already has a bomb
     if (this.bombs.some((b) => b.position === idx)) return false;
-    player.bomb = false;
-    player.bombBoughtTurn = null;
+    const cur = this.getCurrentPlayer();
+    const isOwnTurn = !!(cur && cur.id === player.id);
+    player.bomb = Math.max(0, (player.bomb || 0) - 1);
     this.bombs.push({
       placedBy: player.id,
       position: idx,
-      turnsLeft: 6,
+      turnsLeft: 3,
+      pending: isOwnTurn,
     });
-    this._log(
-      `${player.name} planted a pineapple bomb! \ud83c\udf4d (arms after your next turn, detonates in 5!)`,
-    );
+    if (isOwnTurn) {
+      this._log(
+        `${player.name} planted a pineapple bomb! \ud83c\udf4d (will be placed at the start of your next turn!)`,
+      );
+    } else {
+      this._log(
+        `${player.name} planted a pineapple bomb! \ud83c\udf4d (arms after your next turn, detonates in 3!)`,
+      );
+    }
     return true;
+  }
+
+  _addExplosion(explosion) {
+    if (!this.lastExplosion || !Array.isArray(this.lastExplosion.explosions)) {
+      this.lastExplosion = { explosions: [] };
+    }
+    this.lastExplosion.explosions.push(explosion);
   }
 
   _checkBombDetonation(player) {
     if (!this.bombMode || this.bombs.length === 0) return false;
     const bombIndex = this.bombs.findIndex(
-      (b) => b.position === player.position && b.turnsLeft <= 2,
+      (b) => !b.pending && b.position === player.position,
     );
     if (bombIndex === -1) return false;
     const bomb = this.bombs[bombIndex];
+
+    // Placer stepping on their own armed bomb: the bomb does NOT explode.
+    // Instead, they lose half their bananas and the bomb stays armed so
+    // other players can still trigger it later.
+    if (bomb.placedBy === player.id) {
+      this._bombSelfDamage(player);
+      this._checkBombWin();
+      return true;
+    }
+
     const placer = this.players.find((p) => p.id === bomb.placedBy);
     this.bombs.splice(bombIndex, 1);
     const blastTiles = [
@@ -3299,7 +3439,8 @@ class MonopolyGame {
       (bomb.position - 1 + BOARD_SIZE) % BOARD_SIZE,
       (bomb.position + 1) % BOARD_SIZE,
     ];
-    this.lastExplosion = { position: bomb.position, tiles: blastTiles };
+    const explosion = { position: bomb.position, tiles: blastTiles, kills: [] };
+    this._addExplosion(explosion);
     const victims = this.players.filter(
       (p) => !p.bankrupt && blastTiles.includes(p.position),
     );
@@ -3317,7 +3458,7 @@ class MonopolyGame {
       ) {
         this._bombSelfDamage(v);
       } else {
-        this._bombEliminate(v, placer);
+        explosion.kills.push(this._bombEliminate(v, placer));
       }
     }
     this._checkBombWin();
@@ -3328,7 +3469,7 @@ class MonopolyGame {
     if (!this.bombMode || this.bombs.length === 0) return false;
     let anyExploded = false;
     for (let i = this.bombs.length - 1; i >= 0; i--) {
-      if (this.bombs[i].turnsLeft <= 0) {
+      if (!this.bombs[i].pending && this.bombs[i].turnsLeft <= 0) {
         const bomb = this.bombs[i];
         this.bombs.splice(i, 1);
         const blastTiles = [
@@ -3336,7 +3477,8 @@ class MonopolyGame {
           (bomb.position - 1 + BOARD_SIZE) % BOARD_SIZE,
           (bomb.position + 1) % BOARD_SIZE,
         ];
-        this.lastExplosion = { position: bomb.position, tiles: blastTiles };
+        const explosion = { position: bomb.position, tiles: blastTiles, kills: [] };
+        this._addExplosion(explosion);
         const victims = this.players.filter(
           (p) => !p.bankrupt && blastTiles.includes(p.position),
         );
@@ -3355,7 +3497,7 @@ class MonopolyGame {
             ) {
               this._bombSelfDamage(v);
             } else {
-              this._bombEliminate(v, placer);
+              explosion.kills.push(this._bombEliminate(v, placer));
             }
           }
           this._checkBombWin();
@@ -3372,12 +3514,14 @@ class MonopolyGame {
 
   _bombEliminate(victim, placer) {
     const loot = victim.money;
+    const transferredTiles = [...victim.properties];
     victim.bankrupt = true;
     victim.money = 0;
+    let kill = null;
     // Transfer properties to placer
     if (placer && !placer.bankrupt && placer.id !== victim.id) {
       placer.money += loot;
-      for (const pos of victim.properties) {
+      for (const pos of transferredTiles) {
         const prop = this.properties.get(pos);
         if (prop) {
           prop.owner = placer.id;
@@ -3387,12 +3531,29 @@ class MonopolyGame {
       this._log(
         `\ud83d\udca5 ${victim.name} was eliminated! ${placer.name} took ${loot}\ud83c\udf4c and all their farms!`,
       );
+      kill = {
+        victimId: victim.id,
+        victimName: victim.name,
+        placerId: placer.id,
+        placerName: placer.name,
+        loot,
+        tiles: transferredTiles,
+      };
     } else {
       this._log(
         `\ud83d\udca5 ${victim.name} was caught in the explosion and eliminated!`,
       );
+      kill = {
+        victimId: victim.id,
+        victimName: victim.name,
+        placerId: placer ? placer.id : null,
+        placerName: placer ? placer.name : null,
+        loot: 0,
+        tiles: [],
+      };
     }
     victim.properties = [];
+    return kill;
   }
 
   _bombSelfDamage(player) {
@@ -3417,6 +3578,13 @@ class MonopolyGame {
       this._log(
         `\ud83c\udfc6 ${alive[0].name} is the last monkey standing and is the Monkey King! \ud83d\udc51\ud83d\udca5`,
       );
+      this._revealAllTiles();
+    }
+  }
+
+  _revealAllTiles() {
+    for (const p of this.players) {
+      for (let i = 0; i < BOARD_SIZE; i++) p.revealedTiles.add(i);
     }
   }
 
@@ -3439,32 +3607,42 @@ class MonopolyGame {
       if (p.money < 0) p.money = 0;
     }
 
-    // Next player
-    this.currentPlayerIndex =
-      (this.currentPlayerIndex + 1) % this.players.length;
+    // Next player — skip bankrupt players (eliminated via bomb mode). Guard
+    // against an infinite loop if somehow every other player is bankrupt.
+    const totalPlayers = this.players.length;
+    let advanced = 0;
+    do {
+      this.currentPlayerIndex =
+        (this.currentPlayerIndex + 1) % totalPlayers;
+      advanced++;
+    } while (
+      advanced < totalPlayers &&
+      this.players[this.currentPlayerIndex] &&
+      this.players[this.currentPlayerIndex].bankrupt
+    );
 
     this.turn++;
     this.diceRolled = false;
 
-    // Cancel held bomb if the player has had a full round to place it
-    const newCurBomb = this.players[this.currentPlayerIndex];
-    if (
-      newCurBomb &&
-      newCurBomb.bomb &&
-      newCurBomb.bombBoughtTurn != null &&
-      this.turn - newCurBomb.bombBoughtTurn >= this.players.length
-    ) {
-      newCurBomb.bomb = false;
-      newCurBomb.bombBoughtTurn = null;
-      newCurBomb.money += 5000;
-      this._log(
-        `${newCurBomb.name}'s pineapple bomb expired \u2014 5000\ud83c\udf4c refunded! \ud83c\udf4d`,
-      );
+    // Tick bomb timers — only bombs placed by the player whose turn just ended
+    // (explosion happens after next roll in rollDice). Skip pending bombs —
+    // they haven't been "placed" yet and won't tick until they activate.
+    for (let i = this.bombs.length - 1; i >= 0; i--) {
+      if (!this.bombs[i].pending && this.bombs[i].placedBy === cur.id) {
+        this.bombs[i].turnsLeft--;
+      }
     }
 
-    // Tick bomb timers (explosion happens after next roll in rollDice)
-    for (let i = this.bombs.length - 1; i >= 0; i--) {
-      this.bombs[i].turnsLeft--;
+    // Activate any pending bombs belonging to the new current player — a
+    // bomb placed on the placer's own turn only becomes real at the start
+    // of their next turn, so they can't benefit from it on the same turn.
+    const activatingPlayer = this.players[this.currentPlayerIndex];
+    if (activatingPlayer) {
+      for (const b of this.bombs) {
+        if (b.pending && b.placedBy === activatingPlayer.id) {
+          b.pending = false;
+        }
+      }
     }
 
     // Win check — only Super Banana purchase wins
@@ -3492,6 +3670,7 @@ class MonopolyGame {
           this._log(
             `\u2728 ${names} found the Super Banana, they now have good luck for all eternity! \u2728`,
           );
+          this._revealAllTiles();
           break;
         }
       }
@@ -3884,12 +4063,12 @@ class MonopolyGame {
       gameId: this.gameId,
       state: this.state,
       admin: this.admin,
+      isPublic: this.isPublic,
       maxPlayers: this.maxPlayers,
       startingMoney: this.startingMoney,
       bombMode: this.bombMode,
       noAuctionTimer: this.noAuctionTimer,
       monkeyPoker: this.monkeyPoker,
-      petMode: this.petMode,
       turn: this.turn,
       currentPlayer: this.getCurrentPlayer(),
       players: this.players.map((p) => {
@@ -3915,7 +4094,7 @@ class MonopolyGame {
             propGroup: this.auction.propGroup,
             phase: this.auction.phase,
             landingPlayer: this.auction.landingPlayer,
-            devilUser: this.auction.devilUser || null,
+            magicUser: this.auction.magicUser || null,
             landerOpenBid: this.auction.landerOpenBid ?? null,
             respondDeadline: this.auction.respondDeadline || null,
             respondStartTime: this.auction.respondStartTime || null,
@@ -3953,6 +4132,7 @@ class MonopolyGame {
         .map((b) => ({
           position: b.position,
           turnsLeft: b.turnsLeft,
+          pending: !!b.pending,
         })),
       lastExplosion: this.lastExplosion || null,
       bombSelfDamage: this.bombSelfDamage || null,

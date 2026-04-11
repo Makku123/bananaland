@@ -27,7 +27,6 @@ function createStartedGame(n = 2, opts = {}) {
     opts.startingMoney || 5000,
     opts.gameMode || "ffa",
     opts.teamTarget || 5000,
-    opts.petMode || "cooldown",
     opts.bombMode !== undefined ? opts.bombMode : true,
     opts.monkeyPoker !== undefined ? opts.monkeyPoker : true,
   );
@@ -50,7 +49,7 @@ section("1. Game Creation & Player Management");
 // ============================================================
 
 {
-  const game = new MonopolyGame("G1", 4, 2222, "ffa", 5000, "cooldown", false, true, true);
+  const game = new MonopolyGame("G1", 4, 2222, "ffa", 5000, false, true, true);
   assert(game.state === "waiting", "Game starts in waiting state");
   assert(game.maxPlayers === 4, "Max players set correctly");
   assert(game.startingMoney === 2222, "Starting money set correctly");
@@ -84,7 +83,7 @@ section("2. Settings Update");
 // ============================================================
 
 {
-  const game = new MonopolyGame("G2", 4, 2222, "ffa", 5000, "cooldown", false, true, true);
+  const game = new MonopolyGame("G2", 4, 2222, "ffa", 5000, false, true, true);
   game.addPlayer("s1", "Alice");
   game.addPlayer("s2", "Bob");
 
@@ -96,9 +95,6 @@ section("2. Settings Update");
 
   assert(game.updateSettings("s1", { gameMode: "teams" }), "Can switch to teams mode");
   assert(game.maxPlayers === 4, "Teams mode forces 4 players");
-
-  assert(game.updateSettings("s1", { petMode: "limited" }), "Can switch pet mode");
-  assert(game.petMode === "limited", "Pet mode updated");
 }
 
 // ============================================================
@@ -106,7 +102,7 @@ section("3. Pet Selection & Game Start");
 // ============================================================
 
 {
-  const game = new MonopolyGame("G3", 2, 2222, "ffa", 5000, "cooldown", false, true, true);
+  const game = new MonopolyGame("G3", 2, 2222, "ffa", 5000, false, true, true);
   game.addPlayer("s1", "Alice");
   game.addPlayer("s2", "Bob");
 
@@ -155,24 +151,24 @@ section("5. Paid Dice (1 or 3 dice)");
   const { game } = createStartedGame(2, { startingMoney: 5000 });
   const cur = game.getCurrentPlayer();
 
-  // Roll with 1 die (costs 500)
+  // Roll with 1 die (costs 300)
   const moneyBefore = cur.money;
   const result = game.rollDice(cur.id, 1);
   assert(result !== null, "Can roll with 1 die");
   assert(result.dice.length === 1, "Got 1 die result");
-  assert(cur.money === moneyBefore - 500, "1 die costs 500 bananas");
+  assert(cur.money === moneyBefore - 300, "1 die costs 300 bananas");
 }
 
 {
   const { game } = createStartedGame(2, { startingMoney: 5000 });
   const cur = game.getCurrentPlayer();
 
-  // Roll with 3 dice (costs 500)
+  // Roll with 3 dice (costs 300)
   const moneyBefore = cur.money;
   const result = game.rollDice(cur.id, 3);
   assert(result !== null, "Can roll with 3 dice");
   assert(result.dice.length === 3, "Got 3 dice result");
-  assert(cur.money === moneyBefore - 500, "3 dice costs 500 bananas");
+  assert(cur.money === moneyBefore - 300, "3 dice costs 300 bananas");
 }
 
 // ============================================================
@@ -447,7 +443,7 @@ section("14. Pet System - Strong Pet");
 // ============================================================
 
 {
-  const { game } = createStartedGame(2, { pet: "strong", petMode: "cooldown" });
+  const { game } = createStartedGame(2, { pet: "strong" });
 
   // Roll first so player has hasRolled = true
   const cur = game.getCurrentPlayer();
@@ -499,65 +495,28 @@ section("15. Pet System - Can't use on own turn");
 }
 
 // ============================================================
-section("16. Pet System - Limited Uses Mode");
-// ============================================================
-
-{
-  const { game } = createStartedGame(2, { pet: "strong", petMode: "limited" });
-  const cur = game.getCurrentPlayer();
-  const other = game.players.find(p => p.id !== cur.id);
-
-  assert(other.petUses === 1, "Strong pet starts with 1 use in limited mode");
-
-  // Roll and end turn for cur
-  game.rollDice(cur.id);
-  game._cancelAutoEnd();
-  game.auction = null; // Clear any auction
-  game.poker = null;
-  game.endTurn(cur.id);
-
-  // Now other is current player. Roll for other, end their turn
-  game.rollDice(other.id);
-  game._cancelAutoEnd();
-  game.auction = null;
-  game.poker = null;
-  game.endTurn(other.id);
-
-  // Now it's cur's turn again. other has hasRolled = true and is off-turn
-  // Clear any blocking state
-  game.auction = null;
-  game.poker = null;
-  game.vineSwing = null;
-
-  const useResult = game.usePetAbility(other.id);
-  if (!useResult) {
-    console.log(`  DEBUG limited: other.id=${other.id}, curPlayer=${game.getCurrentPlayer().id}, pet=${other.pet}, petUses=${other.petUses}, hasRolled=${other.hasRolled}, pendingPet=${JSON.stringify(other.pendingPet)}`);
-  }
-  assert(useResult, "Can use pet with limited uses > 0");
-  assert(other.petUses === 0, "Uses decremented");
-}
-
-// ============================================================
 section("17. Bomb System - Buy & Place");
 // ============================================================
 
 {
-  const { game } = createStartedGame(2, { startingMoney: 10000, bombMode: true });
+  const { game } = createStartedGame(2, { startingMoney: 20000, bombMode: true });
   const cur = game.getCurrentPlayer();
 
-  assert(game.buyBomb(cur.id), "Can buy bomb with 10000 bananas");
-  assert(cur.bomb === true, "Player has bomb");
-  assert(cur.money === 5000, "5000 deducted");
+  assert(game.buyBomb(cur.id), "Can buy bomb with 20000 bananas");
+  assert(cur.bomb === 1, "Player has 1 bomb");
+  assert(cur.money === 15000, "5000 deducted");
 
-  // Can't buy second bomb
-  assert(!game.buyBomb(cur.id), "Can't buy second bomb");
+  // Can buy additional bombs (no per-player cap)
+  assert(game.buyBomb(cur.id), "Can buy second bomb");
+  assert(cur.bomb === 2, "Player now holds 2 bombs");
+  assert(cur.money === 10000, "Another 5000 deducted");
 
-  // Place bomb
+  // Place one bomb (decrements held count)
   assert(game.placeBomb(cur.id, 10), "Can place bomb on tile 10");
-  assert(cur.bomb === false, "Bomb removed from inventory");
+  assert(cur.bomb === 1, "Held bomb count decremented after placement");
   assert(game.bombs.length === 1, "Bomb on board");
   assert(game.bombs[0].position === 10, "Bomb at correct position");
-  assert(game.bombs[0].turnsLeft === 5, "Bomb has 5 turns left");
+  assert(game.bombs[0].turnsLeft === 3, "Bomb has 3 turns left");
 }
 
 // ============================================================
@@ -644,9 +603,9 @@ section("21. GROW Mechanics");
     prop.owner = cur.id;
     cur.properties.push(farmPos);
 
-    // Move to GROW 100% (position 0)
+    // Move to GROW 25% (position 0)
     const oldMoney = cur.money;
-    game._processLanding(cur); // Landing at position 0 (GROW 100%)
+    game._processLanding(cur); // Landing at position 0 (GROW 25%)
 
     // Check that banana pile grew on the farm
     if (cur.position === 0) {
@@ -951,7 +910,6 @@ section("32. Game State Serialization");
   assert(Array.isArray(state.log), "State has log array");
   assert(state.dice !== undefined, "State has dice");
   assert(state.bombMode !== undefined, "State has bomb mode flag");
-  assert(state.petMode !== undefined, "State has pet mode");
 }
 
 // ============================================================
@@ -1039,7 +997,7 @@ section("37. Debug Reset Pet Cooldown");
 // ============================================================
 
 {
-  const { game } = createStartedGame(2, { pet: "strong", petMode: "cooldown" });
+  const { game } = createStartedGame(2, { pet: "strong" });
   const cur = game.getCurrentPlayer();
   cur.petCooldown = 10;
 
@@ -1172,7 +1130,7 @@ section("43. Pet Cooldown Ticking");
 // ============================================================
 
 {
-  const { game } = createStartedGame(2, { pet: "strong", petMode: "cooldown" });
+  const { game } = createStartedGame(2, { pet: "strong" });
   const p0 = game.players.find(p => p.id === "p0");
   const p1 = game.players.find(p => p.id === "p1");
 
@@ -1220,9 +1178,53 @@ section("45. Bomb Self-Damage");
   const before = p0.money;
   game._checkBombDetonation(p0);
 
-  // Self-damage = lose half
+  // Placer stepping on their own armed bomb: lose half, bomb stays armed.
   assert(p0.bankrupt === false, "Self-bomb doesn't eliminate placer");
   assert(p0.money === before - Math.floor(before / 2), "Self-bomb loses half money");
+  assert(game.bombs.length === 1, "Bomb stays on board when placer lands on it");
+  assert(game.bombs[0].position === 10, "Bomb still at the same tile");
+}
+
+// ============================================================
+section("45b. Placer stepping on own bomb does NOT eliminate adjacent players");
+// ============================================================
+
+{
+  const { game } = createStartedGame(3, { startingMoney: 10000, bombMode: true });
+  const p0 = game.players[0];
+  const p1 = game.players[1];
+
+  game.bombs.push({ placedBy: p0.id, position: 10, turnsLeft: 1 });
+  p0.position = 10;
+  p1.position = 11; // adjacent to bomb
+
+  game._checkBombDetonation(p0);
+
+  assert(p0.bankrupt === false, "Placer not eliminated");
+  assert(p1.bankrupt === false, "Adjacent player not eliminated when placer steps on own bomb");
+  assert(game.bombs.length === 1, "Bomb not removed");
+}
+
+// ============================================================
+section("45c. Non-placer landing on active bomb eliminates them and adjacent players");
+// ============================================================
+
+{
+  const { game } = createStartedGame(3, { startingMoney: 10000, bombMode: true });
+  const p0 = game.players[0];
+  const p1 = game.players[1];
+  const p2 = game.players[2];
+
+  game.bombs.push({ placedBy: p0.id, position: 10, turnsLeft: 1 });
+  p1.position = 10; // lands on bomb
+  p2.position = 9;  // adjacent to bomb
+
+  const detonated = game._checkBombDetonation(p1);
+
+  assert(detonated === true, "Bomb detonated");
+  assert(p1.bankrupt === true, "Player who landed on bomb is eliminated");
+  assert(p2.bankrupt === true, "Player on adjacent tile is eliminated");
+  assert(game.bombs.length === 0, "Bomb removed after detonation");
 }
 
 // ============================================================
@@ -1520,34 +1522,32 @@ section("55. FFA Mode - No Trading");
 }
 
 // ============================================================
-section("56. Bomb Expired - Refund");
+section("56. Held bombs do NOT expire across turns");
 // ============================================================
 
 {
-  const { game } = createStartedGame(2, { startingMoney: 10000, bombMode: true });
+  // Regression: previously a held bomb would auto-refund after one full
+  // round, so a player sitting in "Place Pineapple Bomb" state across
+  // turns would lose all their bombs. Bombs are now held indefinitely
+  // until placed (or the player goes bankrupt).
+  const { game } = createStartedGame(4, { startingMoney: 50000, bombMode: true });
   const cur = game.getCurrentPlayer();
 
-  // Buy bomb
-  game.buyBomb(cur.id);
-  assert(cur.bomb === true, "Has bomb");
-  assert(cur.money === 5000, "Money deducted");
+  // Buy 8 bombs up front
+  for (let i = 0; i < 8; i++) assert(game.buyBomb(cur.id), `Buy bomb #${i + 1}`);
+  assert(cur.bomb === 8, "Has 8 bombs");
+  const moneyAfterBuying = cur.money;
 
-  // Directly simulate the expiry check in endTurn:
-  // "Cancel held bomb if the player has had a full round to place it"
-  // The condition is: turn - bombBoughtTurn >= players.length
-  cur.bombBoughtTurn = 0;
-  game.turn = game.players.length; // Simulate enough turns passing
-
-  // Manually trigger the bomb expiry logic
-  if (cur.bomb && cur.bombBoughtTurn != null &&
-      game.turn - cur.bombBoughtTurn >= game.players.length) {
-    cur.bomb = false;
-    cur.bombBoughtTurn = null;
-    cur.money += 5000;
+  // Simulate many full rounds of turn rotation without the player placing
+  for (let i = 0; i < 20; i++) {
+    const who = game.getCurrentPlayer();
+    who.hasRolled = true;
+    game.diceRolled = true;
+    game.endTurn();
   }
 
-  assert(cur.bomb === false, "Bomb expired");
-  assert(cur.money === 10000, "Bomb refunded after expiry (money restored)");
+  assert(cur.bomb === 8, "All 8 bombs still held after many rounds");
+  assert(cur.money === moneyAfterBuying, "No refund — money unchanged");
 }
 
 // ============================================================
@@ -1577,7 +1577,7 @@ section("57. Squatter Steal on GROW");
     // Put opponent on the farm tile (squatter)
     p1.position = farmPos;
 
-    // Move p0 to GROW 100% (position 0)
+    // Move p0 to GROW 25% (position 0)
     p0.position = 0;
     const p1Before = p1.money;
     game._processLanding(p0);

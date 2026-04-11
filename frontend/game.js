@@ -16,9 +16,46 @@ const MONKEY_EMOJI = {
   red: "\uD83E\uDDE8",
 };
 
+// ── Sound Volume Control ───────────────────────────────────────────
+let _sfxVolume = (() => {
+  try { const v = parseFloat(localStorage.getItem("sfx-volume")); return isNaN(v) ? 1 : Math.max(0, Math.min(1, v)); }
+  catch { return 1; }
+})();
+
+// Shared AudioContext — creating a new one per sound causes variable startup
+// latency (tens of ms) which desyncs short repeated sounds like the walk tick.
+let _sharedAudioCtx = null;
+function _getAudioCtx() {
+  if (!_sharedAudioCtx) {
+    const Ctor = window.AudioContext || window.webkitAudioContext;
+    if (!Ctor) return null;
+    _sharedAudioCtx = new Ctor();
+  }
+  if (_sharedAudioCtx.state === "suspended") {
+    try { _sharedAudioCtx.resume(); } catch {}
+  }
+  return _sharedAudioCtx;
+}
+
+function _sfxDest(ctx) {
+  const g = ctx.createGain();
+  g.gain.value = _sfxVolume;
+  g.connect(ctx.destination);
+  return g;
+}
+
+function setSfxVolume(v) {
+  _sfxVolume = Math.max(0, Math.min(1, v));
+  try { localStorage.setItem("sfx-volume", _sfxVolume); } catch {}
+  const icon = document.getElementById("sfx-toggle-icon");
+  if (icon) icon.textContent = _sfxVolume === 0 ? "\uD83D\uDD07" : _sfxVolume < 0.5 ? "\uD83D\uDD09" : "\uD83D\uDD0A";
+}
+
 function playTickSound() {
   try {
-    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    if (_sfxVolume === 0) return;
+    const ctx = _getAudioCtx();
+    if (!ctx) return;
     const t = ctx.currentTime;
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
@@ -26,7 +63,7 @@ function playTickSound() {
     osc.frequency.setValueAtTime(1800, t);
     gain.gain.setValueAtTime(0.06, t);
     gain.gain.exponentialRampToValueAtTime(0.001, t + 0.04);
-    osc.connect(gain).connect(ctx.destination);
+    osc.connect(gain).connect(_sfxDest(ctx));
     osc.start(t);
     osc.stop(t + 0.04);
   } catch (e) {}
@@ -34,7 +71,9 @@ function playTickSound() {
 
 function playMoveTickSound() {
   try {
-    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    if (_sfxVolume === 0) return;
+    const ctx = _getAudioCtx();
+    if (!ctx) return;
     const t = ctx.currentTime;
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
@@ -43,7 +82,7 @@ function playMoveTickSound() {
     osc.frequency.exponentialRampToValueAtTime(300, t + 0.05);
     gain.gain.setValueAtTime(0.1, t);
     gain.gain.exponentialRampToValueAtTime(0.001, t + 0.06);
-    osc.connect(gain).connect(ctx.destination);
+    osc.connect(gain).connect(_sfxDest(ctx));
     osc.start(t);
     osc.stop(t + 0.06);
   } catch (e) {}
@@ -51,7 +90,9 @@ function playMoveTickSound() {
 
 function playChatNotif() {
   try {
-    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    if (_sfxVolume === 0) return;
+    const ctx = _getAudioCtx();
+    if (!ctx) return;
     const t = ctx.currentTime;
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
@@ -60,7 +101,7 @@ function playChatNotif() {
     osc.frequency.setValueAtTime(1046.5, t + 0.08);
     gain.gain.setValueAtTime(0.12, t);
     gain.gain.exponentialRampToValueAtTime(0.001, t + 0.25);
-    osc.connect(gain).connect(ctx.destination);
+    osc.connect(gain).connect(_sfxDest(ctx));
     osc.start(t);
     osc.stop(t + 0.25);
   } catch (e) {}
@@ -68,7 +109,9 @@ function playChatNotif() {
 
 function playTurnChime() {
   try {
-    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    if (_sfxVolume === 0) return;
+    const ctx = _getAudioCtx();
+    if (!ctx) return;
     const notes = [523.25, 659.25, 783.99]; // C5, E5, G5
     notes.forEach((freq, i) => {
       const osc = ctx.createOscillator();
@@ -80,7 +123,7 @@ function playTurnChime() {
         0.001,
         ctx.currentTime + i * 0.12 + 0.3,
       );
-      osc.connect(gain).connect(ctx.destination);
+      osc.connect(gain).connect(_sfxDest(ctx));
       osc.start(ctx.currentTime + i * 0.12);
       osc.stop(ctx.currentTime + i * 0.12 + 0.3);
     });
@@ -89,7 +132,9 @@ function playTurnChime() {
 
 function playDiceRoll() {
   try {
-    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    if (_sfxVolume === 0) return;
+    const ctx = _getAudioCtx();
+    if (!ctx) return;
     const t = ctx.currentTime;
     // Rapid short noise bursts to mimic dice clatter
     for (let i = 0; i < 8; i++) {
@@ -107,7 +152,7 @@ function playDiceRoll() {
       const start = t + i * 0.05;
       gain.gain.setValueAtTime(0.15 + Math.random() * 0.1, start);
       gain.gain.exponentialRampToValueAtTime(0.001, start + 0.04);
-      src.connect(bp).connect(gain).connect(ctx.destination);
+      src.connect(bp).connect(gain).connect(_sfxDest(ctx));
       src.start(start);
       src.stop(start + 0.04);
     }
@@ -116,7 +161,9 @@ function playDiceRoll() {
 
 function playAuctionLoss() {
   try {
-    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    if (_sfxVolume === 0) return;
+    const ctx = _getAudioCtx();
+    if (!ctx) return;
     const t = ctx.currentTime;
     // Descending sad tones
     const notes = [493.88, 440, 349.23]; // B4, A4, F4
@@ -128,7 +175,7 @@ function playAuctionLoss() {
       const start = t + i * 0.18;
       gain.gain.setValueAtTime(0.15, start);
       gain.gain.exponentialRampToValueAtTime(0.001, start + 0.35);
-      osc.connect(gain).connect(ctx.destination);
+      osc.connect(gain).connect(_sfxDest(ctx));
       osc.start(start);
       osc.stop(start + 0.35);
     });
@@ -137,7 +184,9 @@ function playAuctionLoss() {
 
 function playTaxSound() {
   try {
-    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    if (_sfxVolume === 0) return;
+    const ctx = _getAudioCtx();
+    if (!ctx) return;
     const t = ctx.currentTime;
     // Cash register "ka-ching" — bright metallic hit then bell ring
     const hit = ctx.createOscillator();
@@ -147,7 +196,7 @@ function playTaxSound() {
     hit.frequency.exponentialRampToValueAtTime(600, t + 0.06);
     hitGain.gain.setValueAtTime(0.04, t);
     hitGain.gain.exponentialRampToValueAtTime(0.001, t + 0.08);
-    hit.connect(hitGain).connect(ctx.destination);
+    hit.connect(hitGain).connect(_sfxDest(ctx));
     hit.start(t);
     hit.stop(t + 0.08);
     // Bell ding
@@ -157,7 +206,7 @@ function playTaxSound() {
     bell.frequency.setValueAtTime(2200, t + 0.06);
     bellGain.gain.setValueAtTime(0.05, t + 0.06);
     bellGain.gain.exponentialRampToValueAtTime(0.001, t + 0.5);
-    bell.connect(bellGain).connect(ctx.destination);
+    bell.connect(bellGain).connect(_sfxDest(ctx));
     bell.start(t + 0.06);
     bell.stop(t + 0.5);
     // Second higher ding
@@ -167,7 +216,7 @@ function playTaxSound() {
     bell2.frequency.setValueAtTime(3300, t + 0.12);
     bell2Gain.gain.setValueAtTime(0.035, t + 0.12);
     bell2Gain.gain.exponentialRampToValueAtTime(0.001, t + 0.55);
-    bell2.connect(bell2Gain).connect(ctx.destination);
+    bell2.connect(bell2Gain).connect(_sfxDest(ctx));
     bell2.start(t + 0.12);
     bell2.stop(t + 0.55);
   } catch (e) {}
@@ -175,7 +224,9 @@ function playTaxSound() {
 
 function playBananaWhoosh() {
   try {
-    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    if (_sfxVolume === 0) return;
+    const ctx = _getAudioCtx();
+    if (!ctx) return;
     const t = ctx.currentTime;
     // Whoosh — filtered noise sweep
     const buf = ctx.createBuffer(1, ctx.sampleRate * 0.35, ctx.sampleRate);
@@ -193,16 +244,17 @@ function playBananaWhoosh() {
     gain.gain.setValueAtTime(0.001, t);
     gain.gain.linearRampToValueAtTime(0.12, t + 0.08);
     gain.gain.exponentialRampToValueAtTime(0.001, t + 0.35);
-    src.connect(bp).connect(gain).connect(ctx.destination);
+    src.connect(bp).connect(gain).connect(_sfxDest(ctx));
     src.start(t);
     src.stop(t + 0.35);
   } catch (e) {}
 }
 
-let _shuffleAudioCtx = null;
 function playVineSwing() {
   try {
-    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    if (_sfxVolume === 0) return;
+    const ctx = _getAudioCtx();
+    if (!ctx) return;
     const t = ctx.currentTime;
     // Swooping tone (high to low) — like swinging on a vine
     const osc = ctx.createOscillator();
@@ -212,7 +264,7 @@ function playVineSwing() {
     const g = ctx.createGain();
     g.gain.setValueAtTime(0.15, t);
     g.gain.exponentialRampToValueAtTime(0.001, t + 0.3);
-    osc.connect(g).connect(ctx.destination);
+    osc.connect(g).connect(_sfxDest(ctx));
     osc.start(t);
     osc.stop(t + 0.3);
     // Whoosh noise layer
@@ -230,19 +282,67 @@ function playVineSwing() {
     const ng = ctx.createGain();
     ng.gain.setValueAtTime(0.18, t);
     ng.gain.exponentialRampToValueAtTime(0.001, t + 0.2);
-    src.connect(bp).connect(ng).connect(ctx.destination);
+    src.connect(bp).connect(ng).connect(_sfxDest(ctx));
     src.start(t);
     src.stop(t + 0.2);
   } catch (e) {}
 }
 
+function playExplosionSound() {
+  try {
+    if (_sfxVolume === 0) return;
+    const ctx = _getAudioCtx();
+    if (!ctx) return;
+    const t = ctx.currentTime;
+    // Low boom — short sub-bass thump
+    const boom = ctx.createOscillator();
+    const boomGain = ctx.createGain();
+    boom.type = "sine";
+    boom.frequency.setValueAtTime(140, t);
+    boom.frequency.exponentialRampToValueAtTime(40, t + 0.45);
+    boomGain.gain.setValueAtTime(0.0001, t);
+    boomGain.gain.exponentialRampToValueAtTime(0.55, t + 0.02);
+    boomGain.gain.exponentialRampToValueAtTime(0.001, t + 0.5);
+    boom.connect(boomGain).connect(_sfxDest(ctx));
+    boom.start(t);
+    boom.stop(t + 0.55);
+    // Noise crackle layer (debris/fire)
+    const buf = ctx.createBuffer(1, ctx.sampleRate * 0.9, ctx.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < data.length; i++) {
+      data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (ctx.sampleRate * 0.25));
+    }
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    const lp = ctx.createBiquadFilter();
+    lp.type = "lowpass";
+    lp.frequency.setValueAtTime(2200, t);
+    lp.frequency.exponentialRampToValueAtTime(400, t + 0.8);
+    const noiseGain = ctx.createGain();
+    noiseGain.gain.setValueAtTime(0.4, t);
+    noiseGain.gain.exponentialRampToValueAtTime(0.001, t + 0.85);
+    src.connect(lp).connect(noiseGain).connect(_sfxDest(ctx));
+    src.start(t);
+    src.stop(t + 0.9);
+    // High-frequency snap at the front
+    const snap = ctx.createOscillator();
+    const snapGain = ctx.createGain();
+    snap.type = "square";
+    snap.frequency.setValueAtTime(900, t);
+    snap.frequency.exponentialRampToValueAtTime(120, t + 0.08);
+    snapGain.gain.setValueAtTime(0.25, t);
+    snapGain.gain.exponentialRampToValueAtTime(0.001, t + 0.1);
+    snap.connect(snapGain).connect(_sfxDest(ctx));
+    snap.start(t);
+    snap.stop(t + 0.1);
+  } catch (e) {}
+}
+
 function playShuffleSound() {
   try {
-    if (!_shuffleAudioCtx)
-      _shuffleAudioCtx = new (
-        window.AudioContext || window.webkitAudioContext
-      )();
-    const ctx = _shuffleAudioCtx;
+    if (_sfxVolume === 0) return;
+    const ctx = _getAudioCtx();
+    if (!ctx) return;
     const t = ctx.currentTime;
     // Quick sweep tone
     const osc = ctx.createOscillator();
@@ -252,7 +352,7 @@ function playShuffleSound() {
     const g = ctx.createGain();
     g.gain.setValueAtTime(0.1, t);
     g.gain.exponentialRampToValueAtTime(0.001, t + 0.18);
-    osc.connect(g).connect(ctx.destination);
+    osc.connect(g).connect(_sfxDest(ctx));
     osc.start(t);
     osc.stop(t + 0.2);
     // Tiny noise burst
@@ -264,7 +364,7 @@ function playShuffleSound() {
     const ng = ctx.createGain();
     ng.gain.setValueAtTime(0.12, t);
     ng.gain.exponentialRampToValueAtTime(0.001, t + 0.08);
-    src.connect(ng).connect(ctx.destination);
+    src.connect(ng).connect(_sfxDest(ctx));
     src.start(t);
     src.stop(t + 0.08);
   } catch (e) {}
@@ -280,6 +380,15 @@ function showScreen(id) {
   // Hide floaters during game
   const floaters = document.getElementById("bg-floaters");
   if (floaters) floaters.style.display = id === "screen-game" ? "none" : "";
+  // Auto-refresh public lobbies when entering join screen
+  if (id === "screen-join") refreshPublicLobbies();
+}
+
+function dismissLoadingOverlay() {
+  var overlay = document.getElementById("loading-overlay");
+  if (!overlay || overlay.classList.contains("fade-out")) return;
+  overlay.classList.add("fade-out");
+  setTimeout(function () { overlay.remove(); }, 500);
 }
 
 // ── Socket setup ───────────────────────────────────────────────────
@@ -294,7 +403,11 @@ function initSocket() {
     // Authenticate socket if user is logged in
     const token = localStorage.getItem("banana_auth_token");
     if (token) socket.emit("auth_socket", { token });
+    // Dismiss loading overlay once connected
+    dismissLoadingOverlay();
   });
+
+  socket.on("public_lobbies", _handlePublicLobbies);
 
   socket.on("game_update", (state) => {
     // Save player positions and revealed tiles before overwriting gs so we can freeze during dice roll
@@ -355,6 +468,25 @@ function initSocket() {
     if (gs.players) for (const p of gs.players) _gsPlayerMap[p.id] = p;
     _gsPropMap = {};
     if (gs.properties) for (const p of gs.properties) _gsPropMap[p.id] = p;
+
+    // Auto-cancel bomb placement overlay only when it's genuinely no longer
+    // actionable — game ended, player gone, or no bombs left to place.
+    // Intentionally keep the overlay open across turn changes so a player
+    // can "arm" placement mode on their turn and keep it open through the
+    // round until they choose a tile (bombs no longer expire, so this is
+    // safe and matches player expectations).
+    if (window._bombPlacementMode) {
+      const meNow = _gsPlayerMap[myId];
+      if (
+        gs.state !== "playing" ||
+        !meNow ||
+        meNow.bankrupt ||
+        !meNow.bomb
+      ) {
+        closeBombPlacement();
+      }
+    }
+
     route();
 
     // General money-loss detection: show red deduction popup for ANY player
@@ -417,7 +549,18 @@ function initSocket() {
   });
 
   socket.on("game_error", (data) => {
-    alert(data.message);
+    showToast(data.message, "error");
+  });
+
+  socket.on("kicked", (data) => {
+    showToast(data.message || "You were kicked from the lobby.", "error");
+    gameId = null;
+    gs = null;
+    showScreen("screen-menu");
+  });
+
+  socket.on("player_reaction", (data) => {
+    showEmojiReaction(data.playerId, data.emoji);
   });
 
   socket.on("chat_message", (data) => {
@@ -425,13 +568,66 @@ function initSocket() {
     if (!container) return;
     const msg = document.createElement("div");
     msg.className = "board-chat-msg";
+
+    // Colored dot + player name
+    const nameWrap = document.createElement("span");
+    nameWrap.className = "board-chat-name-wrap";
+    const dot = document.createElement("span");
+    dot.className = "board-chat-dot c-" + (data.color || "brown");
     const nameSpan = document.createElement("span");
     nameSpan.className = "board-chat-name c-" + (data.color || "brown");
     nameSpan.textContent = data.name;
+    nameWrap.appendChild(dot);
+    nameWrap.appendChild(nameSpan);
+
+    // Timestamp
+    const timeSpan = document.createElement("span");
+    timeSpan.className = "board-chat-time";
+    const now = new Date();
+    timeSpan.textContent = now.getHours().toString().padStart(2, "0") + ":" +
+      now.getMinutes().toString().padStart(2, "0");
+
+    // Message text — parse @mentions
     const textSpan = document.createElement("span");
     textSpan.className = "board-chat-text";
-    textSpan.textContent = data.message;
-    msg.appendChild(nameSpan);
+    const mentionRegex = /@(\S+)/g;
+    let lastIdx = 0;
+    let match;
+    const messageText = data.message;
+    let hasMention = false;
+    while ((match = mentionRegex.exec(messageText)) !== null) {
+      // Add text before the mention
+      if (match.index > lastIdx) {
+        textSpan.appendChild(document.createTextNode(messageText.slice(lastIdx, match.index)));
+      }
+      const mentionName = match[1];
+      const mentionSpan = document.createElement("span");
+      // Find matching player for color
+      const matchedPlayer = gs && gs.players
+        ? gs.players.find((p) => p.name.toLowerCase() === mentionName.toLowerCase())
+        : null;
+      if (matchedPlayer) {
+        mentionSpan.className = "board-chat-mention c-" + matchedPlayer.color;
+        if (matchedPlayer.id === myId) {
+          mentionSpan.classList.add("board-chat-mention-me");
+          hasMention = true;
+        }
+      } else {
+        mentionSpan.className = "board-chat-mention";
+      }
+      mentionSpan.textContent = "@" + mentionName;
+      textSpan.appendChild(mentionSpan);
+      lastIdx = match.index + match[0].length;
+    }
+    if (lastIdx < messageText.length) {
+      textSpan.appendChild(document.createTextNode(messageText.slice(lastIdx)));
+    }
+    if (hasMention) {
+      msg.classList.add("board-chat-msg-mentioned");
+    }
+
+    msg.appendChild(nameWrap);
+    msg.appendChild(timeSpan);
     msg.appendChild(textSpan);
     container.appendChild(msg);
     container.scrollTop = container.scrollHeight;
@@ -479,9 +675,51 @@ function route() {
     }
     showGame();
     if (gs.state === "finished") {
-      showGameOver();
+      // If a bomb just exploded and the winner is via bomb, defer the
+      // game-over screen until after the walk + explosion animation has
+      // played. The explosion animation block in board.js triggers
+      // _runDeferredBombGameOver() once the explosion fires.
+      const bombFinishPending =
+        gs.bombWinner && gs.lastExplosion && !window._explosionShown;
+      if (bombFinishPending) {
+        window._pendingBombGameOver = true;
+      } else if (!window._pendingBombGameOver && !window._bombWinAnnouncing) {
+        showGameOver();
+      }
     }
   }
+}
+
+// Called by board.js after the bomb explosion animation fires.
+// Plays the win announcement for the winning player, then shows game over.
+function _runDeferredBombGameOver() {
+  if (!window._pendingBombGameOver) return;
+  window._pendingBombGameOver = false;
+  window._bombWinAnnouncing = true;
+  const explosionAnimMs = 1500;
+  setTimeout(() => {
+    if (!gs || gs.state !== "finished") {
+      window._bombWinAnnouncing = false;
+      return;
+    }
+    const isMyWin = gs.bombWinner && gs.bombWinner === myId;
+    if (isMyWin) {
+      const notif = document.getElementById("bomb-win-notification");
+      if (notif) {
+        notif.classList.remove("show");
+        void notif.offsetWidth;
+        notif.classList.add("show");
+        setTimeout(() => notif.classList.remove("show"), 3000);
+      }
+      setTimeout(() => {
+        window._bombWinAnnouncing = false;
+        showGameOver();
+      }, 3000);
+    } else {
+      window._bombWinAnnouncing = false;
+      showGameOver();
+    }
+  }, explosionAnimMs);
 }
 
 function showGameOver() {
@@ -630,7 +868,7 @@ function showReveal() {
     if (tile.type === "grow") continue;
     if (tile.type === "desert") {
       cacti.push(tile);
-    } else if (tile.group && tile.group !== "desert") {
+    } else if (tile.group && tile.group !== "desert" && tile.group !== "mushroom") {
       if (!farmGroups[tile.group]) farmGroups[tile.group] = [];
       farmGroups[tile.group].push(tile);
     } else if (tile.type === "special") {
@@ -723,7 +961,7 @@ function showReveal() {
     const header = document.createElement("div");
     header.className = "reveal-group-header";
     header.innerHTML =
-      '<span class="reveal-group-dot" style="background:#666"></span> Other Tiles';
+      '<span class="reveal-group-dot" style="background:#000"></span> Other Tiles';
     section.appendChild(header);
 
     const row = document.createElement("div");
@@ -749,7 +987,7 @@ function showReveal() {
     const header = document.createElement("div");
     header.className = "reveal-group-header";
     header.innerHTML =
-      '<span class="reveal-group-dot" style="background:#8B4513"></span> Super Banana \u2b50';
+      '<span class="reveal-group-dot" style="background:#fff"></span> Super Banana \u2b50';
     section.appendChild(header);
 
     const row = document.createElement("div");
@@ -842,16 +1080,15 @@ function showLobby() {
   // Settings summary (non-host read-only view)
   const settingsEl = document.getElementById("lobby-settings");
   const modeLabel = gs.gameMode === "teams" ? "2v2 Teams" : "Free for All";
-  const petModeLabel = gs.petMode === "limited" ? "Limited Uses" : "Cooldown";
   settingsEl.innerHTML = `
     <div class="lobby-setting">\ud83c\udf4c <span class="lobby-setting-val">${gs.startingMoney || 500}</span></div>
     <div class="lobby-setting">\ud83d\udc65 <span class="lobby-setting-val">${gs.maxPlayers || 4} max</span></div>
     <div class="lobby-setting">\ud83c\udfae <span class="lobby-setting-val">${modeLabel}</span></div>
-    <div class="lobby-setting">\ud83d\udc3e <span class="lobby-setting-val">${petModeLabel}</span></div>
     ${gs.gameMode === "teams" ? `<div class="lobby-setting">\u2b50 <span class="lobby-setting-val">Win: Buy the Super Banana (7777\ud83c\udf4c)</span></div>` : ""}
     ${gs.bombMode ? '<div class="lobby-setting">\ud83c\udf4d <span class="lobby-setting-val">Pineapple Bomb Mode</span></div>' : ""}
     ${gs.monkeyPoker ? '<div class="lobby-setting">\ud83d\udc35 <span class="lobby-setting-val">Monkey Poker</span></div>' : ""}
     ${!gs.monkeyPoker ? '<div class="lobby-setting">\ud83c\udccf <span class="lobby-setting-val">Real Poker</span></div>' : ""}
+    ${gs.isPublic ? '<div class="lobby-setting">\ud83c\udf10 <span class="lobby-setting-val">Public</span></div>' : '<div class="lobby-setting">\ud83d\udd12 <span class="lobby-setting-val">Private</span></div>'}
   `;
 
   // Host settings controls (hide while waiting for players to return from finished game)
@@ -877,7 +1114,9 @@ function showLobby() {
         lobbyMax.value = String(gs.maxPlayers || 4);
         lobbyMax.disabled = false;
       }
-      document.getElementById("lobby-petmode").value = gs.petMode || "cooldown";
+      document.getElementById("lobby-public").checked = !!gs.isPublic;
+      document.getElementById("lobby-bomb-mode").checked = !!gs.bombMode;
+      document.getElementById("lobby-monkey-poker").checked = !!gs.monkeyPoker;
     } finally {
       _syncingLobby = false;
     }
@@ -928,12 +1167,19 @@ function showLobby() {
         ? `<span class="lobby-pet-badge">\u2713 Pet chosen</span>`
         : `<span class="lobby-pet-badge">${PET_EMOJIS[p.pet] || "\ud83d\udc3e"} ${PET_NAMES[p.pet] || ""}</span>`
       : "";
+    const hostActions = (isHost && !isMe && gs.state === "waiting")
+      ? `<div class="lobby-host-actions">
+           <button class="lobby-btn-transfer" data-id="${p.id}" title="Transfer host">👑</button>
+           <button class="lobby-btn-kick" data-id="${p.id}" title="Kick player">✕</button>
+         </div>`
+      : "";
     div.innerHTML = `
       <div class="lobby-player-avatar c-${p.color}">${emoji}</div>
       <div class="lobby-player-info">
         <div class="lobby-player-name">${p.name}${editHint}</div>
         ${role}${teamTag}${petBadge}
       </div>
+      ${hostActions}
     `;
 
     list.appendChild(div);
@@ -953,6 +1199,28 @@ function showLobby() {
       teamTag;
     list.appendChild(slot);
   }
+
+  // Host action buttons
+  list.querySelectorAll(".lobby-btn-transfer").forEach((btn) => {
+    btn.onclick = (e) => {
+      e.stopPropagation();
+      const targetId = btn.dataset.id;
+      const target = gs.players.find((p) => p.id === targetId);
+      if (target && confirm(`Transfer host to ${target.name}?`)) {
+        socket.emit("transfer_host", { gameId, targetId });
+      }
+    };
+  });
+  list.querySelectorAll(".lobby-btn-kick").forEach((btn) => {
+    btn.onclick = (e) => {
+      e.stopPropagation();
+      const targetId = btn.dataset.id;
+      const target = gs.players.find((p) => p.id === targetId);
+      if (target && confirm(`Remove ${target.name} from the lobby?`)) {
+        socket.emit("kick_player", { gameId, targetId });
+      }
+    };
+  });
 
   // Waiting indicator
   const waitingEl = document.getElementById("lobby-waiting");
@@ -1040,12 +1308,12 @@ function toggleColorPicker(playerEl, currentColor) {
 const PET_EMOJIS = {
   strong: "\ud83e\udd81",
   energy: "\ud83d\udc06",
-  devil: "\ud83e\udd84",
+  magic: "\ud83e\udd84",
 };
 const PET_NAMES = {
   strong: "Strong Pet",
   energy: "Energy Pet",
-  devil: "Magic Pet",
+  magic: "Magic Pet",
 };
 
 function selectPet(petType) {
@@ -1057,11 +1325,7 @@ function usePet() {
   if (!socket || !gameId || !gs) return;
   const me = _gsPlayerMap[myId];
   if (!me || !me.pet) return;
-  if (gs.petMode === "limited") {
-    if ((me.petUses || 0) <= 0) return;
-  } else {
-    if (me.petCooldown > 0) return;
-  }
+  if (me.petCooldown > 0) return;
   socket.emit("use_pet", { gameId });
 }
 
@@ -1081,15 +1345,6 @@ function updateLobbyPets() {
   cards.forEach((card) => {
     const pet = card.getAttribute("data-pet");
     card.classList.toggle("lobby-pet-selected", me.pet === pet);
-  });
-
-  // Update descriptions based on pet mode
-  const isLimited = gs.petMode === "limited";
-  const descs = document.querySelectorAll(".lobby-pet-desc");
-  descs.forEach((desc) => {
-    const cd = desc.getAttribute("data-cd-desc");
-    const lim = desc.getAttribute("data-lim-desc");
-    if (cd && lim) desc.textContent = isLimited ? lim : cd;
   });
 }
 
@@ -1115,8 +1370,7 @@ function updatePetAbilityBox(me, isMyTurn) {
   const petEmoji = PET_EMOJIS[me.pet] || "\ud83d\udc3e";
   const petName = PET_NAMES[me.pet] || "Pet";
 
-  const isLimited = gs.petMode === "limited";
-  const petUsable = isLimited ? (me.petUses || 0) > 0 : me.petCooldown <= 0;
+  const petUsable = me.petCooldown <= 0;
   const canAffordPet = true;
 
   // Show last coin flip result near toggle (delayed until coin animation finishes)
@@ -1154,14 +1408,9 @@ function updatePetAbilityBox(me, isMyTurn) {
       petBtn.dataset.armed = "false";
     }
     targetSel.style.display = "none";
-    if (isLimited) {
-      info.textContent = `${petEmoji} ${petName} — No uses left`;
-      if (toggleText) toggleText.textContent = "No uses left";
-    } else {
-      info.textContent = `${petEmoji} ${petName} — Cooldown: ${me.petCooldown} turn${me.petCooldown !== 1 ? "s" : ""}`;
-      if (toggleText)
-        toggleText.textContent = `⏳ ${me.petCooldown} turn${me.petCooldown !== 1 ? "s" : ""}`;
-    }
+    info.textContent = `${petEmoji} ${petName} — Cooldown: ${me.petCooldown} turn${me.petCooldown !== 1 ? "s" : ""}`;
+    if (toggleText)
+      toggleText.textContent = `⏳ ${me.petCooldown} turn${me.petCooldown !== 1 ? "s" : ""}`;
   } else {
     // Ready
     if (toggleLabel) {
@@ -1171,8 +1420,9 @@ function updatePetAbilityBox(me, isMyTurn) {
     if (petBtn) {
       // Energy/Strong/Magic pet: disable on your turn or if already pending
       const diceArmed = !!window._armedDiceOverride;
-      const notYetRolled = !me.hasRolled;
-      if (me.pet === "energy" || me.pet === "strong" || me.pet === "devil") {
+      // Only magic pet requires having rolled at least once first
+      const notYetRolled = me.pet === "magic" && !me.hasRolled;
+      if (me.pet === "energy" || me.pet === "strong" || me.pet === "magic") {
         petBtn.disabled =
           isMyTurn ||
           !!me.pendingPet ||
@@ -1184,26 +1434,20 @@ function updatePetAbilityBox(me, isMyTurn) {
           isMyTurn || !canAffordPet || diceArmed || notYetRolled;
       }
     }
-    if (isLimited) {
-      info.textContent = `${petEmoji} ${petName} — ${me.petUses} use${me.petUses !== 1 ? "s" : ""} left`;
-    } else {
-      info.textContent = `${petEmoji} ${petName} — Ready!`;
-    }
+    info.textContent = `${petEmoji} ${petName} — Ready!`;
     if (toggleText) {
       if (
-        (me.pet === "energy" || me.pet === "strong" || me.pet === "devil") &&
+        (me.pet === "energy" || me.pet === "strong" || me.pet === "magic") &&
         me.pendingPet
       ) {
         toggleText.textContent = "\ud83d\udc3e Pet acting next turn!";
       } else if (petBtn && petBtn.dataset.armed === "true") {
         toggleText.textContent = "\ud83d\udc3e Pet acting next turn!";
-      } else if (!me.hasRolled) {
+      } else if (me.pet === "magic" && !me.hasRolled) {
         toggleText.textContent = "\u26D4 Roll dice first";
       } else {
         toggleText.innerHTML =
-          me.pet === "devil"
-            ? "Use Pet (100🍌)"
-            : me.pet === "energy" || me.pet === "strong"
+          me.pet === "energy" || me.pet === "strong" || me.pet === "magic"
               ? "Use Pet"
               : "Use Pet Next Turn";
       }
@@ -1283,6 +1527,126 @@ function _showMoneyDeduction(playerId, amount) {
       popup.addEventListener("animationend", () => popup.remove());
     }
   }
+}
+
+// ── Animated Money Counter ─────────────────────────────────────────
+
+function _animateMoneyEl(el, targetVal, suffix) {
+  if (!el) return;
+  suffix = suffix || "\ud83c\udf4c";
+  // Skip if already displaying or animating toward this target
+  if (el._moneyAnimTarget === targetVal) return;
+  el._moneyAnimTarget = targetVal;
+  // Parse current displayed number
+  const currentText = el.textContent || "";
+  const currentVal = parseInt(currentText.replace(/[^\d-]/g, ""), 10);
+  if (isNaN(currentVal) || currentVal === targetVal) {
+    el.textContent = `${targetVal}${suffix}`;
+    return;
+  }
+  // Cancel any in-progress animation on this element
+  if (el._moneyAnimFrame) cancelAnimationFrame(el._moneyAnimFrame);
+  if (el._moneyFlashTimer) clearTimeout(el._moneyFlashTimer);
+
+  const diff = targetVal - currentVal;
+  const absDiff = Math.abs(diff);
+  // Scale duration with the change amount: small changes ~400ms, large changes up to 1200ms
+  const duration = Math.min(1200, Math.max(400, absDiff * 2));
+  const startTime = performance.now();
+  const startVal = currentVal;
+
+  // Add color flash class
+  if (diff > 0) {
+    el.classList.add("money-anim-up");
+    el.classList.remove("money-anim-down");
+  } else {
+    el.classList.add("money-anim-down");
+    el.classList.remove("money-anim-up");
+  }
+
+  let prevDisplayVal = startVal;
+  function tick(now) {
+    const elapsed = now - startTime;
+    const t = Math.min(1, elapsed / duration);
+    // Ease-in-out: fast in the middle, slows at both ends for a realistic counter feel
+    const eased = t < 0.5
+      ? 4 * t * t * t
+      : 1 - Math.pow(-2 * t + 2, 3) / 2;
+    const val = Math.round(startVal + diff * eased);
+    if (val !== prevDisplayVal) {
+      el.textContent = `${val}${suffix}`;
+      prevDisplayVal = val;
+    }
+    if (t < 1) {
+      el._moneyAnimFrame = requestAnimationFrame(tick);
+    } else {
+      el.textContent = `${targetVal}${suffix}`;
+      el._moneyAnimFrame = null;
+      // Remove color flash after a brief hold
+      el._moneyFlashTimer = setTimeout(() => {
+        el._moneyFlashTimer = null;
+        el.classList.remove("money-anim-up", "money-anim-down");
+      }, 400);
+    }
+  }
+  el._moneyAnimFrame = requestAnimationFrame(tick);
+}
+
+// ── Property Card Flip Animation ───────────────────────────────────
+
+function _showPropertyCardFlip(propName, propGroup, propPrice, timeStr, isWin) {
+  // Remove any existing card flip overlay
+  const existing = document.getElementById("prop-card-flip-overlay");
+  if (existing) existing.remove();
+
+  const overlay = document.createElement("div");
+  overlay.id = "prop-card-flip-overlay";
+  overlay.className = "prop-card-flip-overlay";
+
+  const card = document.createElement("div");
+  card.className = "prop-card-flip";
+
+  // Front face (question mark)
+  const front = document.createElement("div");
+  front.className = "prop-card-face prop-card-front";
+  front.innerHTML = `<span class="prop-card-q">?</span>`;
+
+  // Back face (property details)
+  const back = document.createElement("div");
+  back.className = "prop-card-face prop-card-back" + (propGroup ? " g-" + propGroup : "");
+  if (isWin) {
+    back.innerHTML =
+      `<div class="prop-card-stamp">BOUGHT</div>` +
+      `<div class="prop-card-name">${propName}</div>` +
+      (propPrice ? `<div class="prop-card-price">${propPrice}\ud83c\udf4c yield</div>` : "") +
+      (timeStr ? `<div class="prop-card-time">${timeStr}</div>` : "");
+  } else {
+    back.innerHTML =
+      `<div class="prop-card-stamp prop-card-stamp-miss">MISSED</div>` +
+      `<div class="prop-card-name">${propName}</div>` +
+      (propPrice ? `<div class="prop-card-price">${propPrice}\ud83c\udf4c yield</div>` : "");
+  }
+
+  card.appendChild(front);
+  card.appendChild(back);
+  overlay.appendChild(card);
+
+  const boardWrap = document.querySelector(".board-wrap");
+  (boardWrap || document.body).appendChild(overlay);
+
+  // Trigger flip after brief delay
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      card.classList.add("flipped");
+    });
+  });
+
+  // Auto-remove after animation
+  setTimeout(() => {
+    overlay.classList.add("prop-card-flip-out");
+    overlay.addEventListener("animationend", () => overlay.remove(), { once: true });
+    setTimeout(() => overlay.remove(), 600);
+  }, isWin ? 3200 : 2800);
 }
 
 // ── Game Screen ────────────────────────────────────────────────────
@@ -1378,24 +1742,32 @@ function showGame() {
     (me && me.pendingPet);
   const isFirstRound = gs.turn < gs.players.length;
   if (roll1Btn) {
-    roll1Btn.style.display = me && !isMyTurn ? "" : "none";
+    roll1Btn.style.display = me ? "" : "none";
     roll1Btn.disabled =
-      myMoney < 500 || !!petIsArmedForDice || isFirstRound || armedDice === 3;
+      isMyTurn ||
+      myMoney < 300 ||
+      !!petIsArmedForDice ||
+      isFirstRound ||
+      armedDice === 3;
     roll1Btn.innerHTML =
       armedDice === 1
         ? '<span style="font-size:1.2em;line-height:1">\uD83D\uDC22</span><span>\uD83C\uDFB2\u00d71 Armed \u2713</span>'
-        : '<span style="font-size:1.2em;line-height:1">\uD83D\uDC22</span><span>\uD83C\uDFB2\u00d71 500\uD83C\uDF4C</span>';
+        : '<span style="font-size:1.2em;line-height:1">\uD83D\uDC22</span><span>\uD83C\uDFB2\u00d71 300\uD83C\uDF4C</span>';
     if (armedDice === 1) roll1Btn.classList.add("btn-armed");
     else roll1Btn.classList.remove("btn-armed");
   }
   if (roll3Btn) {
-    roll3Btn.style.display = me && !isMyTurn ? "" : "none";
+    roll3Btn.style.display = me ? "" : "none";
     roll3Btn.disabled =
-      myMoney < 500 || !!petIsArmedForDice || isFirstRound || armedDice === 1;
+      isMyTurn ||
+      myMoney < 300 ||
+      !!petIsArmedForDice ||
+      isFirstRound ||
+      armedDice === 1;
     roll3Btn.innerHTML =
       armedDice === 3
         ? '<span style="font-size:1.2em;line-height:1">\uD83D\uDC07</span><span>\uD83C\uDFB2\u00d73 Armed \u2713</span>'
-        : '<span style="font-size:1.2em;line-height:1">\uD83D\uDC07</span><span>\uD83C\uDFB2\u00d73 500\uD83C\uDF4C</span>';
+        : '<span style="font-size:1.2em;line-height:1">\uD83D\uDC07</span><span>\uD83C\uDFB2\u00d73 300\uD83C\uDF4C</span>';
     if (armedDice === 3) roll3Btn.classList.add("btn-armed");
     else roll3Btn.classList.remove("btn-armed");
   }
@@ -1548,7 +1920,6 @@ function showGame() {
           window._diceRollingRevealed = window._diceRollingRevealed || null;
           const walkInterval = setInterval(() => {
             step++;
-            playMoveTickSound();
             if (step >= steps) {
               clearInterval(walkInterval);
 
@@ -1564,6 +1935,7 @@ function showGame() {
                 window._tokenVisitedTiles.add(finalPos);
               }
               walkStepUpdate(gs);
+              playMoveTickSound();
               // Landing pulse on the final tile
               const landedEl = document.getElementById("space-" + finalPos);
               if (landedEl) {
@@ -1620,9 +1992,11 @@ function showGame() {
               }
               window._walkPreMoney = null;
               window._walkPileCollected = 0;
-              window._walkingPlayerId = null;
-              window._walkingLandingPos = null;
-              window._frozenPileTotals = null;
+              // NOTE: _walkingPlayerId, _walkingLandingPos, and _frozenPileTotals
+              // are intentionally NOT cleared here — the frozen renderBoard below
+              // (for GROW landings) needs them so picked-up piles render as 0
+              // instead of resurrecting to their pre-pickup frozen value. They are
+              // cleared after that render fires (see grow/non-grow branches).
               // Fire deferred effects for other players (rent, etc.)
               // Skip squatter steal gains — those are handled by the grow animation in board.js
               const _squatterStealIds = new Set();
@@ -1679,7 +2053,7 @@ function showGame() {
                   if (_moneyEl) {
                     const _displayMoney = (window._pokerMoneyFrozen && window._pokerMoneyFrozen._myFrozen != null)
                       ? window._pokerMoneyFrozen._myFrozen : _landingMe.money;
-                    _moneyEl.textContent = `${_displayMoney}\uD83C\uDF4C`;
+                    _animateMoneyEl(_moneyEl, _displayMoney);
                   }
                 }
                 for (const _p of gs.players) {
@@ -1689,7 +2063,7 @@ function showGame() {
                     if (_pm) {
                       const _dispMoney = (window._pokerMoneyFrozen && window._pokerMoneyFrozen[_p.id] != null)
                         ? window._pokerMoneyFrozen[_p.id] : _p.money;
-                      _pm.textContent = `${_dispMoney}\uD83C\uDF4C`;
+                      _animateMoneyEl(_pm, _dispMoney);
                     }
                   }
                 }
@@ -1701,16 +2075,22 @@ function showGame() {
                 landTile.type === "grow" &&
                 window._frozenBananaPiles
               ) {
-                // Show token on GROW first, then reveal updated piles
-                // Keep _tokenVisitedTiles alive so the frozen render still
-                // shows collected piles as 0 (not stale pre-roll values).
-                // Clear it inside the unfreeze timeout instead — by then
-                // _frozenBananaPiles is null so visited-tiles aren't checked.
+                // Show token on GROW first, then reveal updated piles.
+                // Keep _tokenVisitedTiles, _walkingPlayerId, and _walkingLandingPos
+                // alive so the frozen render still shows collected piles as 0
+                // (without _walkingPlayerId, owned picked-up tiles would fall
+                // through to their frozen pre-pickup amount and visually
+                // "regrow" to their old value before the real grow animation).
+                // Clear them inside the unfreeze timeout — by then
+                // _frozenBananaPiles is null so these aren't checked.
                 renderBoard(gs);
                 setTimeout(() => {
                   window._frozenBananaPiles = null;
                   window._diceMatchUnfrozen = false;
                   window._tokenVisitedTiles = null;
+                  window._walkingPlayerId = null;
+                  window._walkingLandingPos = null;
+                  window._frozenPileTotals = null;
                   window._growUnfreezeRender = true;
                   renderBoard(gs);
                 }, 600);
@@ -1718,6 +2098,9 @@ function showGame() {
                 window._frozenBananaPiles = null;
                 window._diceMatchUnfrozen = false;
                 window._tokenVisitedTiles = null;
+                window._walkingPlayerId = null;
+                window._walkingLandingPos = null;
+                window._frozenPileTotals = null;
                 renderBoard(gs);
               }
               // Brief pause so the player sees the landing before auction/poker/notifications
@@ -1740,6 +2123,7 @@ function showGame() {
                 window._tokenVisitedTiles.add(intermediatePos);
               }
               walkStepUpdate(gs);
+              playMoveTickSound();
               // Brief glow on the tile being stepped on
               const steppedEl = document.getElementById("space-" + intermediatePos);
               if (steppedEl) {
@@ -1817,8 +2201,6 @@ function showGame() {
       turnKey !== window._lastNotifTurn
     ) {
       window._lastNotifTurn = turnKey;
-      // Cancel bomb placement mode when it becomes your turn
-      if (window._bombPlacementMode) closeBombPlacement();
       notif.classList.remove("show");
       void notif.offsetWidth; // reset animation
       notif.classList.add("show");
@@ -1967,14 +2349,14 @@ function showGame() {
               : "rotateY(180deg)";
             if (isHeads) {
               resultEl.classList.add("heads");
-              if (flipData.petType === "devil") {
+              if (flipData.petType === "magic") {
                 resultEl.textContent = "\u2705 HEADS \u2014 Moved forward!";
               } else {
                 resultEl.textContent = "\u2705 HEADS \u2014 Moved forward!";
               }
             } else {
               resultEl.classList.add("tails");
-              if (flipData.petType === "devil") {
+              if (flipData.petType === "magic") {
                 resultEl.textContent = "\u274c TAILS \u2014 Moved backward!";
               } else {
                 resultEl.textContent = "\u274c TAILS \u2014 No effect!";
@@ -2000,33 +2382,32 @@ function showGame() {
       window._lastAuctionPos = gs.auction.position;
       window._lastAuctionAcceptTime = gs.auction.acceptTime || null;
       window._lastAuctionWasParticipant = !!(gs.auction.bids && gs.auction.bids[myId]);
+      window._lastAuctionPropName = gs.auction.propName || null;
+      window._lastAuctionPropGroup = gs.auction.propGroup || null;
+      window._lastAuctionPropPrice = gs.auction.propPrice || null;
     } else if (window._lastAuctionPos != null) {
       const wonProp = _gsPlayerMap[myId];
       if (wonProp && wonProp.properties.includes(window._lastAuctionPos)) {
         const timeStr = window._lastAuctionAcceptTime
           ? ` (${window._lastAuctionAcceptTime}s)`
           : "";
-        auctionNotif.textContent =
-          `\ud83c\udf34 You Bought the Farm!${timeStr} \ud83c\udf4c`;
-        auctionNotif.classList.remove("show");
-        void auctionNotif.offsetWidth;
-        auctionNotif.classList.add("show");
-        clearTimeout(window._auctionNotifTimer);
-        window._auctionNotifTimer = setTimeout(
-          () => auctionNotif.classList.remove("show"),
-          2000,
+        // Card flip animation
+        _showPropertyCardFlip(
+          window._lastAuctionPropName || `Farm #${window._lastAuctionPos}`,
+          window._lastAuctionPropGroup,
+          window._lastAuctionPropPrice,
+          timeStr,
+          true
         );
       } else if (window._lastAuctionWasParticipant) {
         // Lost the auction — show notification and play loss sound
         playAuctionLoss();
-        auctionNotif.textContent = "\ud83d\ude14 You did not buy the farm.";
-        auctionNotif.classList.remove("show");
-        void auctionNotif.offsetWidth;
-        auctionNotif.classList.add("show");
-        clearTimeout(window._auctionNotifTimer);
-        window._auctionNotifTimer = setTimeout(
-          () => auctionNotif.classList.remove("show"),
-          2000,
+        _showPropertyCardFlip(
+          window._lastAuctionPropName || `Farm #${window._lastAuctionPos}`,
+          window._lastAuctionPropGroup,
+          window._lastAuctionPropPrice,
+          "",
+          false
         );
       } else {
         playAuctionLoss();
@@ -2050,7 +2431,7 @@ function showGame() {
         : (window._pokerMoneyFrozen && window._pokerMoneyFrozen._myFrozen != null)
           ? window._pokerMoneyFrozen._myFrozen
           : me.money;
-    document.getElementById("info-money").textContent = `${displayMoney}🍌`;
+    _animateMoneyEl(document.getElementById("info-money"), displayMoney);
     document.getElementById("info-position").textContent =
       `Position: ${me.position}`;
   }
@@ -2110,11 +2491,14 @@ function showGame() {
 
   // Auto-end: end turn automatically when possible (skip if pet is usable or auto-pet is armed)
   // Respect autoEndDelay so we don't skip the server's 2s pause after auction/pitch
-  if (canEnd && document.getElementById("chk-auto-end").checked) {
-    const mePetReady =
-      me &&
-      me.pet &&
-      (gs.petMode === "limited" ? (me.petUses || 0) > 0 : me.petCooldown <= 0);
+  // Skip if bomb placement overlay is open — the player deliberately chose to
+  // place a bomb, so don't yank the turn away before they pick a tile.
+  if (
+    canEnd &&
+    !window._bombPlacementMode &&
+    document.getElementById("chk-auto-end").checked
+  ) {
+    const mePetReady = me && me.pet && me.petCooldown <= 0;
     const petBtn = document.getElementById("btn-auto-pet");
     const petArmed =
       mePetReady &&
@@ -2128,12 +2512,7 @@ function showGame() {
         window._autoEndQueued = false;
         // Re-check pet usability at execution time to avoid stale timer ending turn
         const meNow = gs && _gsPlayerMap[myId];
-        const petReady =
-          meNow &&
-          meNow.pet &&
-          (gs.petMode === "limited"
-            ? (meNow.petUses || 0) > 0
-            : meNow.petCooldown <= 0);
+        const petReady = meNow && meNow.pet && meNow.petCooldown <= 0;
         if (!petReady && document.getElementById("chk-auto-end").checked)
           endTurn();
       }, 0);
@@ -2141,9 +2520,12 @@ function showGame() {
   }
 
   // Auto vine swing: pick a random owned farm when vine swing is active
+  // Gate on !_tokenWalking so the emit waits until the walk animation finishes
+  // (matches the manual vine-click guard in board.js)
   if (
     gs.vineSwing &&
     gs.vineSwing === myId &&
+    !window._tokenWalking &&
     document.getElementById("chk-auto-vine").checked &&
     !window._autoVineQueued
   ) {
@@ -2191,14 +2573,13 @@ function showGame() {
     const petArmedNow = petBtn.dataset.armed === "true";
     if (
       me &&
-      (me.pet === "energy" || me.pet === "strong" || me.pet === "devil") &&
+      (me.pet === "energy" || me.pet === "strong" || me.pet === "magic") &&
       petArmedNow &&
       !isMyTurn &&
       !me.pendingPet &&
       !window._autoPetQueued
     ) {
-      const mePetReady =
-        gs.petMode === "limited" ? (me.petUses || 0) > 0 : me.petCooldown <= 0;
+      const mePetReady = me.petCooldown <= 0;
       if (mePetReady) {
         window._autoPetQueued = true;
         setTimeout(() => {
@@ -2208,11 +2589,9 @@ function showGame() {
             meNow &&
             (meNow.pet === "energy" ||
               meNow.pet === "strong" ||
-              meNow.pet === "devil") &&
+              meNow.pet === "magic") &&
             !meNow.pendingPet &&
-            (gs.petMode === "limited"
-              ? (meNow.petUses || 0) > 0
-              : meNow.petCooldown <= 0);
+            meNow.petCooldown <= 0;
           if (petStillReady && petBtn.dataset.armed === "true") {
             usePet();
             // Toggle stays on until effect resolves at start of next turn
@@ -2224,7 +2603,7 @@ function showGame() {
     // Energy/Strong pet: auto-uncheck toggle once pendingPet resolves on their turn
     if (
       me &&
-      (me.pet === "energy" || me.pet === "strong" || me.pet === "devil") &&
+      (me.pet === "energy" || me.pet === "strong" || me.pet === "magic") &&
       me.pendingPet &&
       petBtn.dataset.armed === "true"
     ) {
@@ -2237,7 +2616,7 @@ function showGame() {
       me &&
       me.pet !== "energy" &&
       me.pet !== "strong" &&
-      me.pet !== "devil"
+      me.pet !== "magic"
     ) {
       // Detect toggle being turned on: arm for the current turn (effect is deferred to next turn)
       if (petBtn.dataset.armed === "true" && window._petArmedForTurn == null) {
@@ -2255,23 +2634,14 @@ function showGame() {
         window._petArmedForTurn != null &&
         (gs.turn || 0) >= window._petArmedForTurn
       ) {
-        const mePetReady =
-          me &&
-          me.pet &&
-          (gs.petMode === "limited"
-            ? (me.petUses || 0) > 0
-            : me.petCooldown <= 0);
+        const mePetReady = me && me.pet && me.petCooldown <= 0;
         if (mePetReady && !window._autoPetQueued) {
           window._autoPetQueued = true;
           setTimeout(() => {
             window._autoPetQueued = false;
             const meNow = gs && _gsPlayerMap[myId];
             const petStillReady =
-              meNow &&
-              meNow.pet &&
-              (gs.petMode === "limited"
-                ? (meNow.petUses || 0) > 0
-                : meNow.petCooldown <= 0);
+              meNow && meNow.pet && meNow.petCooldown <= 0;
             if (petStillReady && petBtn.dataset.armed === "true") {
               usePet();
               petBtn.dataset.armed = "false";
@@ -2306,18 +2676,27 @@ function showGame() {
   // Bomb buttons
   const buyBombBtn = document.getElementById("btn-buy-bomb");
   const placeBombBtn = document.getElementById("btn-place-bomb");
+  const bombCount = Number(me.bomb) || 0;
   if (buyBombBtn) {
-    if (gs.bombMode && !me.bomb) {
+    if (gs.bombMode) {
       buyBombBtn.style.display = "";
       buyBombBtn.disabled = me.money < 5000;
+      buyBombBtn.textContent =
+        bombCount > 0
+          ? `🍍 Buy Pineapple Bomb 5000🍌 (own ${bombCount})`
+          : "🍍 Buy Pineapple Bomb 5000🍌";
     } else {
       buyBombBtn.style.display = "none";
     }
   }
   if (placeBombBtn) {
-    if (gs.bombMode && me.bomb) {
+    if (gs.bombMode && bombCount > 0) {
       placeBombBtn.style.display = "";
-      placeBombBtn.disabled = isMyTurn;
+      placeBombBtn.disabled = false;
+      placeBombBtn.textContent =
+        bombCount > 1
+          ? `🍍 Place Pineapple Bomb (${bombCount} held)`
+          : "🍍 Place Pineapple Bomb";
     } else {
       placeBombBtn.style.display = "none";
     }
@@ -2415,6 +2794,32 @@ function showGame() {
         pileTag +
         `<span class="pstat-money">${frozenPlayerMoney && frozenPlayerMoney[p.id] != null ? frozenPlayerMoney[p.id] : p.money}🍌</span>`;
       plist.appendChild(div);
+    });
+  }
+
+  // Snapshot target values BEFORE animation modifies textContent, then animate
+  const oldPstatMoney = window._prevPstatMoney;
+  window._prevPstatMoney = {};
+  document.querySelectorAll(".pstat").forEach((div) => {
+    const pid = div.getAttribute("data-player-id");
+    const moneyEl = div.querySelector(".pstat-money");
+    if (moneyEl && pid) {
+      const val = parseInt(moneyEl.textContent.replace(/[^\d-]/g, ""), 10);
+      if (!isNaN(val)) window._prevPstatMoney[pid] = val;
+    }
+  });
+  // Animate only players whose money actually changed
+  if (oldPstatMoney) {
+    document.querySelectorAll(".pstat").forEach((div) => {
+      const pid = div.getAttribute("data-player-id");
+      const moneyEl = div.querySelector(".pstat-money");
+      if (moneyEl && pid && oldPstatMoney[pid] != null) {
+        const target = window._prevPstatMoney[pid];
+        if (target != null && oldPstatMoney[pid] !== target) {
+          moneyEl.textContent = `${oldPstatMoney[pid]}\ud83c\udf4c`;
+          _animateMoneyEl(moneyEl, target);
+        }
+      }
     });
   }
 
@@ -2684,8 +3089,8 @@ function updateTileLegend() {
     { icon: "🌴", name: "GROW", count: counts.grow },
     { icon: "🌿", name: "Vine Swing", count: counts.bus },
     {
-      icon: "+🍌",
-      name: "Free Bananas +500🍌",
+      icon: "🍌",
+      name: "+500",
       count: counts.freebananas,
     },
     { icon: "🍌", name: "-10% Peel", count: counts.tax10 },
@@ -2711,19 +3116,19 @@ function createGame() {
   const bananas =
     parseInt(document.getElementById("create-bananas").value) || 2222;
   const gameMode = document.getElementById("create-mode").value;
-  const petMode = document.getElementById("create-petmode").value;
   const bombMode = document.getElementById("create-bomb-mode").checked;
   const monkeyPoker = document.getElementById("create-monkey-poker").checked;
+  const isPublic = document.getElementById("create-public").checked;
   if (!socket.connected)
-    return alert("Connecting to server, please try again.");
+    return showToast("Connecting to server, please try again.", "warning");
   socket.emit("create_game", {
     playerName: name,
     maxPlayers: max,
     startingMoney: bananas,
     gameMode,
-    petMode,
     bombMode,
     monkeyPoker,
+    isPublic,
   });
 }
 
@@ -2751,14 +3156,54 @@ function pasteCode() {
 function joinGame() {
   const code = document.getElementById("join-code").value.trim();
   const name = document.getElementById("join-name").value.trim() || "Player";
-  if (!code) return alert("Enter a game code.");
+  if (!code) return showToast("Enter a game code.", "warning");
   if (!socket.connected)
-    return alert("Connecting to server, please try again.");
+    return showToast("Connecting to server, please try again.", "warning");
   gameId = code;
   socket.emit("join_game", {
     gameId: code,
     playerName: name,
   });
+}
+
+function switchJoinTab(tab) {
+  document.querySelectorAll(".join-tab").forEach(t => t.classList.toggle("active", t.dataset.tab === tab));
+  document.getElementById("join-tab-browse").classList.toggle("active", tab === "browse");
+  document.getElementById("join-tab-code").classList.toggle("active", tab === "code");
+  if (tab === "browse") refreshPublicLobbies();
+}
+
+function refreshPublicLobbies() {
+  if (!socket) return;
+  socket.emit("get_public_lobbies");
+}
+
+function _handlePublicLobbies(lobbies) {
+  const container = document.getElementById("public-lobbies");
+  if (!container) return;
+  if (!lobbies || lobbies.length === 0) {
+    container.innerHTML = '<div class="public-lobbies-empty">No public lobbies available right now.<br>Create one or join with a code!</div>';
+    return;
+  }
+  container.innerHTML = lobbies.map(l => {
+    const modeLabel = l.gameMode === "teams" ? "Teams" : "FFA";
+    return `<button class="public-lobby-item" onclick="joinPublicLobby('${l.gameId}')">
+      <div class="public-lobby-host">${l.hostName}'s game</div>
+      <div class="public-lobby-details">
+        <span>👥 ${l.playerCount}/${l.maxPlayers}</span>
+        <span>🎮 ${modeLabel}</span>
+        <span>🍌 ${l.startingMoney}</span>
+      </div>
+    </button>`;
+  }).join("");
+}
+
+function joinPublicLobby(code) {
+  const name = document.getElementById("join-name").value.trim() || "Player";
+  if (!socket.connected)
+    return showToast("Connecting to server, please try again.", "warning");
+  gameId = code;
+  socket.emit("join_game", { gameId: code, playerName: name });
 }
 
 function startGame() {
@@ -2957,7 +3402,9 @@ function respondAuction(accept) {
 
 function playAuctionTimerStart() {
   try {
-    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    if (_sfxVolume === 0) return;
+    const ctx = _getAudioCtx();
+    if (!ctx) return;
     const t = ctx.currentTime;
     // Quick rising sweep to signal timer start
     const osc = ctx.createOscillator();
@@ -2967,7 +3414,7 @@ function playAuctionTimerStart() {
     osc.frequency.exponentialRampToValueAtTime(900, t + 0.15);
     gain.gain.setValueAtTime(0.15, t);
     gain.gain.exponentialRampToValueAtTime(0.001, t + 0.25);
-    osc.connect(gain).connect(ctx.destination);
+    osc.connect(gain).connect(_sfxDest(ctx));
     osc.start(t);
     osc.stop(t + 0.25);
   } catch (e) {}
@@ -2975,7 +3422,9 @@ function playAuctionTimerStart() {
 
 function playAuctionTimerTick() {
   try {
-    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    if (_sfxVolume === 0) return;
+    const ctx = _getAudioCtx();
+    if (!ctx) return;
     const t = ctx.currentTime;
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
@@ -2983,7 +3432,7 @@ function playAuctionTimerTick() {
     osc.frequency.setValueAtTime(1200, t);
     gain.gain.setValueAtTime(0.04, t);
     gain.gain.exponentialRampToValueAtTime(0.001, t + 0.03);
-    osc.connect(gain).connect(ctx.destination);
+    osc.connect(gain).connect(_sfxDest(ctx));
     osc.start(t);
     osc.stop(t + 0.03);
   } catch (e) {}
@@ -2991,7 +3440,9 @@ function playAuctionTimerTick() {
 
 function playAuctionTimerEnd() {
   try {
-    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    if (_sfxVolume === 0) return;
+    const ctx = _getAudioCtx();
+    if (!ctx) return;
     const t = ctx.currentTime;
     // Descending buzz
     const osc = ctx.createOscillator();
@@ -3001,7 +3452,7 @@ function playAuctionTimerEnd() {
     osc.frequency.exponentialRampToValueAtTime(150, t + 0.3);
     gain.gain.setValueAtTime(0.12, t);
     gain.gain.exponentialRampToValueAtTime(0.001, t + 0.35);
-    osc.connect(gain).connect(ctx.destination);
+    osc.connect(gain).connect(_sfxDest(ctx));
     osc.start(t);
     osc.stop(t + 0.35);
   } catch (e) {}
@@ -3335,7 +3786,9 @@ let _pokerDealQueue = []; // scheduled timeouts for dealing animation
 
 function playPokerAnnounce() {
   try {
-    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    if (_sfxVolume === 0) return;
+    const ctx = _getAudioCtx();
+    if (!ctx) return;
     const t = ctx.currentTime;
     // Dramatic rising chord: D4 → F#4 → A4 → D5 with a punchy attack
     const notes = [293.66, 369.99, 440, 587.33];
@@ -3352,7 +3805,7 @@ function playPokerAnnounce() {
       const lp = ctx.createBiquadFilter();
       lp.type = "lowpass";
       lp.frequency.value = 2000;
-      osc.connect(lp).connect(g).connect(ctx.destination);
+      osc.connect(lp).connect(g).connect(_sfxDest(ctx));
       osc.start(t + i * 0.07);
       osc.stop(t + i * 0.07 + 0.6);
     });
@@ -3367,14 +3820,16 @@ function playPokerAnnounce() {
     const nGain = ctx.createGain();
     nGain.gain.setValueAtTime(0.25, t);
     nGain.gain.exponentialRampToValueAtTime(0.001, t + 0.06);
-    nSrc.connect(nGain).connect(ctx.destination);
+    nSrc.connect(nGain).connect(_sfxDest(ctx));
     nSrc.start(t);
   } catch (e) {}
 }
 
 function playPokerWin() {
   try {
-    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    if (_sfxVolume === 0) return;
+    const ctx = _getAudioCtx();
+    if (!ctx) return;
     const t = ctx.currentTime;
     // Victory fanfare: ascending notes with shimmer
     const notes = [523.25, 659.25, 783.99, 1046.5]; // C5, E5, G5, C6
@@ -3385,7 +3840,7 @@ function playPokerWin() {
       const gain = ctx.createGain();
       gain.gain.setValueAtTime(0.15, t + i * 0.1);
       gain.gain.exponentialRampToValueAtTime(0.001, t + i * 0.1 + 0.4);
-      osc.connect(gain).connect(ctx.destination);
+      osc.connect(gain).connect(_sfxDest(ctx));
       osc.start(t + i * 0.1);
       osc.stop(t + i * 0.1 + 0.4);
     });
@@ -3394,7 +3849,9 @@ function playPokerWin() {
 
 function playCardDraw() {
   try {
-    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    if (_sfxVolume === 0) return;
+    const ctx = _getAudioCtx();
+    if (!ctx) return;
     const t = ctx.currentTime;
     // Short snap/swish sound
     const buf = ctx.createBuffer(1, ctx.sampleRate * 0.08, ctx.sampleRate);
@@ -3411,7 +3868,7 @@ function playCardDraw() {
     const gain = ctx.createGain();
     gain.gain.setValueAtTime(0.3, t);
     gain.gain.exponentialRampToValueAtTime(0.001, t + 0.08);
-    src.connect(hp).connect(gain).connect(ctx.destination);
+    src.connect(hp).connect(gain).connect(_sfxDest(ctx));
     src.start(t);
     src.stop(t + 0.08);
     // Tonal tap
@@ -3422,7 +3879,7 @@ function playCardDraw() {
     const oGain = ctx.createGain();
     oGain.gain.setValueAtTime(0.12, t);
     oGain.gain.exponentialRampToValueAtTime(0.001, t + 0.06);
-    osc.connect(oGain).connect(ctx.destination);
+    osc.connect(oGain).connect(_sfxDest(ctx));
     osc.start(t);
     osc.stop(t + 0.06);
   } catch (e) {}
@@ -3519,7 +3976,20 @@ function updatePokerTable() {
     announceText.textContent = isMk ? "MONKEY POKER!" : "POKER MATCH!";
     document.getElementById("poker-announce-p1").textContent = bbPlayer ? bbPlayer.name : "?";
     document.getElementById("poker-announce-p2").textContent = sbPlayer ? sbPlayer.name : "?";
+    const ep1 = document.getElementById("poker-announce-emoji-p1");
+    const ep2 = document.getElementById("poker-announce-emoji-p2");
+    if (ep1) ep1.textContent = isMk ? "🐵" : "🃏";
+    if (ep2) ep2.textContent = isMk ? "🐵" : "🃏";
     notif.classList.add("show");
+
+    // 2b) Screen shake for dramatic effect
+    const board = document.getElementById("board");
+    if (board) {
+      board.classList.remove("board-poker-shake");
+      void board.offsetWidth;
+      board.classList.add("board-poker-shake");
+      setTimeout(() => board.classList.remove("board-poker-shake"), 900);
+    }
 
     // 3) Flashy tile glow where the clash happens
     const clashPos = bbPlayer ? bbPlayer.position : null;
@@ -3591,13 +4061,13 @@ function updatePokerTable() {
           const _me = _gsPlayerMap[myId];
           if (_me) {
             const _moneyEl = document.getElementById("info-money");
-            if (_moneyEl) _moneyEl.textContent = `${_me.money}\uD83C\uDF4C`;
+            if (_moneyEl) _animateMoneyEl(_moneyEl, _me.money);
           }
           for (const _p of gs.players) {
             const _pstat = document.querySelector(`.pstat[data-player-id="${_p.id}"]`);
             if (_pstat) {
               const _pm = _pstat.querySelector(".pstat-money");
-              if (_pm) _pm.textContent = `${_p.money}\uD83C\uDF4C`;
+              if (_pm) _animateMoneyEl(_pm, _p.money);
             }
           }
         }
@@ -3979,14 +4449,17 @@ function togglePokerGuide() {
 }
 
 function toggleAutoAll(on) {
-  const ids = ["chk-auto-roll", "chk-auto-end", "chk-auto-bid", "chk-auto-accept", "chk-auto-vine", "chk-auto-fold"];
-  for (const id of ids) {
-    const el = document.getElementById(id);
-    if (el) el.checked = on;
+  // Only affect checkboxes inside the toggles panel, and skip Auto All itself.
+  const panel = document.getElementById("toggles-panel");
+  if (!panel) return;
+  const boxes = panel.querySelectorAll('input[type="checkbox"]');
+  for (const box of boxes) {
+    if (box.id === "chk-auto-all") continue;
+    if (box.checked === on) continue;
+    box.checked = on;
+    // Fire change events so onchange handlers (Reveal All, No Timer) run.
+    box.dispatchEvent(new Event("change", { bubbles: true }));
   }
-  // Pet toggle uses dataset.armed instead of checked
-  const petBtn = document.getElementById("btn-auto-pet");
-  if (petBtn) petBtn.dataset.armed = on ? "true" : "false";
 }
 
 function toggleNoTimer() {
@@ -3999,6 +4472,20 @@ function toggleNoTimer() {
 function toggleRevealAll() {
   revealAll = document.getElementById("chk-reveal").checked;
   if (gs) renderBoard(gs);
+}
+
+function toggleTogglesPanel(force) {
+  const panel = document.getElementById("toggles-panel");
+  const btn = document.getElementById("btn-toggles");
+  if (!panel || !btn) return;
+  const shouldShow = typeof force === "boolean" ? force : panel.hasAttribute("hidden");
+  if (shouldShow) {
+    panel.removeAttribute("hidden");
+    btn.setAttribute("aria-expanded", "true");
+  } else {
+    panel.setAttribute("hidden", "");
+    btn.setAttribute("aria-expanded", "false");
+  }
 }
 
 function updateLobbySettings() {
@@ -4015,13 +4502,17 @@ function updateLobbySettings() {
     lobbyMax.disabled = false;
   }
   const max = parseInt(lobbyMax.value) || 4;
-  const petMode = document.getElementById("lobby-petmode").value;
+  const isPublic = document.getElementById("lobby-public").checked;
+  const bombMode = document.getElementById("lobby-bomb-mode").checked;
+  const monkeyPoker = document.getElementById("lobby-monkey-poker").checked;
   socket.emit("update_settings", {
     gameId,
     startingMoney: money,
     gameMode: mode,
     maxPlayers: max,
-    petMode,
+    isPublic,
+    bombMode,
+    monkeyPoker,
   });
 }
 
@@ -4044,6 +4535,37 @@ function endTurn() {
 }
 
 function buyBomb() {
+  const overlay = document.getElementById("buy-bomb-confirm");
+  if (!overlay) {
+    // Fallback if the modal markup is missing for any reason
+    socket.emit("buy_bomb", { gameId });
+    return;
+  }
+  overlay.style.display = "flex";
+  // Escape cancels, Enter confirms — wired once per open
+  window._buyBombKeyHandler = (e) => {
+    if (e.key === "Escape") {
+      e.preventDefault();
+      closeBuyBombConfirm();
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      confirmBuyBomb();
+    }
+  };
+  document.addEventListener("keydown", window._buyBombKeyHandler);
+}
+
+function closeBuyBombConfirm() {
+  const overlay = document.getElementById("buy-bomb-confirm");
+  if (overlay) overlay.style.display = "none";
+  if (window._buyBombKeyHandler) {
+    document.removeEventListener("keydown", window._buyBombKeyHandler);
+    window._buyBombKeyHandler = null;
+  }
+}
+
+function confirmBuyBomb() {
+  closeBuyBombConfirm();
   socket.emit("buy_bomb", { gameId });
 }
 
@@ -4591,6 +5113,9 @@ window.addEventListener("DOMContentLoaded", () => {
   initBoardFloaters();
   showScreen("screen-menu");
 
+  // Fallback: dismiss loading overlay after 5s even if socket is slow
+  setTimeout(dismissLoadingOverlay, 5000);
+
   // Sync twemoji toggle checkbox with saved preference
   var twToggle = document.getElementById("twemoji-toggle");
   if (twToggle && typeof twemojiIsEnabled === "function") {
@@ -4627,7 +5152,7 @@ window.addEventListener("DOMContentLoaded", () => {
         const me = _gsPlayerMap[myId];
         if (
           me &&
-          (me.pet === "energy" || me.pet === "strong" || me.pet === "devil") &&
+          (me.pet === "energy" || me.pet === "strong" || me.pet === "magic") &&
           !me.pendingPet
         ) {
           usePet();
@@ -4685,6 +5210,35 @@ window.addEventListener("DOMContentLoaded", () => {
         chatEl.style.transform = "none";
       } else {
         chatEl.classList.add("board-chat-hidden");
+      }
+    });
+  }
+
+  // Sound volume toggle + slider
+  const sfxToggle = document.getElementById("sfx-toggle");
+  const sfxPopup = document.getElementById("sfx-slider-popup");
+  const sfxSlider = document.getElementById("sfx-slider");
+  const sfxLabel = document.getElementById("sfx-slider-label");
+  const sfxIcon = document.getElementById("sfx-toggle-icon");
+  if (sfxToggle && sfxPopup && sfxSlider) {
+    // Init slider to current volume
+    sfxSlider.value = Math.round(_sfxVolume * 100);
+    if (sfxLabel) sfxLabel.textContent = Math.round(_sfxVolume * 100) + "%";
+    if (sfxIcon) sfxIcon.textContent = _sfxVolume === 0 ? "\uD83D\uDD07" : _sfxVolume < 0.5 ? "\uD83D\uDD09" : "\uD83D\uDD0A";
+    sfxToggle.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const visible = sfxPopup.style.display !== "none";
+      sfxPopup.style.display = visible ? "none" : "flex";
+    });
+    sfxSlider.addEventListener("input", () => {
+      const v = parseInt(sfxSlider.value, 10) / 100;
+      setSfxVolume(v);
+      if (sfxLabel) sfxLabel.textContent = Math.round(v * 100) + "%";
+    });
+    // Close popup when clicking elsewhere
+    document.addEventListener("click", (e) => {
+      if (!sfxToggle.contains(e.target) && !sfxPopup.contains(e.target)) {
+        sfxPopup.style.display = "none";
       }
     });
   }
@@ -4772,7 +5326,353 @@ window.addEventListener("DOMContentLoaded", () => {
       logHeader.style.cursor = "";
     });
   }
+
+  // ── Debug Tools window toggle / close / drag ──────────────────
+  const debugWin = document.getElementById("debug-window");
+  const debugToggleBtn = document.getElementById("debug-toggle");
+  const debugWinClose = document.getElementById("debug-window-close");
+  const debugWinHeader = document.getElementById("debug-window-header");
+  function setDebugWindowOpen(open) {
+    if (!debugWin) return;
+    debugWin.classList.toggle("debug-window-hidden", !open);
+    if (debugToggleBtn) debugToggleBtn.classList.toggle("is-open", open);
+  }
+  if (debugToggleBtn && debugWin) {
+    debugToggleBtn.addEventListener("click", () => {
+      setDebugWindowOpen(debugWin.classList.contains("debug-window-hidden"));
+    });
+  }
+  if (debugWinClose && debugWin) {
+    debugWinClose.addEventListener("click", () => setDebugWindowOpen(false));
+  }
+  if (debugWinHeader && debugWin) {
+    let draggingDebug = false,
+      dbgStartX,
+      dbgStartY,
+      dbgOrigX,
+      dbgOrigY;
+    debugWinHeader.addEventListener("mousedown", (e) => {
+      if (e.target.closest(".debug-window-close")) return;
+      draggingDebug = true;
+      const rect = debugWin.getBoundingClientRect();
+      dbgOrigX = rect.left;
+      dbgOrigY = rect.top;
+      dbgStartX = e.clientX;
+      dbgStartY = e.clientY;
+      debugWin.style.left = dbgOrigX + "px";
+      debugWin.style.top = dbgOrigY + "px";
+      debugWin.style.right = "auto";
+      debugWin.style.bottom = "auto";
+      debugWinHeader.style.cursor = "grabbing";
+      e.preventDefault();
+    });
+    window.addEventListener("mousemove", (e) => {
+      if (!draggingDebug) return;
+      const nextLeft = dbgOrigX + e.clientX - dbgStartX;
+      const nextTop = dbgOrigY + e.clientY - dbgStartY;
+      const maxLeft = window.innerWidth - debugWin.offsetWidth - 4;
+      const maxTop = window.innerHeight - debugWin.offsetHeight - 4;
+      debugWin.style.left = Math.max(4, Math.min(nextLeft, maxLeft)) + "px";
+      debugWin.style.top = Math.max(4, Math.min(nextTop, maxTop)) + "px";
+    });
+    window.addEventListener("mouseup", () => {
+      if (!draggingDebug) return;
+      draggingDebug = false;
+      debugWinHeader.style.cursor = "";
+    });
+  }
+
+  // How to Play toggle
+  const helpToggle = document.getElementById("board-help-toggle");
+  const helpEl = document.getElementById("board-help");
+  const helpClose = document.getElementById("board-help-close");
+  if (helpClose && helpEl) {
+    helpClose.addEventListener("click", () => {
+      helpEl.classList.add("board-help-hidden");
+    });
+  }
+  if (helpToggle && helpEl) {
+    helpToggle.addEventListener("click", () => {
+      if (helpEl.classList.contains("board-help-hidden")) {
+        helpEl.classList.remove("board-help-hidden");
+        helpEl.style.left = "auto";
+        helpEl.style.right = "2%";
+        helpEl.style.top = "auto";
+        helpEl.style.bottom = "12%";
+        helpEl.style.transform = "none";
+      } else {
+        helpEl.classList.add("board-help-hidden");
+      }
+    });
+  }
+  // Make help panel draggable
+  const helpHeader = document.getElementById("board-help-header");
+  if (helpHeader && helpEl) {
+    let draggingHelp = false, helpStartX, helpStartY, helpOrigX, helpOrigY;
+    helpHeader.addEventListener("mousedown", (e) => {
+      if (e.target.closest(".board-help-close")) return;
+      draggingHelp = true;
+      const rect = helpEl.getBoundingClientRect();
+      const parentRect = helpEl.parentElement.getBoundingClientRect();
+      helpOrigX = rect.left - parentRect.left;
+      helpOrigY = rect.top - parentRect.top;
+      helpStartX = e.clientX;
+      helpStartY = e.clientY;
+      helpEl.style.left = helpOrigX + "px";
+      helpEl.style.top = helpOrigY + "px";
+      helpEl.style.right = "auto";
+      helpEl.style.bottom = "auto";
+      helpHeader.style.cursor = "grabbing";
+      e.preventDefault();
+    });
+    window.addEventListener("mousemove", (e) => {
+      if (!draggingHelp) return;
+      helpEl.style.left = helpOrigX + e.clientX - helpStartX + "px";
+      helpEl.style.top = helpOrigY + e.clientY - helpStartY + "px";
+    });
+    window.addEventListener("mouseup", () => {
+      if (!draggingHelp) return;
+      draggingHelp = false;
+      helpHeader.style.cursor = "";
+    });
+  }
+
+  // Emoji reactions toggle
+  const emojiToggle = document.getElementById("board-emoji-toggle");
+  const emojiPicker = document.getElementById("emoji-picker");
+  if (emojiToggle && emojiPicker) {
+    // Restore saved position
+    try {
+      const saved = localStorage.getItem("emoji-picker-pos");
+      if (saved) {
+        const { left, top } = JSON.parse(saved);
+        if (typeof left === "number" && typeof top === "number") {
+          emojiPicker.style.left = left + "px";
+          emojiPicker.style.top = top + "px";
+          emojiPicker.style.right = "auto";
+          emojiPicker.style.bottom = "auto";
+        }
+      }
+    } catch (_) {}
+
+    emojiToggle.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const visible = emojiPicker.style.display !== "none";
+      emojiPicker.style.display = visible ? "none" : "flex";
+    });
+
+    // Track drag state so click-outside doesn't close the picker mid-drag,
+    // and so a drag release that lands on an emoji doesn't fire sendReaction.
+    let emojiDragging = false;
+    let emojiDragMoved = false;
+    let emojiStartX, emojiStartY, emojiOrigX, emojiOrigY;
+    const EMOJI_DRAG_THRESHOLD = 3;
+    const emojiHandle = document.getElementById("emoji-picker-handle");
+    if (emojiHandle) {
+      emojiHandle.addEventListener("mousedown", (e) => {
+        if (e.button !== 0) return;
+        emojiDragging = true;
+        emojiDragMoved = false;
+        const rect = emojiPicker.getBoundingClientRect();
+        const parentRect = emojiPicker.parentElement.getBoundingClientRect();
+        emojiOrigX = rect.left - parentRect.left;
+        emojiOrigY = rect.top - parentRect.top;
+        emojiStartX = e.clientX;
+        emojiStartY = e.clientY;
+        emojiPicker.style.left = emojiOrigX + "px";
+        emojiPicker.style.top = emojiOrigY + "px";
+        emojiPicker.style.right = "auto";
+        emojiPicker.style.bottom = "auto";
+        emojiHandle.style.cursor = "grabbing";
+        e.preventDefault();
+        e.stopPropagation();
+      });
+    }
+    window.addEventListener("mousemove", (e) => {
+      if (!emojiDragging) return;
+      const dx = e.clientX - emojiStartX;
+      const dy = e.clientY - emojiStartY;
+      if (!emojiDragMoved && Math.hypot(dx, dy) > EMOJI_DRAG_THRESHOLD) {
+        emojiDragMoved = true;
+      }
+      emojiPicker.style.left = emojiOrigX + dx + "px";
+      emojiPicker.style.top = emojiOrigY + dy + "px";
+    });
+    window.addEventListener("mouseup", () => {
+      if (!emojiDragging) return;
+      emojiDragging = false;
+      if (emojiHandle) emojiHandle.style.cursor = "";
+      if (emojiDragMoved) {
+        // Save new position
+        const parentRect = emojiPicker.parentElement.getBoundingClientRect();
+        const rect = emojiPicker.getBoundingClientRect();
+        const left = rect.left - parentRect.left;
+        const top = rect.top - parentRect.top;
+        try {
+          localStorage.setItem(
+            "emoji-picker-pos",
+            JSON.stringify({ left, top })
+          );
+        } catch (_) {}
+      }
+      // Suppress the click event that follows mouseup after a real drag
+      if (emojiDragMoved) {
+        const suppress = (ev) => {
+          ev.stopPropagation();
+          ev.preventDefault();
+          window.removeEventListener("click", suppress, true);
+        };
+        window.addEventListener("click", suppress, true);
+      }
+    });
+
+    document.addEventListener("click", (e) => {
+      if (emojiDragging || emojiDragMoved) return;
+      if (!emojiPicker.contains(e.target) && e.target !== emojiToggle) {
+        emojiPicker.style.display = "none";
+      }
+    });
+  }
+
+  // Phone toggle — show/hide app buttons
+  const phoneToggle = document.getElementById("phone-toggle");
+  if (phoneToggle) {
+    // ── Draggable phone button ───────────────────────────────────
+    // The phone always starts at the CSS default position (bottom middle of
+    // the board). It can be dragged around within a session, but the
+    // position is intentionally NOT persisted — restarting the game resets
+    // it to bottom middle. Clear any stale saved position from older builds.
+    try { localStorage.removeItem("phone-toggle-pos"); } catch {}
+
+    let phoneDragging = false;
+    let phoneMoved = false;
+    let phoneStartX, phoneStartY, phoneOrigX, phoneOrigY;
+    const PHONE_DRAG_THRESHOLD = 4;
+
+    phoneToggle.addEventListener("mousedown", (e) => {
+      phoneDragging = true;
+      phoneMoved = false;
+      const rect = phoneToggle.getBoundingClientRect();
+      const parentEl = phoneToggle.parentElement;
+      if (!parentEl) return;
+      const parentRect = parentEl.getBoundingClientRect();
+      phoneOrigX = rect.left - parentRect.left;
+      phoneOrigY = rect.top - parentRect.top;
+      phoneStartX = e.clientX;
+      phoneStartY = e.clientY;
+      phoneToggle.style.left = phoneOrigX + "px";
+      phoneToggle.style.top = phoneOrigY + "px";
+      phoneToggle.style.bottom = "auto";
+      phoneToggle.classList.add("phone-toggle-dragged");
+      e.preventDefault();
+    });
+    window.addEventListener("mousemove", (e) => {
+      if (!phoneDragging) return;
+      const dx = e.clientX - phoneStartX;
+      const dy = e.clientY - phoneStartY;
+      if (!phoneMoved && Math.hypot(dx, dy) > PHONE_DRAG_THRESHOLD) {
+        phoneMoved = true;
+        phoneToggle.style.cursor = "grabbing";
+      }
+      if (phoneMoved) {
+        phoneToggle.style.left = phoneOrigX + dx + "px";
+        phoneToggle.style.top = phoneOrigY + dy + "px";
+        updatePhoneAppPositions();
+      }
+    });
+    window.addEventListener("mouseup", () => {
+      if (!phoneDragging) return;
+      phoneDragging = false;
+      phoneToggle.style.cursor = "";
+    });
+    // Suppress click if a drag just happened so the toggle doesn't fire
+    phoneToggle.addEventListener("click", (e) => {
+      if (phoneMoved) {
+        phoneMoved = false;
+        e.stopImmediatePropagation();
+        e.preventDefault();
+      }
+    }, true);
+
+    phoneToggle.addEventListener("click", () => {
+      const board = document.getElementById("board");
+      if (!board) return;
+      const collapsed = board.classList.toggle("apps-collapsed");
+      phoneToggle.classList.toggle("apps-hidden", collapsed);
+      // Also close any open panels when hiding
+      if (collapsed) {
+        emojiPicker && (emojiPicker.style.display = "none");
+      }
+    });
+
+    // Initial positioning of app buttons above the phone, plus resize tracking
+    requestAnimationFrame(updatePhoneAppPositions);
+    window.addEventListener("resize", updatePhoneAppPositions);
+  }
 });
+
+// Position the 6 app buttons (chat, log, trade, help, emoji, sfx) in a
+// vertical column directly above the phone-toggle so they follow it when
+// dragged. Called on init, on phone drag, and on window resize.
+const PHONE_APP_BUTTON_IDS = [
+  "board-chat-toggle",
+  "board-log-toggle",
+  "board-trade-deals-toggle",
+  "board-help-toggle",
+  "board-emoji-toggle",
+  "sfx-toggle",
+];
+function updatePhoneAppPositions() {
+  const phoneToggle = document.getElementById("phone-toggle");
+  if (!phoneToggle) return;
+  const parentEl = phoneToggle.parentElement;
+  if (!parentEl) return;
+  const phoneRect = phoneToggle.getBoundingClientRect();
+  if (phoneRect.width === 0 || phoneRect.height === 0) return;
+  const parentRect = parentEl.getBoundingClientRect();
+  const phoneLeft = phoneRect.left - parentRect.left;
+  const phoneTop = phoneRect.top - parentRect.top;
+  const phoneCenterX = phoneLeft + phoneRect.width / 2;
+  const APP_SIZE = 40;
+  const GAP = 8;
+  PHONE_APP_BUTTON_IDS.forEach((id, i) => {
+    const btn = document.getElementById(id);
+    if (!btn) return;
+    const btnLeft = phoneCenterX - APP_SIZE / 2;
+    const btnTop = phoneTop - (i + 1) * (APP_SIZE + GAP);
+    btn.style.left = btnLeft + "px";
+    btn.style.top = btnTop + "px";
+    btn.style.bottom = "auto";
+    btn.style.right = "auto";
+  });
+}
+
+// ── Emoji Reactions ────────────────────────────────────────────────
+
+let _reactionCooldown = false;
+
+function sendReaction(emoji) {
+  if (!socket || !gameId) return;
+  if (_reactionCooldown) return;
+  _reactionCooldown = true;
+  setTimeout(() => { _reactionCooldown = false; }, 2000);
+  socket.emit("player_reaction", { gameId, emoji });
+}
+
+function showEmojiReaction(playerId, emoji) {
+  const tok = _tokenElements && _tokenElements[playerId];
+  if (!tok || !tok.parentNode) return;
+  const rect = tok.getBoundingClientRect();
+  const bubble = document.createElement("div");
+  bubble.className = "emoji-reaction-bubble";
+  bubble.textContent = emoji;
+  bubble.style.position = "fixed";
+  bubble.style.left = (rect.left + rect.width / 2) + "px";
+  bubble.style.top = rect.top + "px";
+  bubble.style.zIndex = "9999";
+  document.body.appendChild(bubble);
+  bubble.addEventListener("animationend", () => bubble.remove());
+}
 
 // ── Board Preview ──────────────────────────────────────────────────
 
@@ -4781,7 +5681,6 @@ let _previewLayout = null;
 function openBoardPreview() {
   const overlay = document.getElementById("board-preview-overlay");
   overlay.style.display = "flex";
-  switchPreviewTab("variations");
   shuffleBoardPreview();
 }
 
@@ -4795,34 +5694,13 @@ function shuffleBoardPreview() {
   renderPreviewBoard(_previewLayout);
 }
 
-function switchPreviewTab(tab) {
-  const varView = document.getElementById("bp-view-variations");
-  const rulesView = document.getElementById("bp-view-rules");
-  const tabVar = document.getElementById("bp-tab-variations");
-  const tabRules = document.getElementById("bp-tab-rules");
-  if (tab === "rules") {
-    varView.style.display = "none";
-    rulesView.style.display = "block";
-    tabVar.classList.remove("bp-tab-active");
-    tabRules.classList.add("bp-tab-active");
-  } else {
-    varView.style.display = "";
-    rulesView.style.display = "none";
-    tabVar.classList.add("bp-tab-active");
-    tabRules.classList.remove("bp-tab-active");
-  }
-}
-
-function scrollToRule(id) {
+function scrollHelpTo(id) {
   const el = document.getElementById(id);
   if (!el) return;
-  // Ensure we're on the rules tab first
-  switchPreviewTab("rules");
-  // Scroll within the rules panel
-  const panel = document.querySelector(".rules-panel");
-  if (panel) {
-    const offset = el.offsetTop - panel.offsetTop - 10;
-    panel.scrollTo({ top: offset, behavior: "smooth" });
+  const body = document.querySelector(".board-help-body");
+  if (body) {
+    const offset = el.offsetTop - body.offsetTop - 8;
+    body.scrollTo({ top: offset, behavior: "smooth" });
   }
 }
 

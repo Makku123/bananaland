@@ -1,3 +1,4 @@
+require("dotenv").config();
 const express = require("express");
 const http = require("http");
 const { Server } = require("socket.io");
@@ -5,6 +6,8 @@ const cors = require("cors");
 const path = require("path");
 const { MonopolyGame } = require("./gameLogic");
 const auth = require("./auth");
+const oauth = require("./oauth");
+const email = require("./email");
 
 const app = express();
 app.use(cors());
@@ -13,16 +16,33 @@ app.use(express.static(path.join(__dirname, "..", "frontend")));
 
 // ── Auth REST API ──────────────────────────────────────────────────
 
-app.post("/api/auth/register", (req, res) => {
-  const { email, password, displayName } = req.body;
-  const result = auth.register(email, password, displayName);
+app.post("/api/auth/register", async (req, res) => {
+  const { email: regEmail, password, displayName } = req.body;
+  const result = auth.register(regEmail, password, displayName);
   if (result.error) return res.status(400).json(result);
-  res.json(result);
+
+  // Send verification email
+  try {
+    await email.sendVerificationEmail(result.email, result.verifyToken);
+  } catch (err) {
+    console.error("[email] Failed to send verification email:", err.message);
+  }
+
+  res.json({ needsVerification: true, message: "Account created! Check your email to verify your account." });
 });
 
-app.post("/api/auth/login", (req, res) => {
-  const { email, password } = req.body;
-  const result = auth.login(email, password);
+app.post("/api/auth/login", async (req, res) => {
+  const { email: loginEmail, password } = req.body;
+  const result = auth.login(loginEmail, password);
+  if (result.unverified) {
+    // Resend verification email
+    try {
+      await email.sendVerificationEmail(result.email, result.verifyToken);
+    } catch (err) {
+      console.error("[email] Failed to resend verification email:", err.message);
+    }
+    return res.status(403).json({ error: result.error, unverified: true });
+  }
   if (result.error) return res.status(401).json(result);
   res.json(result);
 });
@@ -45,6 +65,120 @@ app.get("/api/auth/avatars", (_req, res) => {
   res.json({ avatars: auth.DEFAULT_AVATARS });
 });
 
+// ── Email verification ──────────────────────────────────────────
+
+app.get("/api/auth/verify-email", (req, res) => {
+  const result = auth.verifyEmail(req.query.token);
+  if (result.error) {
+    return res.redirect(`/?verify_error=${encodeURIComponent(result.error)}`);
+  }
+  res.redirect(`/?verified=1&token=${result.token}`);
+});
+
+// ── Password reset ──────────────────────────────────────────────
+
+app.post("/api/auth/forgot-password", async (req, res) => {
+  const result = auth.requestPasswordReset(req.body.email);
+  if (result.error) return res.status(400).json(result);
+
+  if (result.resetToken) {
+    try {
+      await email.sendPasswordResetEmail(result.email, result.resetToken);
+    } catch (err) {
+      console.error("[email] Failed to send reset email:", err.message);
+    }
+  }
+
+  // Always return success to prevent email enumeration
+  res.json({ message: "If an account exists with that email, a reset link has been sent." });
+});
+
+app.post("/api/auth/reset-password", (req, res) => {
+  const { token, password } = req.body;
+  const result = auth.resetPassword(token, password);
+  if (result.error) return res.status(400).json(result);
+  res.json(result);
+});
+
+// ── OAuth REST API ────────────────────────────────────────────────────
+
+const BASE_URL = process.env.BASE_URL || "http://localhost:3000";
+
+app.get("/api/auth/providers", (_req, res) => {
+  res.json({
+    providers: oauth.getEnabledProviders(),
+    googleClientId: oauth.getConfig("google")?.clientId || null,
+    facebookAppId: oauth.getConfig("facebook")?.clientId || null,
+  });
+});
+
+// Google (frontend SDK sends idToken)
+app.post("/api/auth/oauth/google", async (req, res) => {
+  try {
+    const profile = await oauth.verifyGoogleToken(req.body.idToken);
+    const result = auth.oauthLoginOrRegister("google", profile);
+    if (result.error) return res.status(400).json(result);
+    res.json(result);
+  } catch (err) {
+    res.status(401).json({ error: err.message || "Google auth failed." });
+  }
+});
+
+// Facebook (frontend SDK sends accessToken)
+app.post("/api/auth/oauth/facebook", async (req, res) => {
+  try {
+    const profile = await oauth.verifyFacebookToken(req.body.accessToken);
+    const result = auth.oauthLoginOrRegister("facebook", profile);
+    if (result.error) return res.status(400).json(result);
+    res.json(result);
+  } catch (err) {
+    res.status(401).json({ error: err.message || "Facebook auth failed." });
+  }
+});
+
+// GitHub (server-side redirect flow)
+app.get("/api/auth/oauth/github", (_req, res) => {
+  const cfg = oauth.getConfig("github");
+  if (!cfg || !cfg.clientId) return res.status(404).json({ error: "GitHub OAuth not configured." });
+  const redirectUri = `${BASE_URL}/api/auth/oauth/github/callback`;
+  res.redirect(
+    `https://github.com/login/oauth/authorize?client_id=${cfg.clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=user:email`,
+  );
+});
+
+app.get("/api/auth/oauth/github/callback", async (req, res) => {
+  try {
+    const profile = await oauth.exchangeGitHubCode(req.query.code);
+    const result = auth.oauthLoginOrRegister("github", profile);
+    if (result.error) return res.redirect(`/?auth_error=${encodeURIComponent(result.error)}`);
+    res.redirect(`/?token=${result.token}`);
+  } catch (err) {
+    res.redirect(`/?auth_error=${encodeURIComponent(err.message || "GitHub auth failed.")}`);
+  }
+});
+
+// Discord (server-side redirect flow)
+app.get("/api/auth/oauth/discord", (_req, res) => {
+  const cfg = oauth.getConfig("discord");
+  if (!cfg || !cfg.clientId) return res.status(404).json({ error: "Discord OAuth not configured." });
+  const redirectUri = `${BASE_URL}/api/auth/oauth/discord/callback`;
+  res.redirect(
+    `https://discord.com/api/oauth2/authorize?client_id=${cfg.clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=identify+email&response_type=code`,
+  );
+});
+
+app.get("/api/auth/oauth/discord/callback", async (req, res) => {
+  try {
+    const redirectUri = `${BASE_URL}/api/auth/oauth/discord/callback`;
+    const profile = await oauth.exchangeDiscordCode(req.query.code, redirectUri);
+    const result = auth.oauthLoginOrRegister("discord", profile);
+    if (result.error) return res.redirect(`/?auth_error=${encodeURIComponent(result.error)}`);
+    res.redirect(`/?token=${result.token}`);
+  } catch (err) {
+    res.redirect(`/?auth_error=${encodeURIComponent(err.message || "Discord auth failed.")}`);
+  }
+});
+
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: { origin: "*", methods: ["GET", "POST"] },
@@ -63,6 +197,7 @@ function generateCode() {
 function emitGameUpdate(gameId, game) {
   const room = io.sockets.adapter.rooms.get(gameId);
   if (!room) return;
+  game.lastActivity = Date.now();
   for (const sid of room) {
     io.to(sid).emit("game_update", game.getState(sid));
   }
@@ -91,9 +226,9 @@ io.on("connection", (socket) => {
       data.startingMoney,
       data.gameMode,
       data.teamTarget,
-      data.petMode,
       data.bombMode,
       data.monkeyPoker,
+      data.isPublic,
     );
     games.set(code, game);
     game.onUpdate = () => emitGameUpdate(code, game);
@@ -125,6 +260,24 @@ io.on("connection", (socket) => {
     emitGameUpdate(data.gameId, game);
   });
 
+  // ── List public lobbies ─────────────────────────────────────────
+  socket.on("get_public_lobbies", () => {
+    const lobbies = [];
+    for (const [code, game] of games) {
+      if (game.isPublic && game.state === "waiting" && game.players.length < game.maxPlayers) {
+        lobbies.push({
+          gameId: code,
+          hostName: game.players.length > 0 ? game.players[0].name : "???",
+          playerCount: game.players.length,
+          maxPlayers: game.maxPlayers,
+          gameMode: game.gameMode,
+          startingMoney: game.startingMoney,
+        });
+      }
+    }
+    socket.emit("public_lobbies", lobbies);
+  });
+
   // ── Change color (lobby) ──────────────────────────────────────
   socket.on("change_color", (data) => {
     const game = games.get(data.gameId);
@@ -139,6 +292,31 @@ io.on("connection", (socket) => {
     const game = games.get(data.gameId);
     if (!game) return;
     if (game.selectPet(socket.id, data.petType)) {
+      emitGameUpdate(data.gameId, game);
+    }
+  });
+
+  // ── Transfer host (lobby) ────────────────────────────────────────
+  socket.on("transfer_host", (data) => {
+    const game = games.get(data.gameId);
+    if (!game) return;
+    if (game.transferHost(socket.id, data.targetId)) {
+      emitGameUpdate(data.gameId, game);
+    }
+  });
+
+  // ── Kick player (lobby) ────────────────────────────────────────
+  socket.on("kick_player", (data) => {
+    const game = games.get(data.gameId);
+    if (!game) return;
+    const target = game.players.find((p) => p.id === data.targetId);
+    if (!target) return;
+    const targetName = target.name;
+    if (game.kickPlayer(socket.id, data.targetId)) {
+      // Notify the kicked player before removing them from the room
+      io.to(data.targetId).emit("kicked", { message: `You were removed from the lobby by the host.` });
+      const targetSocket = io.sockets.sockets.get(data.targetId);
+      if (targetSocket) targetSocket.leave(data.gameId);
       emitGameUpdate(data.gameId, game);
     }
   });
@@ -436,6 +614,20 @@ io.on("connection", (socket) => {
     });
   });
 
+  // ── Emoji reactions ──────────────────────────────────────────
+  socket.on("player_reaction", (data) => {
+    const game = games.get(data.gameId);
+    if (!game) return;
+    const player = game.players.find((p) => p.id === socket.id);
+    if (!player) return;
+    const allowed = ["\uD83D\uDC4D", "\uD83C\uDF4C", "\uD83D\uDE24", "\uD83C\uDF89"];
+    if (!allowed.includes(data.emoji)) return;
+    io.to(data.gameId).emit("player_reaction", {
+      playerId: socket.id,
+      emoji: data.emoji,
+    });
+  });
+
   // ── Leave / disconnect ───────────────────────────────────────
   function trackPlayerStats(gme, sid) {
     const userId = socketUserMap.get(sid);
@@ -503,18 +695,38 @@ io.on("connection", (socket) => {
 // ── Dev auto-reload ──────────────────────────────────────────────
 if (process.env.NODE_ENV !== "production") {
   try {
-    const fs = require("fs");
+    const chokidar = require("chokidar");
     const frontendDir = path.join(__dirname, "..", "frontend");
     let reloadTimer = null;
-    fs.watch(frontendDir, { recursive: true }, (_, filename) => {
-      if (!filename || !/\.(js|css|html)$/.test(filename)) return;
-      clearTimeout(reloadTimer);
-      reloadTimer = setTimeout(() => io.emit("dev:reload"), 300);
-    });
+    chokidar
+      .watch(frontendDir, {
+        ignored: /(^|[\/\\])\../, // ignore dotfiles
+        ignoreInitial: true,
+      })
+      .on("change", (filePath) => {
+        if (!/\.(js|css|html)$/.test(filePath)) return;
+        clearTimeout(reloadTimer);
+        reloadTimer = setTimeout(() => io.emit("dev:reload"), 300);
+      });
   } catch (_) {
     /* ignore watch errors */
   }
 }
+
+// ── Stale game cleanup ────────────────────────────────────────────
+// Remove games that have been idle for over 2 hours (finished games
+// where players stayed connected, or abandoned in-progress games).
+const GAME_IDLE_TTL = 2 * 60 * 60 * 1000; // 2 hours
+setInterval(() => {
+  const cutoff = Date.now() - GAME_IDLE_TTL;
+  for (const [gameId, game] of games) {
+    const idle = !game.lastActivity || game.lastActivity < cutoff;
+    if (idle) {
+      console.log(`[cleanup] Removing stale game ${gameId} (${game.players.length} players, state=${game.state})`);
+      games.delete(gameId);
+    }
+  }
+}, 30 * 60 * 1000); // run every 30 minutes
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, "0.0.0.0", () =>

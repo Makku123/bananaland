@@ -7,3 +7,5 @@ BIG TODOS:
 auto vine causes the steal animation to play
 
 early pick up text animation needs to be a little bigger and more vibrant
+
+make sure that teammates can see their teammates landed farm.

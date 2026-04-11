@@ -13,6 +13,15 @@
     <link rel="stylesheet" href="styles.css?v=3" />
   </head>
   <body>
+    <!-- Loading overlay (shown until app is ready) -->
+    <div id="loading-overlay">
+      <div class="loading-spinner"></div>
+      <div class="loading-text">Connecting...</div>
+    </div>
+
+    <!-- Toast container -->
+    <div id="toast-container"></div>
+
     <div id="app">
       <!-- Floating background emojis for pre-game screens -->
       <div class="bg-floaters" id="bg-floaters"></div>
@@ -41,15 +50,58 @@
             </button>
           </div>
 
+          <!-- OAuth Buttons (populated dynamically) -->
+          <div id="oauth-buttons" class="oauth-buttons" style="display: none">
+            <button
+              id="oauth-google-btn"
+              class="btn btn-oauth btn-oauth-google"
+              style="display: none"
+              onclick="oauthGoogle()"
+            >
+              <svg class="oauth-icon" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59a14.5 14.5 0 0 1 0-9.18l-7.98-6.19a24.08 24.08 0 0 0 0 21.56l7.98-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
+              Continue with Google
+            </button>
+            <button
+              id="oauth-facebook-btn"
+              class="btn btn-oauth btn-oauth-facebook"
+              style="display: none"
+              onclick="oauthFacebook()"
+            >
+              <svg class="oauth-icon" viewBox="0 0 24 24"><path fill="#fff" d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
+              Continue with Facebook
+            </button>
+            <button
+              id="oauth-github-btn"
+              class="btn btn-oauth btn-oauth-github"
+              style="display: none"
+              onclick="oauthGitHub()"
+            >
+              <svg class="oauth-icon" viewBox="0 0 24 24"><path fill="#fff" d="M12 0C5.374 0 0 5.373 0 12c0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23A11.509 11.509 0 0 1 12 5.803c1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576C20.566 21.797 24 17.3 24 12c0-6.627-5.373-12-12-12z"/></svg>
+              Continue with GitHub
+            </button>
+            <button
+              id="oauth-discord-btn"
+              class="btn btn-oauth btn-oauth-discord"
+              style="display: none"
+              onclick="oauthDiscord()"
+            >
+              <svg class="oauth-icon" viewBox="0 0 24 24"><path fill="#fff" d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028c.462-.63.874-1.295 1.226-1.994a.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.947 2.418-2.157 2.418z"/></svg>
+              Continue with Discord
+            </button>
+          </div>
+          <div class="auth-divider" id="oauth-divider" style="display: none">
+            <span>or continue with email</span>
+          </div>
+
           <!-- Login Form -->
           <div id="auth-login-form">
             <div class="form-section">
-              <div class="form-section-title">📧 Gmail Account</div>
+              <div class="form-section-title">📧 Email Account</div>
               <label
                 >Email<input
                   id="login-email"
                   type="email"
-                  placeholder="you@gmail.com"
+                  placeholder="you@example.com"
               /></label>
               <label
                 >Password<input
@@ -62,6 +114,58 @@
             <div class="card-actions">
               <button class="btn btn-big btn-glow" onclick="authLogin()">
                 Log In
+              </button>
+            </div>
+            <div class="auth-forgot-link">
+              <a href="#" onclick="showForgotPassword(); return false;">Forgot password?</a>
+            </div>
+          </div>
+
+          <!-- Forgot Password Form -->
+          <div id="auth-forgot-form" style="display: none">
+            <div class="form-section">
+              <div class="form-section-title">🔑 Reset Password</div>
+              <p class="form-hint">Enter your email and we'll send you a reset link.</p>
+              <label
+                >Email<input
+                  id="forgot-email"
+                  type="email"
+                  placeholder="you@example.com"
+              /></label>
+            </div>
+            <div class="auth-error" id="forgot-error"></div>
+            <div class="auth-success" id="forgot-success"></div>
+            <div class="card-actions">
+              <button class="btn btn-big btn-glow" onclick="authForgotPassword()">
+                Send Reset Link
+              </button>
+            </div>
+            <div class="auth-forgot-link">
+              <a href="#" onclick="showAuthLogin(); return false;">← Back to login</a>
+            </div>
+          </div>
+
+          <!-- Reset Password Form (shown via URL param) -->
+          <div id="auth-reset-form" style="display: none">
+            <div class="form-section">
+              <div class="form-section-title">🔑 New Password</div>
+              <label
+                >New Password (6+ chars)<input
+                  id="reset-password"
+                  type="password"
+                  placeholder="••••••••"
+              /></label>
+              <label
+                >Confirm Password<input
+                  id="reset-password-confirm"
+                  type="password"
+                  placeholder="••••••••"
+              /></label>
+            </div>
+            <div class="auth-error" id="reset-error"></div>
+            <div class="card-actions">
+              <button class="btn btn-big btn-glow" onclick="authResetPassword()">
+                Set New Password
               </button>
             </div>
           </div>
@@ -77,10 +181,10 @@
                   placeholder="Your name"
               /></label>
               <label
-                >Gmail Address<input
+                >Email Address<input
                   id="register-email"
                   type="email"
-                  placeholder="you@gmail.com"
+                  placeholder="you@example.com"
               /></label>
               <label
                 >Password (6+ chars)<input
@@ -115,18 +219,103 @@
             <h2>My Profile</h2>
           </div>
 
+          <!-- Skeleton placeholder while loading -->
+          <div id="profile-skeleton" class="profile-skeleton" style="display: none">
+            <div class="skel-header">
+              <div class="skel-avatar skeleton-pulse"></div>
+              <div class="skel-lines">
+                <div class="skel-line skel-line-long skeleton-pulse"></div>
+                <div class="skel-line skel-line-short skeleton-pulse"></div>
+              </div>
+            </div>
+            <div class="skel-stats">
+              <div class="skel-stat skeleton-pulse"></div>
+              <div class="skel-stat skeleton-pulse"></div>
+              <div class="skel-stat skeleton-pulse"></div>
+              <div class="skel-stat skeleton-pulse"></div>
+              <div class="skel-stat skeleton-pulse"></div>
+              <div class="skel-stat skeleton-pulse"></div>
+            </div>
+          </div>
+
+          <div id="profile-content">
           <div class="profile-header-row">
-            <div
-              class="profile-avatar-big"
-              id="profile-avatar-display"
-              onclick="openAvatarPicker()"
-            >
-              🐵
+            <div class="profile-avatar-wrap" onclick="openAvatarPicker()">
+              <div
+                class="profile-avatar-big"
+                id="profile-avatar-display"
+              >
+                🐵
+              </div>
+              <img
+                id="profile-picture-display"
+                class="profile-picture-img"
+                src=""
+                alt=""
+                style="display: none"
+              />
             </div>
             <div class="profile-info">
               <div class="profile-name" id="profile-display-name"></div>
               <div class="profile-email-text" id="profile-email"></div>
               <div class="profile-meta" id="profile-joined"></div>
+              <div class="profile-bio-text" id="profile-bio-display"></div>
+            </div>
+          </div>
+
+          <!-- Connected Accounts -->
+          <div
+            id="profile-connected-section"
+            class="profile-connected-section"
+            style="display: none"
+          >
+            <div class="form-section-title">🔗 Connected Accounts</div>
+            <div id="connected-accounts-list" class="connected-accounts-list"></div>
+          </div>
+
+          <!-- Edit Bio -->
+          <div id="profile-bio-edit-section" style="display: none">
+            <div class="form-section">
+              <div class="form-section-title">📝 Edit Bio</div>
+              <textarea
+                id="edit-bio"
+                maxlength="200"
+                rows="3"
+                placeholder="Tell us about yourself..."
+                class="bio-textarea"
+              ></textarea>
+              <div class="profile-edit-actions">
+                <button class="btn btn-glow" onclick="saveProfileBio()">
+                  Save
+                </button>
+                <button class="btn btn-alt" onclick="closeBioEdit()">
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Edit Profile Picture URL -->
+          <div id="profile-pic-edit-section" style="display: none">
+            <div class="form-section">
+              <div class="form-section-title">🖼️ Profile Picture URL</div>
+              <label
+                >Image URL<input
+                  id="edit-profile-picture"
+                  type="url"
+                  placeholder="https://example.com/photo.jpg"
+              /></label>
+              <div class="profile-edit-actions">
+                <button class="btn btn-glow" onclick="saveProfilePicture()">
+                  Save
+                </button>
+                <button class="btn btn-alt" onclick="removeProfilePicture()">
+                  Remove
+                </button>
+                <button class="btn btn-alt" onclick="closeProfilePicEdit()">
+                  Cancel
+                </button>
+              </div>
             </div>
           </div>
 
@@ -173,6 +362,11 @@
           <!-- Stats -->
           <div class="profile-stats">
             <div class="form-section-title">📊 Stats</div>
+            <div id="stats-empty" class="stats-empty" style="display:none">
+              <div class="stats-empty-icon">🐒</div>
+              <div class="stats-empty-title">No stats yet!</div>
+              <div class="stats-empty-msg">Play your first game to unlock stats!</div>
+            </div>
             <div class="profile-stats-grid">
               <div class="profile-stat">
                 <div class="profile-stat-val" id="stat-games-played">0</div>
@@ -217,6 +411,12 @@
             <button class="btn btn-alt" onclick="openProfileEdit()">
               ✏️ Edit Name
             </button>
+            <button class="btn btn-alt" onclick="openBioEdit()">
+              📝 Edit Bio
+            </button>
+            <button class="btn btn-alt" onclick="openProfilePicEdit()">
+              🖼️ Profile Picture
+            </button>
             <button class="btn btn-alt" onclick="openAvatarPicker()">
               🎨 Change Avatar
             </button>
@@ -227,6 +427,7 @@
               ← Back
             </button>
           </div>
+          </div><!-- /profile-content -->
         </div>
       </div>
 
@@ -259,7 +460,7 @@
               🐒 Join Game
             </button>
             <button class="btn btn-big btn-alt" onclick="openBoardPreview()">
-              🗺️ View Possible Variations and Rules
+              🗺️ View Board Variations
             </button>
             <button class="btn btn-big btn-alt" onclick="startTutorial()">
               📖 How to Play (Tutorial)
@@ -355,7 +556,7 @@
                 />
               </label>
             </div>
-            <div class="form-section">
+            <div class="form-section" style="grid-column: 1 / -1">
               <div class="form-section-title">🎮 Game Mode</div>
               <label
                 >Mode
@@ -368,17 +569,6 @@
                 <p class="mode-hint">Buy the Super Banana (7777🍌) to win!</p>
               </div>
             </div>
-            <div class="form-section">
-              <div class="form-section-title">🐾 Pet Mode</div>
-              <label>
-                <select id="create-petmode">
-                  <option value="cooldown">
-                    Cooldown (recharges each roll)
-                  </option>
-                  <option value="limited">Limited Uses (whole game)</option>
-                </select>
-              </label>
-            </div>
             <div class="form-section" style="grid-column: 1 / -1">
               <div class="form-section-title">🔧 Options</div>
               <div style="display: flex; gap: 18px; flex-wrap: wrap">
@@ -389,6 +579,10 @@
                 <label class="toggle-label">
                   <input type="checkbox" id="create-monkey-poker" checked />
                   <span>Monkey Poker 🐵</span>
+                </label>
+                <label class="toggle-label">
+                  <input type="checkbox" id="create-public" />
+                  <span>Public Lobby 🌐</span>
                 </label>
               </div>
             </div>
@@ -411,34 +605,46 @@
             <span class="card-header-icon">🐒</span>
             <h2>Join Game</h2>
           </div>
-          <div class="join-grid">
-            <div class="form-section">
-              <div class="form-section-title">🎫 Game Code</div>
-              <label for="join-code">Enter the 6-digit code</label>
-                <div class="input-paste-row">
-                  <input
-                    id="join-code"
-                    maxlength="6"
-                    placeholder="000000"
-                    class="join-code-input"
-                  />
-                  <button type="button" class="btn-paste" onclick="pasteCode()">
-                    📋 Paste
-                  </button>
-                </div>
+          <div class="form-section" style="margin-bottom: 8px">
+            <div class="form-section-title">🐒 Your Monkey</div>
+            <label
+              >Display name
+              <input id="join-name" maxlength="16" placeholder="Your name"
+            /></label>
+          </div>
+          <div class="join-tabs">
+            <button class="join-tab" data-tab="browse" onclick="switchJoinTab('browse')">🌐 Public Lobbies</button>
+            <button class="join-tab active" data-tab="code" onclick="switchJoinTab('code')">🎫 Enter Code</button>
+          </div>
+          <div id="join-tab-browse" class="join-tab-content">
+            <div id="public-lobbies" class="public-lobbies">
+              <div class="public-lobbies-empty">Loading...</div>
             </div>
-            <div class="form-section">
-              <div class="form-section-title">🐒 Your Monkey</div>
-              <label
-                >Display name
-                <input id="join-name" maxlength="16" placeholder="Your name"
-              /></label>
+          </div>
+          <div id="join-tab-code" class="join-tab-content active">
+            <div class="join-grid">
+              <div class="form-section">
+                <label for="join-code">Enter the 6-digit code</label>
+                  <div class="input-paste-row">
+                    <input
+                      id="join-code"
+                      maxlength="6"
+                      placeholder="000000"
+                      class="join-code-input"
+                    />
+                    <button type="button" class="btn-paste" onclick="pasteCode()">
+                      📋 Paste
+                    </button>
+                  </div>
+              </div>
+            </div>
+            <div class="card-actions">
+              <button class="btn btn-big btn-glow" onclick="joinGame()">
+                🌴 Join Game
+              </button>
             </div>
           </div>
           <div class="card-actions">
-            <button class="btn btn-big btn-glow" onclick="joinGame()">
-              🌴 Join Game
-            </button>
             <button class="btn btn-alt" onclick="showScreen('screen-menu')">
               ← Back
             </button>
@@ -497,13 +703,20 @@
                 </select>
               </label>
             </div>
-            <label
-              >🐾 Pet Mode
-              <select id="lobby-petmode" onchange="updateLobbySettings()">
-                <option value="cooldown">Cooldown (recharges each roll)</option>
-                <option value="limited">Limited Uses (whole game)</option>
-              </select>
-            </label>
+            <div class="lobby-toggles-row" style="display: flex; gap: 12px; flex-wrap: wrap">
+              <label class="toggle-label">
+                <input type="checkbox" id="lobby-bomb-mode" onchange="updateLobbySettings()" />
+                <span>Pineapple Bomb Mode 🍍</span>
+              </label>
+              <label class="toggle-label">
+                <input type="checkbox" id="lobby-monkey-poker" onchange="updateLobbySettings()" />
+                <span>Monkey Poker 🐵</span>
+              </label>
+              <label class="toggle-label">
+                <input type="checkbox" id="lobby-public" onchange="updateLobbySettings()" />
+                <span>🌐 Public Lobby</span>
+              </label>
+            </div>
           </div>
           <div class="lobby-middle-row">
             <div class="lobby-players-section">
@@ -522,11 +735,7 @@
                 >
                   <div class="lobby-pet-emoji">🦁</div>
                   <div class="lobby-pet-name">Strong Pet</div>
-                  <div
-                    class="lobby-pet-desc"
-                    data-cd-desc="Move forward 1 space (guaranteed). 15 roll cooldown."
-                    data-lim-desc="Move forward 1 space (guaranteed). 1 use per game."
-                  >
+                  <div class="lobby-pet-desc">
                     Move forward 1 space (guaranteed). 15 roll cooldown.
                   </div>
                 </button>
@@ -537,26 +746,18 @@
                 >
                   <div class="lobby-pet-emoji">🐆</div>
                   <div class="lobby-pet-name">Energy Pet</div>
-                  <div
-                    class="lobby-pet-desc"
-                    data-cd-desc="Flip a coin to move forward 1. 7 roll cooldown."
-                    data-lim-desc="Flip a coin to move forward 1. 3 uses per game."
-                  >
+                  <div class="lobby-pet-desc">
                     Flip a coin to move forward 1. 7 roll cooldown.
                   </div>
                 </button>
                 <button
                   class="lobby-pet-card"
-                  data-pet="devil"
-                  onclick="selectPet('devil')"
+                  data-pet="magic"
+                  onclick="selectPet('magic')"
                 >
                   <div class="lobby-pet-emoji">🦄</div>
                   <div class="lobby-pet-name">Magic Pet</div>
-                  <div
-                    class="lobby-pet-desc"
-                    data-cd-desc="Flip a coin: heads forward 1, tails backward 1. 15 roll cooldown."
-                    data-lim-desc="Flip a coin: heads forward 1, tails backward 1. 2 uses per game."
-                  >
+                  <div class="lobby-pet-desc">
                     Flip a coin: heads forward 1, tails backward 1. 15 roll
                     cooldown.
                   </div>
@@ -627,6 +828,33 @@
           </button>
         </div>
 
+        <!-- Buy Bomb Confirmation Modal -->
+        <div
+          id="buy-bomb-confirm"
+          class="bomb-confirm-overlay"
+          style="display: none"
+          onclick="if (event.target === this) closeBuyBombConfirm()"
+        >
+          <div class="bomb-confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="buy-bomb-confirm-title">
+            <div class="bomb-confirm-icon">🍍</div>
+            <h2 id="buy-bomb-confirm-title" class="bomb-confirm-title">Buy Pineapple Bomb?</h2>
+            <p class="bomb-confirm-body">
+              This will cost <span class="bomb-confirm-price">5000🍌</span>.
+            </p>
+            <p class="bomb-confirm-subtext">
+              Plant it on any tile to eliminate opponents who land on it.
+            </p>
+            <div class="bomb-confirm-actions">
+              <button class="btn btn-alt" onclick="closeBuyBombConfirm()">
+                Cancel
+              </button>
+              <button class="btn btn-bomb" onclick="confirmBuyBomb()">
+                🍍 Buy for 5000🍌
+              </button>
+            </div>
+          </div>
+        </div>
+
         <div class="game-layout">
           <!-- Left: Ownership Panel -->
           <aside class="panel panel-left" id="panel-owners">
@@ -681,6 +909,9 @@
             <div id="bomb-self-notification" class="bomb-self-notification">
               🍍 You got caught in your own pineapple bomb! 💥
             </div>
+            <div id="bomb-win-notification" class="bomb-win-notification">
+              💥 You have eliminated the last player and won the game! 👑
+            </div>
             <div
               id="dice-roll-notification"
               class="dice-roll-notification"
@@ -691,10 +922,17 @@
               class="auction-tied-notification"
             ></div>
             <div id="poker-announce-notification" class="poker-announce-notification">
-              <div class="poker-announce-emoji">🐵⚔️🐵</div>
               <div class="poker-announce-text">MONKEY POKER!</div>
-              <div class="poker-announce-players">
-                <span id="poker-announce-p1"></span> vs <span id="poker-announce-p2"></span>
+              <div class="poker-announce-fighters">
+                <div class="poker-announce-fighter">
+                  <div class="poker-announce-fighter-emoji" id="poker-announce-emoji-p1">🐵</div>
+                  <div class="poker-announce-fighter-name" id="poker-announce-p1"></div>
+                </div>
+                <div class="poker-announce-vs">⚔️</div>
+                <div class="poker-announce-fighter">
+                  <div class="poker-announce-fighter-emoji" id="poker-announce-emoji-p2">🐵</div>
+                  <div class="poker-announce-fighter-name" id="poker-announce-p2"></div>
+                </div>
               </div>
             </div>
             <div id="board" class="board">
@@ -1059,6 +1297,59 @@
                   >0</span
                 >
               </button>
+              <button
+                id="board-help-toggle"
+                class="board-help-toggle"
+                title="How to Play"
+              >
+                ❓
+              </button>
+              <button
+                id="board-emoji-toggle"
+                class="board-emoji-toggle"
+                title="Send Reaction"
+              >
+                😄
+              </button>
+              <div id="emoji-picker" class="emoji-picker" style="display: none">
+                <div
+                  class="emoji-picker-handle"
+                  id="emoji-picker-handle"
+                  title="Drag to move"
+                >
+                  <span class="emoji-picker-grip" aria-hidden="true">⋮⋮</span>
+                </div>
+                <div class="emoji-picker-buttons">
+                  <button class="emoji-pick-btn" onclick="sendReaction('👍')">👍</button>
+                  <button class="emoji-pick-btn" onclick="sendReaction('🍌')">🍌</button>
+                  <button class="emoji-pick-btn" onclick="sendReaction('😤')">😤</button>
+                  <button class="emoji-pick-btn" onclick="sendReaction('🎉')">🎉</button>
+                </div>
+              </div>
+              <button
+                id="sfx-toggle"
+                class="sfx-toggle"
+                title="Sound Volume"
+              >
+                <span id="sfx-toggle-icon">🔊</span>
+              </button>
+              <div id="sfx-slider-popup" class="sfx-slider-popup" style="display:none">
+                <input
+                  id="sfx-slider"
+                  type="range"
+                  min="0"
+                  max="100"
+                  class="sfx-slider"
+                />
+                <span id="sfx-slider-label" class="sfx-slider-label">100%</span>
+              </div>
+              <button
+                id="phone-toggle"
+                class="phone-toggle"
+                title="Toggle Apps"
+              >
+                📱
+              </button>
               <div
                 id="board-trade-deals"
                 class="board-trade-deals board-trade-deals-hidden"
@@ -1082,6 +1373,118 @@
                   id="trade-deals-messages"
                   class="trade-deals-messages"
                 ></div>
+              </div>
+              <div id="board-help" class="board-help board-help-hidden">
+                <div class="board-help-header" id="board-help-header">
+                  <span class="board-help-header-title">📖 How to Play</span>
+                  <button
+                    id="board-help-close"
+                    class="board-help-close"
+                    title="Close"
+                  >
+                    ✕
+                  </button>
+                </div>
+                <div class="board-help-body">
+                  <!-- Quick Reference Banner -->
+                  <div class="help-quickref" id="help-sec-quickref">
+                    <div class="help-qr-row"><span class="help-qr-icon">🎯</span><span><b>Win:</b> Buy ⭐ Magic Banana (7,777🍌) — or bomb an opponent (Bomb Mode)</span></div>
+                    <div class="help-qr-row"><span class="help-qr-icon">🎲</span><span><b>Roll:</b> 2 dice (2–12). Pay 300🍌 for 1 or 3 dice</span></div>
+                    <div class="help-qr-row"><span class="help-qr-icon">💰</span><span><b>Start:</b> 2,222🍌 · 52 tiles, 48 shuffled each game</span></div>
+                    <div class="help-qr-row"><span class="help-qr-icon">🌽</span><span><b>Income:</b> Auto-collect from your farms as you pass; land on opponent's farm to <b>steal</b></span></div>
+                  </div>
+
+                  <!-- Farms & Chains -->
+                  <div class="help-section">
+                    <div class="help-section-header">
+                      <span class="help-section-icon">🌴</span>
+                      <h3>Farms & Chains</h3>
+                    </div>
+                    <div class="help-tile-list">
+                      <div class="help-tile-row"><span class="help-tile-icon">🔗</span>Adjacent same-color farms <b>chain</b>: 2× / 3× / 4× yield</div>
+                      <div class="help-tile-row"><span class="help-tile-icon">🎯</span>Roll matches farm's number → instant <b>100% grow</b></div>
+                      <div class="help-tile-row"><span class="help-tile-icon">📐</span>Growth = Yield × GROW% × Chain</div>
+                      <div class="help-tile-row"><span class="help-tile-icon">🐒</span><b>Squatter:</b> opponent on your farm steals the growth</div>
+                    </div>
+                  </div>
+
+                  <!-- Corners (fixed GROW%) -->
+                  <div class="help-section">
+                    <div class="help-section-header">
+                      <span class="help-section-icon">🗺️</span>
+                      <h3>Corners (fixed)</h3>
+                    </div>
+                    <div class="help-corners-grid">
+                      <div class="help-corner"><span class="help-corner-pct">100%</span><span class="help-corner-label">BL · Start</span></div>
+                      <div class="help-corner"><span class="help-corner-pct">25%</span><span class="help-corner-label">TL</span></div>
+                      <div class="help-corner"><span class="help-corner-pct">50%</span><span class="help-corner-label">TR</span></div>
+                      <div class="help-corner"><span class="help-corner-pct">75%</span><span class="help-corner-label">BR</span></div>
+                    </div>
+                  </div>
+
+                  <!-- Special Tiles -->
+                  <div class="help-section">
+                    <div class="help-section-header">
+                      <span class="help-section-icon">✨</span>
+                      <h3>Special Tiles</h3>
+                    </div>
+                    <div class="help-tile-list">
+                      <div class="help-tile-row"><span class="help-tile-icon">⭐</span><b>Super Banana</b> — buy for 7,777🍌 to win</div>
+                      <div class="help-tile-row"><span class="help-tile-icon">🌿</span><b>Vine Swing</b> — teleport to any farm you own</div>
+                      <div class="help-tile-row"><span class="help-tile-icon">💵</span><b>Free Bananas</b> — +500🍌</div>
+                      <div class="help-tile-row"><span class="help-tile-icon">🍌</span><b>Tax</b> — lose 10%</div>
+                      <div class="help-tile-row"><span class="help-tile-icon">🏜️</span><b>Desert</b> — dead tile, no yield</div>
+                    </div>
+                  </div>
+
+                  <!-- Auctions -->
+                  <div class="help-section">
+                    <div class="help-section-header">
+                      <span class="help-section-icon">🔨</span>
+                      <h3>Auctions</h3>
+                    </div>
+                    <p>Land on unowned farm → set a price → 15s for anyone to accept. No takers? You buy it.</p>
+                  </div>
+
+                  <!-- Combat -->
+                  <div class="help-section">
+                    <div class="help-section-header">
+                      <span class="help-section-icon">⚔️</span>
+                      <h3>Poker & Bombs</h3>
+                    </div>
+                    <div class="help-tile-list">
+                      <div class="help-tile-row"><span class="help-tile-icon">🃏</span><b>Poker</b> — 2 non-teammates share a tile</div>
+                      <div class="help-tile-row"><span class="help-tile-icon">🍍</span><b>Bomb</b> — 5,000🍌 · 5-turn fuse · 3-tile blast · opponent = elim</div>
+                      <div class="help-tile-row"><span class="help-tile-icon">💥</span><b>Self-blast</b> — lose 50% bananas (not eliminated)</div>
+                    </div>
+                  </div>
+
+                  <!-- Pets -->
+                  <div class="help-section">
+                    <div class="help-section-header">
+                      <span class="help-section-icon">🐾</span>
+                      <h3>Pets <small>(free, off-turn)</small></h3>
+                    </div>
+                    <div class="help-tile-list">
+                      <div class="help-tile-row"><span class="help-tile-icon">🦁</span><b>Strong</b> — +1 fwd · 15-roll cd</div>
+                      <div class="help-tile-row"><span class="help-tile-icon">🐆</span><b>Energy</b> — flip: heads +1 fwd · 7-roll cd</div>
+                      <div class="help-tile-row"><span class="help-tile-icon">🦄</span><b>Magic</b> — flip: ±1 · 15-roll cd</div>
+                    </div>
+                  </div>
+
+                  <!-- Trading -->
+                  <div class="help-section">
+                    <div class="help-section-header">
+                      <span class="help-section-icon">🏪</span>
+                      <h3>Trading</h3>
+                    </div>
+                    <div class="help-tile-list">
+                      <div class="help-tile-row"><span class="help-tile-icon">🏷️</span><b>Sell Listings</b> — up to 5, first come first served</div>
+                      <div class="help-tile-row"><span class="help-tile-icon">🔄</span><b>Swap</b> — 1-for-1 farm trade, off your turn</div>
+                      <div class="help-tile-row"><span class="help-tile-icon">🤝</span><b>Teams (2v2):</b> send 🍌 (150🍌) · swap (100🍌) · gift (300🍌)</div>
+                    </div>
+                  </div>
+                </div>
               </div>
               <div id="board-log" class="board-log board-log-hidden">
                 <div class="board-log-header" id="board-log-header">
@@ -1229,46 +1632,6 @@
               <button class="btn" id="btn-roll" onclick="rollDice()" disabled>
                 Roll Dice
               </button>
-              <label
-                class="auto-toggle"
-                title="Automatically roll dice when it's your turn"
-              >
-                <input type="checkbox" id="chk-auto-roll" />
-                Auto Roll
-              </label>
-              <div class="debug-teleport">
-                <input
-                  type="number"
-                  id="debug-tile"
-                  min="0"
-                  max="51"
-                  value="0"
-                  placeholder="Tile #"
-                />
-                <button
-                  class="btn btn-sm"
-                  id="btn-debug-move"
-                  onclick="debugMove()"
-                  disabled
-                >
-                  Go
-                </button>
-                <button class="btn btn-sm" onclick="debugShuffle()">🔀</button>
-                <button
-                  class="btn btn-sm"
-                  onclick="debugResetPet()"
-                  title="Reset pet cooldown"
-                >
-                  🐾
-                </button>
-                <button
-                  class="btn btn-sm"
-                  onclick="debugAddBananas()"
-                  title="Add 10000 bananas"
-                >
-                  +🍌
-                </button>
-              </div>
             </div>
 
             <div class="action-box">
@@ -1313,7 +1676,7 @@
                   "
                 >
                   <span style="font-size: 1.2em; line-height: 1">🐢</span>
-                  <span>🎲 500🍌</span>
+                  <span>🎲 300🍌</span>
                 </button>
                 <button
                   class="btn btn-alt"
@@ -1327,7 +1690,7 @@
                   "
                 >
                   <span style="font-size: 1.2em; line-height: 1">🐇</span>
-                  <span>🎲🎲🎲 500🍌</span>
+                  <span>🎲🎲🎲 300🍌</span>
                 </button>
               </div>
               <button
@@ -1526,57 +1889,170 @@
               >
                 End Turn
               </button>
-              <label class="auto-toggle" title="Automatically end your turn">
-                <input type="checkbox" id="chk-auto-end" />
-                Auto End
-              </label>
+              <button
+                type="button"
+                class="btn btn-toggles"
+                id="btn-toggles"
+                onclick="toggleTogglesPanel()"
+                aria-expanded="false"
+                aria-controls="toggles-panel"
+              >
+                <span class="toggles-btn-label">Toggles</span>
+                <span class="toggles-btn-caret" aria-hidden="true">▾</span>
+              </button>
             </div>
 
-            <label class="toggle-reveal"
-              ><input
-                type="checkbox"
-                id="chk-reveal"
-                onchange="toggleRevealAll()"
-              />
-              Reveal All Tiles</label
-            >
-            <label class="toggle-reveal toggle-auto-all" title="Turn on all auto toggles">
-              <input type="checkbox" id="chk-auto-all" onchange="toggleAutoAll(this.checked)" />
-              Auto All
-            </label>
-            <label class="toggle-reveal" title="Auto bid 1🍌 in auctions">
-              <input type="checkbox" id="chk-auto-bid" />
-              Auto Bid 1
-            </label>
-            <label
-              class="toggle-reveal"
-              title="Auto accept farms in Price It auctions"
-            >
-              <input type="checkbox" id="chk-auto-accept" />
-              Auto Accept
-            </label>
-            <label
-              class="toggle-reveal"
-              title="Auto pick a random farm when landing on Vine Swing"
-            >
-              <input type="checkbox" id="chk-auto-vine" />
-              Auto Vine
-            </label>
-            <label
-              class="toggle-reveal"
-              title="Auto fold when it's your turn in poker"
-            >
-              <input type="checkbox" id="chk-auto-fold" />
-              Auto Fold
-            </label>
-            <label
-              class="toggle-reveal"
-              title="Disable the auction timer for a more relaxed experience"
-            >
-              <input type="checkbox" id="chk-no-timer" onchange="toggleNoTimer()" />
-              No Timer
-            </label>
+            <div class="toggles-panel" id="toggles-panel" hidden>
+              <div class="toggles-panel-header">
+                <span class="toggles-panel-title">Toggles</span>
+                <button
+                  type="button"
+                  class="toggles-panel-close"
+                  id="btn-toggles-close"
+                  onclick="toggleTogglesPanel(false)"
+                  aria-label="Close toggles"
+                >
+                  ✕
+                </button>
+              </div>
+              <div class="toggles-panel-body">
+                <label class="toggle-reveal toggle-auto-all" title="Turn on all auto toggles">
+                  <input type="checkbox" id="chk-auto-all" onchange="toggleAutoAll(this.checked)" />
+                  Auto All
+                </label>
+                <label
+                  class="auto-toggle"
+                  title="Automatically roll dice when it's your turn"
+                >
+                  <input type="checkbox" id="chk-auto-roll" />
+                  Auto Roll
+                </label>
+                <label class="auto-toggle" title="Automatically end your turn">
+                  <input type="checkbox" id="chk-auto-end" />
+                  Auto End
+                </label>
+                <label class="toggle-reveal"
+                  ><input
+                    type="checkbox"
+                    id="chk-reveal"
+                    onchange="toggleRevealAll()"
+                  />
+                  Reveal All Tiles</label
+                >
+                <label class="toggle-reveal" title="Auto bid 1🍌 in auctions">
+                  <input type="checkbox" id="chk-auto-bid" />
+                  Auto Bid 1
+                </label>
+                <label
+                  class="toggle-reveal"
+                  title="Auto accept farms in Price It auctions"
+                >
+                  <input type="checkbox" id="chk-auto-accept" />
+                  Auto Accept
+                </label>
+                <label
+                  class="toggle-reveal"
+                  title="Auto pick a random farm when landing on Vine Swing"
+                >
+                  <input type="checkbox" id="chk-auto-vine" />
+                  Auto Vine
+                </label>
+                <label
+                  class="toggle-reveal"
+                  title="Auto fold when it's your turn in poker"
+                >
+                  <input type="checkbox" id="chk-auto-fold" />
+                  Auto Fold
+                </label>
+                <label
+                  class="toggle-reveal"
+                  title="Disable the auction timer for a more relaxed experience"
+                >
+                  <input type="checkbox" id="chk-no-timer" onchange="toggleNoTimer()" />
+                  No Timer
+                </label>
+              </div>
+            </div>
           </aside>
+        </div>
+
+        <!-- ── Debug Tools (floating window) ─────────────────────── -->
+        <button
+          id="debug-toggle"
+          class="debug-toggle"
+          type="button"
+          title="Debug Tools"
+          aria-label="Open debug tools"
+        >
+          🛠️
+        </button>
+        <div id="debug-window" class="debug-window debug-window-hidden">
+          <div class="debug-window-header" id="debug-window-header">
+            <span class="debug-window-title">🛠️ Debug Tools</span>
+            <button
+              id="debug-window-close"
+              class="debug-window-close"
+              type="button"
+              title="Close"
+              aria-label="Close debug tools"
+            >
+              ✕
+            </button>
+          </div>
+          <div class="debug-window-body">
+            <div class="debug-row">
+              <label class="debug-label" for="debug-tile">Teleport to tile</label>
+              <div class="debug-row-controls">
+                <input
+                  type="number"
+                  id="debug-tile"
+                  class="debug-input"
+                  min="0"
+                  max="51"
+                  value="0"
+                  placeholder="Tile #"
+                />
+                <button
+                  type="button"
+                  class="btn debug-btn debug-btn-primary"
+                  id="btn-debug-move"
+                  onclick="debugMove()"
+                  disabled
+                >
+                  Go
+                </button>
+              </div>
+            </div>
+            <div class="debug-row debug-row-buttons">
+              <button
+                type="button"
+                class="btn debug-btn"
+                onclick="debugShuffle()"
+                title="Reshuffle board tiles"
+              >
+                <span class="debug-btn-icon">🔀</span>
+                <span class="debug-btn-label">Reshuffle</span>
+              </button>
+              <button
+                type="button"
+                class="btn debug-btn"
+                onclick="debugResetPet()"
+                title="Reset pet cooldown"
+              >
+                <span class="debug-btn-icon">🐾</span>
+                <span class="debug-btn-label">Reset Pet</span>
+              </button>
+              <button
+                type="button"
+                class="btn debug-btn"
+                onclick="debugAddBananas()"
+                title="Add 10,000 bananas"
+              >
+                <span class="debug-btn-icon">🍌</span>
+                <span class="debug-btn-label">+10,000</span>
+              </button>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -1605,29 +2081,11 @@
     >
       <div class="board-preview-content">
         <div class="board-preview-header">
-          <h2>🗺️ Variations & Rules</h2>
-          <div class="bp-tabs">
-            <button
-              class="bp-tab bp-tab-active"
-              id="bp-tab-variations"
-              onclick="switchPreviewTab('variations')"
-            >
-              Board Variations
-            </button>
-            <button
-              class="bp-tab"
-              id="bp-tab-rules"
-              onclick="switchPreviewTab('rules')"
-            >
-              Rules
-            </button>
-          </div>
+          <h2>🗺️ Board Variations</h2>
+          <p class="board-preview-subtitle">Every game is different — tiles shuffle each time!</p>
         </div>
-        <!-- Variations Tab -->
+        <!-- Variations Content -->
         <div id="bp-view-variations" class="bp-view">
-          <p class="board-preview-hint">
-            Preview how the board could look. Tiles are shuffled each game!
-          </p>
           <div class="board-preview-body">
             <div class="board-preview-board-wrap">
               <div id="board-preview" class="board board-preview-board"></div>
@@ -1646,785 +2104,7 @@
             </button>
           </div>
         </div>
-        <!-- Rules Tab -->
-        <div id="bp-view-rules" class="bp-view" style="display: none">
-          <div class="rules-panel">
-            <!-- ═══ TABLE OF CONTENTS ═══ -->
-            <nav class="rules-toc">
-              <div class="rules-toc-title">📑 Jump to Section</div>
-              <div class="rules-toc-grid">
-                <a
-                  class="rules-toc-link"
-                  onclick="scrollToRule('rules-sec-quickref')"
-                  >⚡ Quick Reference</a
-                >
-                <a
-                  class="rules-toc-link"
-                  onclick="scrollToRule('rules-sec-howtoplay')"
-                  >🎮 How to Play</a
-                >
-                <a
-                  class="rules-toc-link"
-                  onclick="scrollToRule('rules-sec-board')"
-                  >🗺️ The Board</a
-                >
-                <a
-                  class="rules-toc-link"
-                  onclick="scrollToRule('rules-sec-auctions')"
-                  >🔨 Auctions</a
-                >
-                <a
-                  class="rules-toc-link"
-                  onclick="scrollToRule('rules-sec-encounters')"
-                  >⚔️ Encounters</a
-                >
-                <a
-                  class="rules-toc-link"
-                  onclick="scrollToRule('rules-sec-trading')"
-                  >🏪 Trading & Selling</a
-                >
-                <a
-                  class="rules-toc-link"
-                  onclick="scrollToRule('rules-sec-abilities')"
-                  >🐾 Abilities</a
-                >
-                <a
-                  class="rules-toc-link"
-                  onclick="scrollToRule('rules-sec-fogofwar')"
-                  >🌫️ Fog of War</a
-                >
-                <a
-                  class="rules-toc-link"
-                  onclick="scrollToRule('rules-sec-settings')"
-                  >⚙️ Game Modes</a
-                >
-              </div>
-            </nav>
-
-            <!-- ═══ QUICK REFERENCE ═══ -->
-            <div class="rules-quickref" id="rules-sec-quickref">
-              <h3>⚡ Quick Reference</h3>
-              <div class="rules-quickref-grid">
-                <div class="rules-qr-item">
-                  <span class="rules-qr-icon">🎯</span>
-                  <span
-                    ><b>Goal:</b> Buy the ⭐ Magic Banana (7,777🍌) or 🍍 blow
-                    up an opponent</span
-                  >
-                </div>
-                <div class="rules-qr-item">
-                  <span class="rules-qr-icon">🎲</span>
-                  <span><b>Movement:</b> 2 dice = 2–12 spaces</span>
-                </div>
-                <div class="rules-qr-item">
-                  <span class="rules-qr-icon">🗺️</span>
-                  <span
-                    ><b>Board:</b> 52 tiles — 4 fixed corners, 48 shuffled</span
-                  >
-                </div>
-                <div class="rules-qr-item">
-                  <span class="rules-qr-icon">💰</span>
-                  <span><b>Start:</b> 2,222🍌 (configurable)</span>
-                </div>
-                <div class="rules-qr-item">
-                  <span class="rules-qr-icon">🏠</span>
-                  <span><b>Farms:</b> Won via auction, grow 🍌 at corners</span>
-                </div>
-                <div class="rules-qr-item">
-                  <span class="rules-qr-icon">🚫</span>
-                  <span><b>No bankruptcy</b> — you can't go below 0🍌</span>
-                </div>
-                <div class="rules-qr-item">
-                  <span class="rules-qr-icon">🏪</span>
-                  <span
-                    ><b>Sell farms</b> to other players via marketplace</span
-                  >
-                </div>
-                <div class="rules-qr-item">
-                  <span class="rules-qr-icon">🔄</span>
-                  <span><b>Swap farms</b> 1-for-1 with any player</span>
-                </div>
-              </div>
-            </div>
-
-            <!-- ═══ CATEGORY: HOW TO PLAY ═══ -->
-            <div class="rules-category-header" id="rules-sec-howtoplay">
-              <span class="rules-cat-line"></span>
-              <span class="rules-cat-label">🎮 How to Play</span>
-              <span class="rules-cat-line"></span>
-            </div>
-
-            <div class="rules-section">
-              <h3>🎯 Objective</h3>
-              <p>
-                Find and buy the <b>⭐ Magic Banana</b> (costs 7,777🍌) to win
-                instantly! It hides on a random tile each game — land on it with
-                enough money and the game is yours.
-              </p>
-              <div class="rules-callout rules-callout-warn">
-                <b>🍍 Pineapple Bomb Mode:</b> If enabled, you can also win by
-                eliminating an opponent with a pineapple bomb! See the
-                Bombs section below.
-              </div>
-              <p>
-                In <b>Teams mode (2v2)</b>, your team wins when either teammate
-                buys the Magic Banana. A <b>coin flip</b> decides which team
-                goes first (seats 1 & 3) and which goes second (seats 2 & 4).
-              </p>
-            </div>
-
-            <div class="rules-section">
-              <h3>🎲 Turns & Dice</h3>
-              <p>
-                Each turn you roll <b>2 dice</b> (1–6 each). Your total move =
-                die₁ + die₂, giving you <b>2 to 12 spaces</b> clockwise around
-                the 52-tile board.
-              </p>
-              <p>
-                <b>🎲 Dice Overrides:</b> You can pay to change your dice count:
-              </p>
-              <ul>
-                <li><b>1 die</b> — costs 500🍌 (move 1–6 spaces)</li>
-                <li><b>3 dice</b> — costs 500🍌 (move 3–18 spaces)</li>
-              </ul>
-              <div class="rules-callout rules-callout-tip">
-                <b>🍌 Banana Piles:</b> As you move, you automatically
-                <b>collect banana piles</b> from your own farms along the path.
-                When you land on an <b>opponent's</b> farm, you <b>steal</b>
-                their banana pile!
-              </div>
-              <div class="rules-callout rules-callout-tip">
-                <b>🎲 Dice-Match Grow:</b> If your dice total matches the
-                <b>label number</b> of a farm you own (e.g. roll 5 and own CV5),
-                that farm gets an instant <b>100% grow</b>!
-              </div>
-            </div>
-
-            <div class="rules-section">
-              <h3>🚫 No Bankruptcy</h3>
-              <p>
-                You <b>cannot go below 0🍌</b>. If a payment would take you
-                negative, you simply pay what you can. Even at 0🍌 you stay in
-                the game — no one is eliminated (except by ⭐ Super Banana or 🍍
-                Pineapple Bomb).
-              </p>
-            </div>
-
-            <!-- ═══ CATEGORY: THE BOARD ═══ -->
-            <div class="rules-category-header" id="rules-sec-board">
-              <span class="rules-cat-line"></span>
-              <span class="rules-cat-label">🗺️ The Board</span>
-              <span class="rules-cat-line"></span>
-            </div>
-
-            <div class="rules-section">
-              <h3>🔀 Board Shuffling</h3>
-              <p>
-                Every game, the
-                <b>48 non-corner tiles are randomly shuffled</b>. Only the 4
-                GROW corners stay in fixed positions. The ⭐ Magic Banana hides
-                in a new spot each game — no two games are alike!
-              </p>
-              <p>
-                At game start, all tiles are revealed in a
-                <b>reveal phase</b> — each player accepts to continue, and
-                a countdown timer begins. Memorize what you can before the
-                board locks in!
-              </p>
-            </div>
-
-            <div class="rules-section">
-              <h3>🏠 Farm Groups</h3>
-              <p>
-                Farms are color-coded into 6 groups. Higher-yield farms are
-                rarer and more valuable. Landing on an unowned farm triggers an
-                <b>auction</b> — you don't buy directly.
-              </p>
-              <table class="rules-table">
-                <thead>
-                  <tr>
-                    <th>Group</th>
-                    <th>Yield</th>
-                    <th>Count</th>
-                    <th>Rarity</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr>
-                    <td>🟡 Cavendish</td>
-                    <td>50🍌</td>
-                    <td>12</td>
-                    <td class="rules-rarity rules-rarity-common">Common</td>
-                  </tr>
-                  <tr>
-                    <td>🔵 Blue Java</td>
-                    <td>100🍌</td>
-                    <td>7</td>
-                    <td class="rules-rarity rules-rarity-common">Common</td>
-                  </tr>
-                  <tr>
-                    <td>🔴 Red Dacca</td>
-                    <td>200🍌</td>
-                    <td>5</td>
-                    <td class="rules-rarity rules-rarity-uncommon">Uncommon</td>
-                  </tr>
-                  <tr>
-                    <td>🩷 Lady Finger</td>
-                    <td>200🍌</td>
-                    <td>5</td>
-                    <td class="rules-rarity rules-rarity-uncommon">Uncommon</td>
-                  </tr>
-                  <tr>
-                    <td>🟤 Gros Michel</td>
-                    <td>360🍌</td>
-                    <td>4</td>
-                    <td class="rules-rarity rules-rarity-rare">Rare</td>
-                  </tr>
-                  <tr>
-                    <td>🟠 Goldfinger</td>
-                    <td>500🍌</td>
-                    <td>3</td>
-                    <td class="rules-rarity rules-rarity-legendary">
-                      Legendary
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-
-            <div class="rules-section">
-              <h3>🌴 GROW Tiles (Corners)</h3>
-              <p>
-                The 4 corner tiles grow bananas on
-                <b>all your farms at once</b>. Bananas go into each farm's
-                <b>banana pile</b>, which you harvest when you pass over them on
-                future turns.
-              </p>
-              <table class="rules-table">
-                <thead>
-                  <tr>
-                    <th>Corner</th>
-                    <th>GROW %</th>
-                    <th>Position</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr>
-                    <td>🌴 GROW 100%</td>
-                    <td><b>100%</b></td>
-                    <td>Bottom-left (Start)</td>
-                  </tr>
-                  <tr>
-                    <td>🌴 GROW 25%</td>
-                    <td>25%</td>
-                    <td>Top-left</td>
-                  </tr>
-                  <tr>
-                    <td>🌴 GROW 50%</td>
-                    <td>50%</td>
-                    <td>Top-right</td>
-                  </tr>
-                  <tr>
-                    <td>🌴 GROW 75%</td>
-                    <td>75%</td>
-                    <td>Bottom-right</td>
-                  </tr>
-                </tbody>
-              </table>
-
-              <div class="rules-formula">
-                <b>📐 Growth Formula:</b><br />
-                Growth = Yield × GROW% × Chain Multiplier
-              </div>
-              <p>
-                <b>🔗 Chain Multiplier:</b> If you own adjacent farms of the
-                <b>same color group</b>, they form a chain. Each farm in a chain
-                gets its yield multiplied by the chain length:
-              </p>
-              <ul>
-                <li>2 connected same-color farms = <b>2×</b> yield each</li>
-                <li>3 connected = <b>3×</b>, 4 connected = <b>4×</b>, etc.</li>
-              </ul>
-              <p>
-                Corners break chains. Only adjacently connected farms count —
-                owning farms of the same color on opposite sides of the board
-                won't form a chain.
-              </p>
-              <div class="rules-callout rules-callout-example">
-                <b>📝 Example:</b> You own 2 adjacent Red Dacca farms (yield
-                200🍌 each). You land on GROW 50%. Growth per
-                farm = 200 × 0.50 × 2 = <b>200🍌</b> added to each
-                farm's banana pile.
-              </div>
-              <div class="rules-callout rules-callout-warn">
-                <b>🐒 Squatter Rule:</b> If an opponent is sitting on your farm
-                when it grows, <i>they</i> steal the growth just by being there!
-              </div>
-            </div>
-
-            <div class="rules-section">
-              <h3>🏜️ Desert Tiles</h3>
-              <p>
-                <b>8 desert tiles</b> that produce no yield and
-                are excluded from GROW. Won through auctions like normal farms.
-                They are dead tiles and are to trick other players into buying
-                what they think are farms.
-              </p>
-            </div>
-
-            <div class="rules-section">
-              <h3>🍌 Tax Tile</h3>
-              <p>Landing on a tax tile takes a percentage of your bananas:</p>
-              <ul>
-                <li><b>🍌 Tax −10%</b> — Lose 10% of your bananas (1 tile)</li>
-              </ul>
-            </div>
-
-            <div class="rules-section">
-              <h3>� Free Bananas</h3>
-              <p>
-                Landing on or crossing this tile gives you
-                <b>+500🍌</b> instantly! This tile shuffles with the rest of the
-                board.
-              </p>
-            </div>
-
-            <div class="rules-section">
-              <h3>🌿 Vine Swing</h3>
-              <p>
-                Landing here lets you <b>teleport to any farm you own</b>. That
-                farm's tile is then processed normally — you collect its banana
-                pile, and it can trigger poker if an opponent is there. If you
-                <b>don't own any farms</b>, nothing happens.
-              </p>
-            </div>
-
-            <div class="rules-section">
-              <h3>⭐ Super Banana</h3>
-              <p>
-                The legendary hidden ⭐ tile.
-                <b>Crossing or landing on it</b> with
-                <b>7,777🍌 or more</b> means you buy it and
-                <b>win the game instantly</b>! Once all tiles are revealed, the
-                Super Banana is exposed — the first player to reach it wins.
-              </p>
-              <div class="rules-callout rules-callout-tip">
-                <b>Can't afford it?</b> The tile is revealed to all players for
-                ~7 seconds, then it <b>swaps to a random hidden tile</b>
-                elsewhere on the board. The tile left behind becomes a normal
-                farm that gets auctioned.
-              </div>
-              <div class="rules-callout rules-callout-warn">
-                <b>No hidden tiles left?</b> If you can't afford it and the
-                Super Banana is fully revealed — the
-                <b>richest remaining player wins</b>!
-              </div>
-            </div>
-
-            <!-- ═══ CATEGORY: AUCTIONS ═══ -->
-            <div class="rules-category-header" id="rules-sec-auctions">
-              <span class="rules-cat-line"></span>
-              <span class="rules-cat-label">🔨 Auctions</span>
-              <span class="rules-cat-line"></span>
-            </div>
-
-            <div class="rules-section">
-              <h3>🔨 Banana Bid</h3>
-              <p>
-                When you land on an unowned farm, an auction begins:
-              </p>
-              <div class="rules-steps">
-                <div class="rules-step">
-                  <span class="rules-step-num">1</span>
-                  <span
-                    ><b>Lander names a price</b> — You set the price for
-                    the farm (visible to all)</span
-                  >
-                </div>
-                <div class="rules-step">
-                  <span class="rules-step-num">2</span>
-                  <span
-                    ><b>15-second timer starts</b> — All other players race to
-                    accept or reject</span
-                  >
-                </div>
-                <div class="rules-step">
-                  <span class="rules-step-num">3</span>
-                  <span
-                    ><b>First to accept wins</b> — The first player to click
-                    accept buys the farm at the lander's price</span
-                  >
-                </div>
-              </div>
-              <p>
-                If everyone rejects or the timer runs out, the
-                <b>lander pays their own price</b> to the bank and gets the
-                farm. This works the same in all modes and player counts.
-              </p>
-              <div class="rules-callout rules-callout-tip">
-                <b>Broke?</b> If you have 0🍌 and land on an unowned tile,
-                it auto-lists for free. Players who can't afford the pitched
-                price are excluded from the auction.
-              </div>
-            </div>
-
-            <!-- ═══ CATEGORY: ENCOUNTERS ═══ -->
-            <div class="rules-category-header" id="rules-sec-encounters">
-              <span class="rules-cat-line"></span>
-              <span class="rules-cat-label">⚔️ Encounters</span>
-              <span class="rules-cat-line"></span>
-            </div>
-
-            <div class="rules-section">
-              <h3>🃏 Poker (Texas Hold'em)</h3>
-              <p>
-                Triggered when
-                <b>two non-teammate players share the same tile</b> and both
-                have money. Play a heads-up hand of <b>Texas Hold'em</b>:
-              </p>
-              <ul>
-                <li>Landing player = <b>Big Blind</b> (up to 200🍌)</li>
-                <li>Other player = <b>Small Blind</b> (up to 100🍌)</li>
-                <li>Rounds: <b>Preflop → Flop → Turn → River → Showdown</b></li>
-                <li>
-                  Standard poker hand rankings (pair, straight, flush, etc.)
-                </li>
-              </ul>
-              <p>
-                Each round you can <b>check, raise, or fold</b>. Winner takes
-                the pot. Tied hands split it evenly.
-              </p>
-            </div>
-
-            <div class="rules-section">
-              <h3>🐵 Monkey Poker (Optional)</h3>
-              <p>
-                A simplified poker variant — <b>on by default</b>. Replaces
-                Texas Hold'em with a faster, luck-based card game:
-              </p>
-              <ul>
-                <li>Cards are numbered <b>1–10</b> (no suits)</li>
-                <li>Each player gets <b>1 card per round</b> over 3 rounds</li>
-                <li>Rounds: <b>Preflop → Flop → River → Showdown</b></li>
-                <li>At showdown, <b>highest sum wins</b> the pot</li>
-              </ul>
-              <div class="rules-callout rules-callout-tip">
-                <b>Why Monkey Poker?</b> It's faster and more accessible than
-                full Texas Hold'em. You still bluff and fold, but don't need to
-                know poker hand rankings. Toggle it off in game settings for the
-                real deal!
-              </div>
-            </div>
-
-            <div class="rules-section">
-              <h3>🍍 Pineapple Bombs (Optional)</h3>
-              <p>
-                When <b>Bomb Mode</b> is enabled, players can buy and plant
-                hidden explosives on the board:
-              </p>
-              <div class="rules-steps">
-                <div class="rules-step">
-                  <span class="rules-step-num">1</span>
-                  <span><b>Buy a bomb</b> for 5,000🍌 (one at a time)</span>
-                </div>
-                <div class="rules-step">
-                  <span class="rules-step-num">2</span>
-                  <span
-                    ><b>Place it</b> on any tile on the board (can't stack on
-                    existing bombs)</span
-                  >
-                </div>
-                <div class="rules-step">
-                  <span class="rules-step-num">3</span>
-                  <span
-                    ><b>Wait...</b> The bomb has a <b>5-turn timer</b>. It
-                    arms when the timer reaches ≤2. If an opponent lands on or
-                    near it while armed — 💥 BOOM!</span
-                  >
-                </div>
-              </div>
-              <div class="rules-callout rules-callout-warn">
-                <b>⏳ Timer:</b> Bombs last <b>5 turns</b>. They
-                <b>arm at ≤2 turns remaining</b> and
-                <b>auto-explode when the timer hits 0</b>.
-                <b>Blast radius</b> hits the bomb tile
-                <b>plus 1 tile on each side</b>
-                (3 tiles total). If a bomb survives a full round without
-                detonating, it expires and the owner gets a refund.
-              </div>
-              <div class="rules-callout rules-callout-tip">
-                <b>💥 Self-damage:</b> If you or your <b>teammate</b> are
-                caught in your own bomb's blast, you lose
-                <b>50% of your bananas</b> (but aren't eliminated).
-                Opponents in the blast are <b>instantly eliminated</b> and
-                you claim their bananas and farms.
-              </div>
-            </div>
-
-            <!-- ═══ CATEGORY: TRADING & SELLING ═══ -->
-            <div class="rules-category-header" id="rules-sec-trading">
-              <span class="rules-cat-line"></span>
-              <span class="rules-cat-label">🏪 Trading & Selling</span>
-              <span class="rules-cat-line"></span>
-            </div>
-
-            <div class="rules-section">
-              <h3>🏷️ Sell Listings (Marketplace)</h3>
-              <p>
-                Any player can list their farms for sale on a shared
-                <b>marketplace</b>. Other players can browse and buy at the
-                listed price — first come, first served.
-              </p>
-              <div class="rules-steps">
-                <div class="rules-step">
-                  <span class="rules-step-num">1</span>
-                  <span
-                    ><b>List a farm</b> — Set your asking price
-                    (1–100,000🍌)</span
-                  >
-                </div>
-                <div class="rules-step">
-                  <span class="rules-step-num">2</span>
-                  <span
-                    ><b>Wait for a buyer</b> — Other players see the listing and
-                    can purchase instantly</span
-                  >
-                </div>
-                <div class="rules-step">
-                  <span class="rules-step-num">3</span>
-                  <span
-                    ><b>Sale completes</b> — Buyer pays the listed price,
-                    ownership transfers immediately</span
-                  >
-                </div>
-              </div>
-              <div class="rules-callout rules-callout-tip">
-                <b>📋 Limits:</b> You can have up to <b>5 active listings</b>
-                at once. You can cancel a listing at any time before someone
-                buys it.
-              </div>
-              <div class="rules-callout rules-callout-warn">
-                <b>⚠️ No self-buys:</b> You can't purchase your own listing. If
-                you lose the farm before someone buys it (e.g. via bomb), the
-                listing is automatically cancelled.
-              </div>
-            </div>
-
-            <div class="rules-section">
-              <h3>🔄 Farm Swapping (1-for-1)</h3>
-              <p>
-                Any two players can arrange a <b>1-for-1 farm trade</b> — you
-                give one of your farms and receive one of theirs in return.
-                <b>No fee</b> is charged for mutual swaps.
-              </p>
-              <div class="rules-callout rules-callout-tip">
-                <b>⏰ Timing:</b> Swaps can only happen when it's
-                <b>not your turn</b>. Both farms change ownership instantly.
-              </div>
-            </div>
-
-            <!-- ═══ CATEGORY: ABILITIES ═══ -->
-            <div class="rules-category-header" id="rules-sec-abilities">
-              <span class="rules-cat-line"></span>
-              <span class="rules-cat-label">🐾 Abilities & Tools</span>
-              <span class="rules-cat-line"></span>
-            </div>
-
-            <div class="rules-section">
-              <h3>🐾 Pets</h3>
-              <p>
-                Choose a pet in the lobby. Each pet has a unique ability you
-                activate <b>between turns</b> (when it's not your turn). The
-                effect resolves at the start of your next turn.
-              </p>
-              <table class="rules-table">
-                <thead>
-                  <tr>
-                    <th>Pet</th>
-                    <th>Ability</th>
-                    <th>Cooldown</th>
-                    <th>Limited</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr>
-                    <td>🦁 Strong</td>
-                    <td>Move forward 1 space (guaranteed)</td>
-                    <td>15 rolls</td>
-                    <td>1 use</td>
-                  </tr>
-                  <tr>
-                    <td>🐆 Energy</td>
-                    <td>Coin flip: heads = move forward 1 space</td>
-                    <td>7 rolls</td>
-                    <td>3 uses</td>
-                  </tr>
-                  <tr>
-                    <td>🦄 Magic</td>
-                    <td>Coin flip: heads = forward 1, tails = backward 1</td>
-                    <td>15 rolls</td>
-                    <td>2 uses</td>
-                  </tr>
-                </tbody>
-              </table>
-              <p>
-                <b>🆓 Pets are free to use</b> — no banana cost.
-                You must have <b>rolled at least once</b> before your pet
-                becomes available.
-              </p>
-              <p>
-                <b>Cooldown mode:</b> Pet recharges after N rolls (counting
-                <i>all</i> players' rolls). <b>Limited mode:</b> Fixed number of
-                uses for the entire game — use them wisely!
-              </p>
-            </div>
-
-            <!-- ═══ CATEGORY: FOG OF WAR ═══ -->
-            <div class="rules-category-header" id="rules-sec-fogofwar">
-              <span class="rules-cat-line"></span>
-              <span class="rules-cat-label">🌫️ Fog of War</span>
-              <span class="rules-cat-line"></span>
-            </div>
-
-            <div class="rules-section">
-              <h3>🌫️ Fog of War (Optional)</h3>
-              <p>
-                When enabled, the board starts <b>hidden</b> — tiles are
-                face-down and you can't see what's on them until you
-                <b>discover</b> them. Tiles are revealed when:
-              </p>
-              <ul>
-                <li>You <b>land on</b> or <b>walk through</b> a tile</li>
-                <li>The tile is <b>adjacent</b> to a tile you've visited</li>
-              </ul>
-              <p>
-                Each player has their own <b>revealed tiles</b> set — what
-                you've discovered is visible only to you. Other players may
-                have discovered different parts of the board.
-              </p>
-              <div class="rules-callout rules-callout-tip">
-                <b>🔍 Strategy:</b> Fog of War adds a layer of exploration
-                and memory to the game. You need to explore the board to find
-                the ⭐ Super Banana — you can't just rush to it from the
-                start!
-              </div>
-            </div>
-
-            <!-- ═══ CATEGORY: GAME MODES ═══ -->
-            <div class="rules-category-header" id="rules-sec-settings">
-              <span class="rules-cat-line"></span>
-              <span class="rules-cat-label">⚙️ Game Modes & Settings</span>
-              <span class="rules-cat-line"></span>
-            </div>
-
-            <div class="rules-section">
-              <h3>👥 Teams Mode (2v2)</h3>
-              <p>
-                4 players split into 2 teams. Either teammate buying the ⭐
-                Magic Banana wins it for the whole team. A <b>coin flip</b>
-                decides which team moves first.
-              </p>
-              <ul>
-                <li>
-                  <b>No poker</b> between teammates — landing on your teammate's
-                  farm is safe
-                </li>
-                <li>Teammate banana piles are <b>collected, not stolen</b></li>
-                <li>Auctions work the same — lander prices, 15s timer, first accept wins</li>
-              </ul>
-
-              <h4 class="rules-sub-heading">🤝 Team Actions</h4>
-              <table class="rules-table">
-                <thead>
-                  <tr>
-                    <th>Action</th>
-                    <th>Fee</th>
-                    <th>Description</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr>
-                    <td>📦 Send Bananas</td>
-                    <td>150🍌</td>
-                    <td>Transfer any amount of 🍌 to your teammate (fee is on top)</td>
-                  </tr>
-                  <tr>
-                    <td>🔄 Swap Farms</td>
-                    <td>100🍌</td>
-                    <td>
-                      Exchange one of your farms for one of your teammate's
-                    </td>
-                  </tr>
-                  <tr>
-                    <td>🎁 Give Farm</td>
-                    <td>300🍌</td>
-                    <td>Gift a farm to your teammate (one-way transfer)</td>
-                  </tr>
-                </tbody>
-              </table>
-              <div class="rules-callout rules-callout-tip">
-                <b>⏰ Timing:</b> Team actions can only be performed when it's
-                <b>not your turn</b>. Plan your coordination between rounds!
-              </div>
-            </div>
-
-            <div class="rules-section">
-              <h3>⚙️ Configurable Options</h3>
-              <p>These settings can be toggled when creating a game:</p>
-              <table class="rules-table">
-                <thead>
-                  <tr>
-                    <th>Setting</th>
-                    <th>Default</th>
-                    <th>Description</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr>
-                    <td>💰 Starting Bananas</td>
-                    <td>2,222🍌</td>
-                    <td>Range: 100–4,000🍌</td>
-                  </tr>
-                  <tr>
-                    <td>👥 Max Players</td>
-                    <td>4</td>
-                    <td>2–4 players (locked to 4 in Teams)</td>
-                  </tr>
-                  <tr>
-                    <td>🔨 Banana Bid</td>
-                    <td>On</td>
-                    <td>Price-it auction with 15s timer</td>
-                  </tr>
-                  <tr>
-                    <td>🍍 Pineapple Bomb Mode</td>
-                    <td>On</td>
-                    <td>Buy & plant bombs for instant elimination</td>
-                  </tr>
-                  <tr>
-                    <td>🐵 Monkey Poker</td>
-                    <td>On</td>
-                    <td>Simplified poker (1–10 cards, sum wins)</td>
-                  </tr>
-                  <tr>
-                    <td>🌫️ Fog of War</td>
-                    <td>Off</td>
-                    <td>Board starts hidden — discover tiles as you move</td>
-                  </tr>
-                  <tr>
-                    <td>🐾 Pet Mode</td>
-                    <td>Cooldown</td>
-                    <td>Cooldown (recharges) or Limited (fixed uses)</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-
-            <!-- Back to top -->
-            <div class="rules-back-to-top">
-              <a onclick="scrollToRule('rules-sec-quickref')">⬆️ Back to Top</a>
-            </div>
-          </div>
-        </div>
+        <!-- Rules tab removed — rules now live in the in-game How to Play panel -->
         <!-- Shared back button -->
         <div class="board-preview-actions">
           <button class="btn btn-big btn-alt" onclick="closeBoardPreview()">
@@ -2435,9 +2115,10 @@
 
     <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@twemoji/api@15.1.0/dist/twemoji.min.js"></script>
-    <script src="board.js?v=2"></script>
+    <script src="toast.js?v=1"></script>
+    <script src="board.js?v=3"></script>
     <script src="auth.js?v=2"></script>
-    <script src="game.js?v=3"></script>
+    <script src="game.js?v=4"></script>
     <script src="twemoji-init.js?v=1"></script>
   </body>
 </html>

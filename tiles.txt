@@ -2,10 +2,10 @@ MONKEY BIDNIZ BOARD — ALL 52 TILES
 =================================
 
 ── CORNERS (4) ──────────────────────────────────
- 0  🌴 GROW 100%
-13  🌴 GROW 25%
-26  🌴 GROW 50%
-39  🌴 GROW 75%
+ 0  🌴 GROW 25%
+13  🌴 GROW 50%
+26  🌴 GROW 75%
+39  🌴 GROW 100%
 
 ── LADY FINGER / Pink (10) ──────────────────────
  1  A1   60🍌
