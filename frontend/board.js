@@ -132,6 +132,7 @@ function resetBoardAnimationState() {
   _prevFreeBananasTiles = new Set();
   _freeBananasShown = new Set();
   _chainCache = null;
+  window._lastGrowFiredKey = null;
 }
 
 // ——— Shared helper: show a floating popup at the "Your Bananas" box ——
@@ -168,6 +169,29 @@ function _setupBoardDelegation() {
     if (isNaN(i)) return;
     const gs = window._gs;
     if (!gs) return;
+    // Simple mode: pick starting tile on first turn
+    if (
+      gs.gameMode === "simple" &&
+      gs.currentPlayer &&
+      gs.currentPlayer.id === myId &&
+      gs.currentPlayer.startPickPending &&
+      !window._tokenWalking
+    ) {
+      // Block picks on tiles already occupied by another player
+      const occupied =
+        gs.players &&
+        gs.players.some(
+          (p) =>
+            p.id !== myId &&
+            !p.bankrupt &&
+            !p.startPickPending &&
+            p.position === i,
+        );
+      if (occupied) return;
+      if (socket && gameId)
+        socket.emit("pick_start_tile", { gameId, position: i });
+      return;
+    }
     // Vine swing mode
     if (gs.vineSwing && gs.vineSwing === myId && !window._tokenWalking) {
       if (tile.classList.contains("space-pickable")) {
@@ -181,6 +205,13 @@ function _setupBoardDelegation() {
       if (socket && gameId) {
         socket.emit("place_bomb", { gameId, position: i });
         closeBombPlacement();
+      }
+      return;
+    }
+    // Simple-mode ability target selection (swap / scout / teleport)
+    if (window._abilityTargetMode && !window._tokenWalking) {
+      if (typeof handleAbilityTileClick === "function") {
+        handleAbilityTileClick(i);
       }
       return;
     }
@@ -283,16 +314,18 @@ function walkStepUpdate(gs) {
       pileEl.style.top = r.t + r.h / 2 + "%";
       pileEl.style.setProperty("--pile-transform", "translate(-100%, -50%)");
     } else {
-      const cx = r.l + r.w / 2;
+      // Corner tile: push the pile straight out vertically (top corners above,
+      // bottom corners below), centered horizontally, so it clears the board
+      // edge instead of overlapping a neighbour tile's pile box.
       const cy = r.t + r.h / 2;
-      pileEl.style.left = (cx < 50 ? r.l + r.w + 0.3 : r.l - 0.3) + "%";
-      pileEl.style.top = (cy < 50 ? r.t + r.h + 0.3 : r.t - 0.3) + "%";
-      pileEl.style.setProperty(
-        "--pile-transform",
-        (cx < 50 ? "translateX(0)" : "translateX(-100%)") +
-          " " +
-          (cy < 50 ? "translateY(0)" : "translateY(-100%)"),
-      );
+      pileEl.style.left = r.l + r.w / 2 + "%";
+      if (cy < 50) {
+        pileEl.style.top = r.t - 0.3 + "%";
+        pileEl.style.setProperty("--pile-transform", "translate(-50%, -100%)");
+      } else {
+        pileEl.style.top = r.t + r.h + 0.3 + "%";
+        pileEl.style.setProperty("--pile-transform", "translate(-50%, 0)");
+      }
     }
     board.appendChild(pileEl);
   }
@@ -420,6 +453,7 @@ function walkStepUpdate(gs) {
     const posMap = {};
     gs.players.forEach((p) => {
       if (p.bankrupt && !bombPendingExplosion) return;
+      if (p.startPickPending) return;
       const pos =
         frozenPos && frozenPos[p.id] != null ? frozenPos[p.id] : p.position;
       if (!posMap[pos]) posMap[pos] = [];
@@ -459,6 +493,56 @@ function walkStepUpdate(gs) {
   }
 }
 
+// Animate the item-auction counter dropping after a dice-step subtraction:
+// a "-N" floater rises and fades above the number while the number itself
+// tweens down from `from` to `to`. Resilient to mid-tween re-renders — the
+// floater lives on document.body and the number is looked up fresh each frame.
+function _animateAuctionCounter(from, to) {
+  window._auctionCounterAnimating = true;
+  const drop = from - to;
+  const duration = 650;
+  const start = performance.now();
+
+  // "-N" floater (deferred one frame so the counter element is in the DOM).
+  requestAnimationFrame(() => {
+    const el = document.getElementById("auction-counter-value");
+    if (el && drop > 0) {
+      const rect = el.getBoundingClientRect();
+      const floater = document.createElement("div");
+      floater.className = "auction-counter-floater";
+      floater.textContent = "-" + drop;
+      floater.style.position = "fixed";
+      floater.style.left = rect.left + rect.width / 2 + "px";
+      floater.style.top = rect.top + "px";
+      floater.style.pointerEvents = "none";
+      floater.style.zIndex = "1200";
+      document.body.appendChild(floater);
+      floater.addEventListener("animationend", () => floater.remove());
+    }
+  });
+
+  function frame(now) {
+    const t = Math.min(1, (now - start) / duration);
+    const eased = 1 - Math.pow(1 - t, 3); // ease-out
+    const val = Math.round(from - drop * eased);
+    window._auctionCounterShown = val;
+    const el = document.getElementById("auction-counter-value");
+    if (el) el.textContent = String(val);
+    if (t < 1) {
+      requestAnimationFrame(frame);
+    } else {
+      window._auctionCounterShown = to;
+      const done = document.getElementById("auction-counter-value");
+      if (done) {
+        done.textContent = String(to);
+        done.classList.remove("counting");
+      }
+      window._auctionCounterAnimating = false;
+    }
+  }
+  requestAnimationFrame(frame);
+}
+
 // ——— Render Board ——————————————————————————————————————————————————
 
 function renderBoard(gs) {
@@ -466,6 +550,8 @@ function renderBoard(gs) {
   // Capture vine-swing-just-landed flag before pile detection clears it —
   // needed later for token no-transition (teleport) and steal suppression.
   const vineSwingLanding = !!window._vineSwingJustLanded;
+  // Teleport card: token jumps to the destination without a walk animation.
+  const teleportLanding = !!(gs && gs.lastTeleport && gs.lastTeleport.turn === gs.turn);
   // Capture bomb-pending state BEFORE the explosion animation block sets
   // _explosionShown — used by the player-token block below to keep victims
   // visible until the explosion fires on the same frame.
@@ -482,6 +568,7 @@ function renderBoard(gs) {
   const tradeDealsToggle = document.getElementById("board-trade-deals-toggle");
   const pokerTable = document.getElementById("poker-table");
   const auctionBox = document.getElementById("auction-box");
+  const itemAuctionBox = document.getElementById("item-auction-box");
   const helpPanel = document.getElementById("board-help");
   const helpToggle = document.getElementById("board-help-toggle");
   const emojiToggle = document.getElementById("board-emoji-toggle");
@@ -495,6 +582,7 @@ function renderBoard(gs) {
   if (tradeDealsToggle) tradeDealsToggle.remove();
   if (pokerTable) pokerTable.remove();
   if (auctionBox) auctionBox.remove();
+  if (itemAuctionBox) itemAuctionBox.remove();
   if (helpPanel) helpPanel.remove();
   if (helpToggle) helpToggle.remove();
   if (emojiToggle) emojiToggle.remove();
@@ -526,6 +614,7 @@ function renderBoard(gs) {
   if (phoneToggle) board.appendChild(phoneToggle);
   if (pokerTable) board.appendChild(pokerTable);
   if (auctionBox) board.appendChild(auctionBox);
+  if (itemAuctionBox) board.appendChild(itemAuctionBox);
 
   // Use server's board layout if available, otherwise fall back to static data
   const layout = gs && gs.boardLayout;
@@ -557,7 +646,8 @@ function renderBoard(gs) {
   // Compute chain multipliers (cached — only recompute when ownership changes)
   // Build a key from owned tile positions to detect changes
   let _chainMultipliers;
-  if (gs && gs.properties) {
+  const _isSimpleMode = gs && gs.gameMode === "simple";
+  if (gs && gs.properties && !_isSimpleMode) {
     let chainKey = "";
     for (const prop of gs.properties) {
       if (prop.owner) chainKey += prop.id + ":" + prop.owner + ",";
@@ -573,7 +663,6 @@ function renderBoard(gs) {
           ownerPositions[prop.owner].push(prop);
         }
       }
-      const CORNERS_SET = [0, 13, 26, 39];
       for (const ownerId of Object.keys(ownerPositions)) {
         const props = ownerPositions[ownerId];
         const posSet = new Set(props.map((p) => p.id));
@@ -589,7 +678,7 @@ function renderBoard(gs) {
             const prev = (cur - 1 + 52) % 52;
             const next = (cur + 1) % 52;
             for (const n of [prev, next]) {
-              if (visited.has(n) || !posSet.has(n) || CORNERS_SET.includes(n)) continue;
+              if (visited.has(n) || !posSet.has(n)) continue;
               const nProp = _propById[n];
               if (!nProp || nProp.group !== prop.group) continue;
               visited.add(n);
@@ -603,6 +692,31 @@ function renderBoard(gs) {
     }
   } else {
     _chainMultipliers = {};
+  }
+
+  // Simple-mode start pick: tiles already occupied by another player can't be picked.
+  const _occupiedPositions = new Set();
+  if (gs && gs.players) {
+    for (const p of gs.players) {
+      if (!p.bankrupt && !p.startPickPending) _occupiedPositions.add(p.position);
+    }
+  }
+
+  // Grow tile glow: flash any grow tile that just fired this turn (landed-on or
+  // rolled-match). Deferred until the walk finishes so it reads as the payoff,
+  // and deduped by turn+positions so it plays once rather than every re-render.
+  let growGlowSet = null;
+  if (
+    gs &&
+    Array.isArray(gs.lastGrowFired) &&
+    gs.lastGrowFired.length > 0 &&
+    !window._tokenWalking
+  ) {
+    const growKey = (gs.turn || 0) + ":" + gs.lastGrowFired.join(",");
+    if (growKey !== window._lastGrowFiredKey) {
+      window._lastGrowFiredKey = growKey;
+      growGlowSet = new Set(gs.lastGrowFired);
+    }
   }
 
   for (let i = 0; i < BOARD_SIZE; i++) {
@@ -619,36 +733,45 @@ function renderBoard(gs) {
 
     if (r.side) el.classList.add("side-" + r.side);
 
-    // Fog of war: hide unrevealed non-corner tiles
-    const isCornerPos = i === 0 || i === 13 || i === 26 || i === 39;
+    // Fog of war: only the start tile (where players begin) is auto-revealed.
     const tileType = layout ? layout[i].type : null;
     const isRevealed =
       tileType !== "hidden" &&
-      (isCornerPos ||
-        !myRevealed ||
+      (!myRevealed ||
         myRevealed.has(i) ||
         (typeof revealAll !== "undefined" && revealAll));
+
+    // Simple mode start-pick: current player can click ANY tile to land there.
+    const startPickActive =
+      gs &&
+      gs.gameMode === "simple" &&
+      gs.currentPlayer &&
+      gs.currentPlayer.id === myId &&
+      gs.currentPlayer.startPickPending &&
+      !window._tokenWalking;
 
     if (!isRevealed) {
       el.classList.add("space-hidden");
       el.innerHTML = `<span class="sname">${i}</span>`;
       // Vine Swing: hidden tiles are also clickable (only own properties)
-      if (gs && gs.vineSwing && gs.vineSwing === myId && !isCornerPos && !window._tokenWalking) {
+      if (gs && gs.vineSwing && gs.vineSwing === myId && !window._tokenWalking) {
         const ownsProp = _propById[i] && _propById[i].owner === myId;
         if (ownsProp) {
           el.classList.add("space-pickable");
         }
       }
-      // Bomb placement mode: make hidden non-corner tiles clickable
-      if (window._bombPlacementMode && !isCornerPos) {
+      if (startPickActive && !_occupiedPositions.has(i)) {
+        el.classList.add("space-pickable", "start-pick-target");
+      }
+      // Bomb placement mode: make hidden tiles clickable
+      if (window._bombPlacementMode) {
         el.classList.add("space-pickable", "bomb-target");
       }
       // Sell mode: make hidden owned tiles clickable too
       if (
         typeof isSellMode === "function" &&
         isSellMode() &&
-        window._sellState &&
-        !isCornerPos
+        window._sellState
       ) {
         const sState = window._sellState;
         const tProp = _propById[i];
@@ -672,11 +795,29 @@ function renderBoard(gs) {
 
       if (isCorner) {
         el.classList.add("corner");
-        el.textContent = tile.name;
+        // Simple mode: grow tiles show only their number (0-7), not "GROW N".
+        if (gs && gs.gameMode === "simple" && tile.growLabel != null) {
+          el.innerHTML = `<span class="grow-yield">${tile.growLabel}</span>`;
+        } else {
+          el.textContent = tile.name;
+        }
+        // Glow if this grow tile just fired (landed-on or rolled-match).
+        if (growGlowSet && growGlowSet.has(i)) {
+          el.classList.add("grow-fired");
+          el.addEventListener(
+            "animationend",
+            () => el.classList.remove("grow-fired"),
+            { once: true },
+          );
+        }
       } else if (tile.tileName) {
         // Buyable tile (property, railroad, utility)
         const label = tile.tileLabel || tile.tileName;
-        if (tile.group === "desert") {
+        if (tile.group === "simple") {
+          // Simple mode: each farm tile shows its own yield in large white text.
+          el.classList.add("g-simple");
+          el.innerHTML = `<span class="simple-yield">${tile.price}</span>`;
+        } else if (tile.group === "desert") {
           el.classList.add("type-desert");
           el.innerHTML = `<span class="sname desert-icon">${tile.tileName}</span>`;
         } else if (tile.group === "mushroom") {
@@ -746,16 +887,27 @@ function renderBoard(gs) {
     }
 
     // Vine Swing: make revealed owned tiles clickable
-    if (gs && gs.vineSwing && gs.vineSwing === myId && !isCornerPos && !window._tokenWalking) {
+    if (gs && gs.vineSwing && gs.vineSwing === myId && !window._tokenWalking) {
       const ownsProp = _propById[i] && _propById[i].owner === myId;
       if (ownsProp) {
         el.classList.add("space-pickable");
       }
     }
 
-    // Bomb placement mode: make non-corner tiles clickable
-    if (window._bombPlacementMode && !isCornerPos) {
+    // Bomb placement mode: make tiles clickable
+    if (window._bombPlacementMode) {
       el.classList.add("space-pickable", "bomb-target");
+    }
+
+    // Simple-mode ability target selection (swap / scout / teleport)
+    if (window._abilityTargetMode) {
+      const mode = window._abilityTargetMode;
+      if (_isAbilityTileSelectable(mode, i, gs)) {
+        el.classList.add("space-pickable", "ability-target");
+      }
+      if (mode.picks && mode.picks.includes(i)) {
+        el.classList.add("ability-picked");
+      }
     }
 
     // Banana pile — collect for board-level rendering below
@@ -816,6 +968,12 @@ function renderBoard(gs) {
       }
     }
 
+    // Simple-mode start pick: visually mark revealed tiles as pickable too
+    // (but skip tiles a player has already chosen).
+    if (startPickActive && !_occupiedPositions.has(i)) {
+      el.classList.add("space-pickable", "start-pick-target");
+    }
+
     board.appendChild(el);
   }
 
@@ -861,17 +1019,18 @@ function renderBoard(gs) {
       pileEl.style.top = r.t + r.h / 2 + "%";
       pileEl.style.setProperty("--pile-transform", "translate(-100%, -50%)");
     } else {
-      // Corner — place toward center
-      const cx = r.l + r.w / 2;
+      // Corner tile: push the pile straight out vertically (top corners above,
+      // bottom corners below), centered horizontally, so it clears the board
+      // edge instead of overlapping a neighbour tile's pile box.
       const cy = r.t + r.h / 2;
-      pileEl.style.left = (cx < 50 ? r.l + r.w + 0.3 : r.l - 0.3) + "%";
-      pileEl.style.top = (cy < 50 ? r.t + r.h + 0.3 : r.t - 0.3) + "%";
-      pileEl.style.setProperty(
-        "--pile-transform",
-        (cx < 50 ? "translateX(0)" : "translateX(-100%)") +
-          " " +
-          (cy < 50 ? "translateY(0)" : "translateY(-100%)"),
-      );
+      pileEl.style.left = r.l + r.w / 2 + "%";
+      if (cy < 50) {
+        pileEl.style.top = r.t - 0.3 + "%";
+        pileEl.style.setProperty("--pile-transform", "translate(-50%, -100%)");
+      } else {
+        pileEl.style.top = r.t + r.h + 0.3 + "%";
+        pileEl.style.setProperty("--pile-transform", "translate(-50%, 0)");
+      }
     }
 
     // Pile-grew animation: pile amount increased since last render
@@ -1139,11 +1298,60 @@ function renderBoard(gs) {
 
   const centerTitle = document.createElement("div");
   centerTitle.className = "board-center-title";
-  centerTitle.innerHTML =
-    '<div class="jungle-canopy">🌴🌳🍌🌳🌴</div>' +
-    '<span class="banana-land-name">MONKEY<br>BUSINESS</span>' +
-    '<div class="jungle-floor">🍌🌿🌿🍌</div>' +
-    '<div class="center-vine">🌱🍃🌱</div>';
+  const showAuctionCounter =
+    gs &&
+    gs.gameMode === "simple" &&
+    gs.itemAuctionEnabled &&
+    (gs.state === "playing" || gs.state === "revealing");
+  if (showAuctionCounter) {
+    centerTitle.classList.add("with-auction-counter");
+    const target = Number(gs.itemAuctionCounter ?? gs.itemAuctionStartValue ?? 50);
+    // Track the value the player currently sees so dice-step subtractions can be
+    // animated (counting down + a "-N" floater) instead of snapping.
+    if (typeof window._auctionCounterShown !== "number") {
+      window._auctionCounterShown = target;
+    }
+    let displayVal = window._auctionCounterShown;
+    let animateFrom = null;
+    if (!window._auctionCounterAnimating) {
+      if (target > window._auctionCounterShown) {
+        // Counter refilled after an auction (or otherwise grew) — snap up.
+        window._auctionCounterShown = target;
+        displayVal = target;
+      } else if (target < window._auctionCounterShown && !window._tokenWalking) {
+        // Decrement: animate down once the token has finished walking.
+        animateFrom = window._auctionCounterShown;
+        displayVal = window._auctionCounterShown;
+      } else {
+        // Equal, or decremented while a token is still walking → hold the old
+        // value until the walk ends, then a post-walk render animates it.
+        displayVal = window._auctionCounterShown;
+      }
+    }
+    const countingClass =
+      animateFrom != null || window._auctionCounterAnimating ? " counting" : "";
+    centerTitle.innerHTML =
+      '<div class="jungle-canopy">🌴🌳🍌🌳🌴</div>' +
+      '<div class="auction-counter" title="Click for item abilities" onclick="toggleAbilitiesPopover(event)">' +
+      '<div class="auction-counter-label">Next auction in</div>' +
+      '<div class="auction-counter-value' + countingClass + '" id="auction-counter-value">' +
+      String(displayVal) +
+      '</div>' +
+      '<div class="auction-counter-sub">dice steps</div>' +
+      '<div class="auction-counter-hint">ⓘ Abilities</div>' +
+      '</div>' +
+      '<div class="jungle-floor">🍌🌿🌿🍌</div>';
+    if (animateFrom != null) _animateAuctionCounter(animateFrom, target);
+  } else {
+    // Counter hidden — reset tracking so it re-initializes cleanly next time.
+    window._auctionCounterShown = undefined;
+    window._auctionCounterAnimating = false;
+    centerTitle.innerHTML =
+      '<div class="jungle-canopy">🌴🌳🍌🌳🌴</div>' +
+      '<span class="banana-land-name">MONKEY<br>BUSINESS</span>' +
+      '<div class="jungle-floor">🍌🌿🌿🍌</div>' +
+      '<div class="center-vine">🌱🍃🌱</div>';
+  }
   board.appendChild(centerTitle);
 
   // Bomb indicators
@@ -1304,7 +1512,8 @@ function renderBoard(gs) {
         placerEl.textContent = kill.placerName || "Someone";
         const verbEl = document.createElement("span");
         verbEl.className = "bomb-kill-verb";
-        verbEl.textContent = " ELIMINATED ";
+        verbEl.textContent =
+          kill.mode === "steal" ? " BOMBED " : " ELIMINATED ";
         const victimEl = document.createElement("span");
         victimEl.className = "bomb-kill-name bomb-kill-victim";
         victimEl.textContent = kill.victimName || "someone";
@@ -1376,6 +1585,8 @@ function renderBoard(gs) {
     const posMap = {};
     gs.players.forEach((p) => {
       if (p.bankrupt && !bombPendingExplosion) return;
+      // Simple mode: hide tokens for players who haven't taken their start pick yet.
+      if (p.startPickPending) return;
       const pos =
         frozenPos && frozenPos[p.id] != null ? frozenPos[p.id] : p.position;
       if (!posMap[pos]) posMap[pos] = [];
@@ -1406,7 +1617,7 @@ function renderBoard(gs) {
         // Disable transition for vine swing (teleport) or brand new tokens
         // vineSwingLanding catches the completion frame where gs.vineSwing is
         // already null but the player just teleported to a new tile.
-        if (gs.vineSwing || vineSwingLanding || isNew) {
+        if (gs.vineSwing || vineSwingLanding || teleportLanding || isNew) {
           tok.classList.add("token-notransition");
         }
 
@@ -1420,7 +1631,7 @@ function renderBoard(gs) {
         if (!tok.parentNode) tokenLayer.appendChild(tok);
 
         // Re-enable transition after layout paint
-        if (gs.vineSwing || vineSwingLanding || isNew) {
+        if (gs.vineSwing || vineSwingLanding || teleportLanding || isNew) {
           void tok.offsetWidth;
           tok.classList.remove("token-notransition");
         }
@@ -1537,28 +1748,26 @@ function buildPreviewLayout() {
     darkblue: "GM",
   };
 
-  const corners = new Set([0, 13, 26, 39]);
-  const cornerData = {
-    0: { id: 0, type: "grow", name: "GROW\n25%" },
-    13: { id: 13, type: "grow", name: "GROW\n50%" },
-    26: { id: 26, type: "grow", name: "GROW\n75%" },
-    39: { id: 39, type: "grow", name: "GROW\n100%" },
-  };
+  const growTiles = [
+    { type: "grow", name: "GROW\n25%", growPct: 0.25 },
+    { type: "grow", name: "GROW\n50%", growPct: 0.5 },
+    { type: "grow", name: "GROW\n75%", growPct: 0.75 },
+    { type: "grow", name: "GROW\n100%", growPct: 1.0 },
+  ];
 
-  // Collect non-corner tiles from SPACE_DATA and SPECIAL_SPACES
-  const nonCornerTiles = [];
+  // Collect every tile (including grow tiles) into a single shuffle pool
+  const allTiles = [...growTiles];
   for (let i = 0; i < BOARD_SIZE; i++) {
-    if (corners.has(i)) continue;
     const prop = SPACE_DATA[i];
     const special = SPECIAL_SPACES[i];
     if (prop) {
-      nonCornerTiles.push({
+      allTiles.push({
         tileName: prop.name,
         group: prop.group,
         price: prop.price,
         type: "property",
       });
-    } else if (special) {
+    } else if (special && special.type !== "corner") {
       const entry = { type: special.type, name: special.name };
       if (special.fullName) entry.fullName = special.fullName;
       // Desert cacti are buyable
@@ -1573,36 +1782,75 @@ function buildPreviewLayout() {
         entry.group = "mushroom";
         entry.price = 7777;
       }
-      nonCornerTiles.push(entry);
+      allTiles.push(entry);
     }
   }
 
-  // Fisher-Yates shuffle
-  for (let i = nonCornerTiles.length - 1; i > 0; i--) {
+  // Fisher-Yates shuffle every tile (grow tiles can land anywhere)
+  for (let i = allTiles.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
-    [nonCornerTiles[i], nonCornerTiles[j]] = [
-      nonCornerTiles[j],
-      nonCornerTiles[i],
-    ];
+    [allTiles[i], allTiles[j]] = [allTiles[j], allTiles[i]];
   }
 
   // Build the full 52-tile layout with tileLabels
   const layout = [];
   const groupCounters = {};
-  let ti = 0;
   for (let i = 0; i < BOARD_SIZE; i++) {
-    if (corners.has(i)) {
-      layout.push(cornerData[i]);
-    } else {
-      const tile = { ...nonCornerTiles[ti], id: i };
-      // Add tileLabel for property groups
-      if (tile.group && groupLetters[tile.group]) {
-        groupCounters[tile.group] = (groupCounters[tile.group] || 0) + 1;
-        tile.tileLabel = groupLetters[tile.group] + groupCounters[tile.group];
-      }
-      layout.push(tile);
-      ti++;
+    const tile = { ...allTiles[i], id: i };
+    if (tile.group && groupLetters[tile.group]) {
+      groupCounters[tile.group] = (groupCounters[tile.group] || 0) + 1;
+      tile.tileLabel = groupLetters[tile.group] + groupCounters[tile.group];
     }
+    layout.push(tile);
+  }
+  return layout;
+}
+
+// Simple-mode board variation (mirrors backend BOARD_SIMPLE): 40 farms with
+// yields 10..400, 8 GROW tiles (labelled 0-7 like in play), and 4 special
+// tiles (vine swing, +500, -10% tax, super banana). Everything shuffled.
+function buildSimplePreviewLayout() {
+  const allTiles = [];
+  for (let i = 0; i < 40; i++) {
+    allTiles.push({
+      type: "property",
+      group: "simple",
+      tileName: `F${i + 1}`,
+      price: (i + 1) * 10,
+    });
+  }
+  for (let i = 0; i < 8; i++) {
+    allTiles.push({ type: "grow", name: "🌴 GROW 100%", growPct: 1.0 });
+  }
+  allTiles.push({ type: "tax10", name: "🍌 -10%" });
+  allTiles.push({
+    type: "special",
+    name: "⭐",
+    tileName: "⭐ Super Banana",
+    group: "mushroom",
+    price: 7777,
+  });
+  allTiles.push({ type: "bus", name: "Vine Swing" });
+  allTiles.push({ type: "freebananas", name: "+500" });
+
+  for (let i = allTiles.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [allTiles[i], allTiles[j]] = [allTiles[j], allTiles[i]];
+  }
+
+  // Shuffle grow labels 0..7 across the grow tiles, matching the real game.
+  const growLabels = [0, 1, 2, 3, 4, 5, 6, 7];
+  for (let i = growLabels.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [growLabels[i], growLabels[j]] = [growLabels[j], growLabels[i]];
+  }
+
+  const layout = [];
+  let gIdx = 0;
+  for (let i = 0; i < BOARD_SIZE; i++) {
+    const tile = { ...allTiles[i], id: i };
+    if (tile.type === "grow") tile.growLabel = growLabels[gIdx++];
+    layout.push(tile);
   }
   return layout;
 }
@@ -1611,6 +1859,12 @@ function renderPreviewTileList(layout) {
   const panel = document.getElementById("board-preview-tiles");
   if (!panel) return;
   panel.innerHTML = "";
+
+  // Simple-mode boards have a single "simple" farm group — render their own panel.
+  if (layout.some((t) => t.group === "simple")) {
+    renderSimplePreviewTileList(layout, panel);
+    return;
+  }
 
   const groupNames = {
     yellow: "Cavendish",
@@ -1746,14 +2000,14 @@ function renderPreviewTileList(layout) {
     panel.appendChild(section);
   }
 
-  // Corners
-  const cornerSection = document.createElement("div");
-  cornerSection.className = "bp-group";
-  cornerSection.innerHTML =
+  // Grow tiles (shuffled into the board like every other tile)
+  const growSection = document.createElement("div");
+  growSection.className = "bp-group";
+  growSection.innerHTML =
     `<div class="bp-group-header">` +
     `<span class="bp-group-dot" style="background:#2e7d32"></span>` +
-    `Corners \ud83c\udf34 ` +
-    `<span class="bp-group-meta">4 tiles (fixed)</span>` +
+    `Grow Tiles \ud83c\udf34 ` +
+    `<span class="bp-group-meta">4 tiles (shuffled)</span>` +
     `</div>`;
   for (const tile of layout) {
     if (tile.type !== "grow") continue;
@@ -1762,9 +2016,81 @@ function renderPreviewTileList(layout) {
     row.innerHTML =
       `<span class="bp-tile-dot" style="background:#2e7d32"></span>` +
       `<span class="bp-tile-name">${tile.name.replace(/\n/g, " ")}</span>`;
-    cornerSection.appendChild(row);
+    growSection.appendChild(row);
   }
-  panel.appendChild(cornerSection);
+  panel.appendChild(growSection);
+}
+
+// Tile list panel for the simple-mode board variation: 40 farms (compact yield
+// grid), 8 GROW tiles (0-7), and the 4 special tiles.
+function renderSimplePreviewTileList(layout, panel) {
+  const farms = layout
+    .filter((t) => t.group === "simple")
+    .sort((a, b) => a.price - b.price);
+  const grows = layout
+    .filter((t) => t.type === "grow")
+    .sort((a, b) => (a.growLabel || 0) - (b.growLabel || 0));
+
+  // Farms — a compact yield grid reads better than 40 rows.
+  const farmSection = document.createElement("div");
+  farmSection.className = "bp-group";
+  const lo = farms.length ? farms[0].price : 0;
+  const hi = farms.length ? farms[farms.length - 1].price : 0;
+  farmSection.innerHTML =
+    `<div class="bp-group-header">` +
+    `<span class="bp-group-dot" style="background:#ffd633"></span>` +
+    `Farms 🌽 ` +
+    `<span class="bp-group-meta">${farms.length} farms · ${lo}–${hi}🍌</span>` +
+    `</div>`;
+  const farmGrid = document.createElement("div");
+  farmGrid.className = "bp-yield-grid";
+  farmGrid.innerHTML = farms
+    .map((f) => `<span class="bp-yield-chip">${f.price}🍌</span>`)
+    .join("");
+  farmSection.appendChild(farmGrid);
+  panel.appendChild(farmSection);
+
+  // Grow tiles 0-7
+  const growSection = document.createElement("div");
+  growSection.className = "bp-group";
+  growSection.innerHTML =
+    `<div class="bp-group-header">` +
+    `<span class="bp-group-dot" style="background:#2e7d32"></span>` +
+    `Grow Tiles 🌴 ` +
+    `<span class="bp-group-meta">${grows.length} tiles · roll the number to fire</span>` +
+    `</div>`;
+  const growGrid = document.createElement("div");
+  growGrid.className = "bp-yield-grid";
+  growGrid.innerHTML = grows
+    .map((g) => `<span class="bp-yield-chip">🌴 ${g.growLabel}</span>`)
+    .join("");
+  growSection.appendChild(growGrid);
+  panel.appendChild(growSection);
+
+  // Special tiles
+  const specials = [
+    { icon: "🌿", name: "Vine Swing" },
+    { icon: "🍌", name: "+500 Bananas" },
+    { icon: "🍌", name: "-10% Peel" },
+    { icon: "⭐", name: "Super Banana" },
+  ];
+  const specialSection = document.createElement("div");
+  specialSection.className = "bp-group";
+  specialSection.innerHTML =
+    `<div class="bp-group-header">` +
+    `<span class="bp-group-dot" style="background:#666"></span>` +
+    `Special Tiles ` +
+    `<span class="bp-group-meta">${specials.length} tiles</span>` +
+    `</div>`;
+  for (const s of specials) {
+    const row = document.createElement("div");
+    row.className = "bp-tile";
+    row.innerHTML =
+      `<span class="bp-tile-dot" style="background:#666"></span>` +
+      `<span class="bp-tile-name">${s.icon} ${s.name}</span>`;
+    specialSection.appendChild(row);
+  }
+  panel.appendChild(specialSection);
 }
 
 function renderPreviewBoard(layout) {
@@ -1785,10 +2111,18 @@ function renderPreviewBoard(layout) {
     const tile = layout[i];
     if (tile.type === "grow") {
       el.classList.add("corner");
-      el.textContent = tile.name;
+      // Simple-mode grow tiles show just their number (0-7), like in play.
+      if (tile.growLabel != null) {
+        el.innerHTML = `<span class="grow-yield">${tile.growLabel}</span>`;
+      } else {
+        el.textContent = tile.name;
+      }
     } else if (tile.tileName) {
       const label = tile.tileLabel || tile.tileName;
-      if (tile.group === "desert") {
+      if (tile.group === "simple") {
+        el.classList.add("g-simple");
+        el.innerHTML = `<span class="simple-yield">${tile.price}</span>`;
+      } else if (tile.group === "desert") {
         el.classList.add("type-desert");
         el.innerHTML =
           `<span class="sname desert-icon">${tile.tileName}</span>` +

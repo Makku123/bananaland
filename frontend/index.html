@@ -561,6 +561,7 @@
               <label
                 >Mode
                 <select id="create-mode" onchange="toggleModeSettings()">
+                  <option value="simple" selected>Simple Mode (2-4 players)</option>
                   <option value="ffa">Free for All (2-4 players)</option>
                   <option value="teams">2v2 Teams (4 players)</option>
                 </select>
@@ -568,6 +569,59 @@
               <div id="team-settings" style="display: none">
                 <p class="mode-hint">Buy the Super Banana (7777🍌) to win!</p>
               </div>
+            </div>
+            <div
+              id="simple-settings"
+              class="form-section"
+              style="grid-column: 1 / -1"
+            >
+              <div class="form-section-title">🎁 Item Auction (Simple Mode)</div>
+              <div style="display: flex; gap: 18px; flex-wrap: wrap; align-items: center">
+                <label class="toggle-label">
+                  <input
+                    type="checkbox"
+                    id="create-item-auction-enabled"
+                    checked
+                    onchange="toggleItemAuctionFields()"
+                  />
+                  <span>Enable Item Auctions 🎡</span>
+                </label>
+                <label class="toggle-label item-auction-sub">
+                  <input type="checkbox" id="create-item-auction-vickrey" />
+                  <span>Vickrey (2nd-price) 🤫</span>
+                </label>
+              </div>
+              <div
+                class="item-auction-sub"
+                style="display: flex; gap: 18px; flex-wrap: wrap; margin-top: 8px"
+              >
+                <label
+                  >Counter Start
+                  <input
+                    type="number"
+                    id="create-item-auction-start"
+                    min="5"
+                    max="500"
+                    value="50"
+                    style="width: 90px"
+                  />
+                </label>
+                <label
+                  >Bid Timer (sec)
+                  <input
+                    type="number"
+                    id="create-item-auction-timer"
+                    min="5"
+                    max="60"
+                    value="15"
+                    style="width: 90px"
+                  />
+                </label>
+              </div>
+              <p class="mode-hint" style="margin-top: 6px">
+                Every dice roll subtracts from a shared counter. At 0, a wheel
+                spins and players silent-bid on the chosen item.
+              </p>
             </div>
             <div class="form-section" style="grid-column: 1 / -1">
               <div class="form-section-title">🔧 Options</div>
@@ -692,6 +746,7 @@
                 <select id="lobby-mode" onchange="updateLobbySettings()">
                   <option value="ffa">Free for All</option>
                   <option value="teams">2v2 Teams</option>
+                  <option value="simple">Simple Mode</option>
                 </select>
               </label>
               <label
@@ -873,16 +928,97 @@
             <h3>Owned Farms</h3>
             <div id="owner-list"></div>
             <hr class="panel-divider" />
-            <h3>Farm Chart</h3>
+            <h3
+              class="panel-collapsible"
+              role="button"
+              tabindex="0"
+              aria-expanded="true"
+              onclick="toggleChartCollapse(this)"
+              onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleChartCollapse(this);}"
+            >
+              Farm Chart<span class="panel-collapse-caret" aria-hidden="true">▾</span>
+            </h3>
             <div id="property-chart"></div>
+            <div id="grow-chart-section" style="display: none">
+              <hr class="panel-divider" />
+              <h3
+                class="panel-collapsible"
+                role="button"
+                tabindex="0"
+                aria-expanded="true"
+                onclick="toggleChartCollapse(this)"
+                onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleChartCollapse(this);}"
+              >
+                Grow Chart<span class="panel-collapse-caret" aria-hidden="true">▾</span>
+              </h3>
+              <div id="grow-chart"></div>
+            </div>
             <hr class="panel-divider" />
-            <h3>Tile Legend</h3>
+            <h3>Special Tile Legend</h3>
             <div id="tile-legend"></div>
           </aside>
 
           <!-- Center: Board -->
           <main class="board-wrap">
             <div id="board-floaters" class="board-floaters"></div>
+            <!-- Item-ability reference popover (simple mode): opens when the
+                 board-center auction counter is clicked. -->
+            <div id="abilities-popover" class="abilities-popover">
+              <div class="abilities-popover-header">
+                <span>🎡 Item Abilities</span>
+                <button
+                  class="abilities-popover-close"
+                  title="Close"
+                  onclick="toggleAbilitiesPopover(false)"
+                >
+                  ✕
+                </button>
+              </div>
+              <div class="abilities-popover-sub">
+                Win one at the Item Auction — when the countdown hits 0 the wheel
+                spins and everyone secretly bids for it.
+              </div>
+              <div class="ability-row">
+                <span class="ability-emoji">🔄</span>
+                <div>
+                  <div class="ability-name">Refresh Dice</div>
+                  <div class="ability-desc">
+                    Reset your Magic Dice cooldown. Usable any time — even when
+                    it's not your turn.
+                  </div>
+                </div>
+              </div>
+              <div class="ability-row">
+                <span class="ability-emoji">🔀</span>
+                <div>
+                  <div class="ability-name">Swap Tiles</div>
+                  <div class="ability-desc">
+                    Swap two unoccupied tiles — their type, owner, bananas and
+                    GROW label all move with them. On your turn, before rolling.
+                  </div>
+                </div>
+              </div>
+              <div class="ability-row">
+                <span class="ability-emoji">🔭</span>
+                <div>
+                  <div class="ability-name">Scout</div>
+                  <div class="ability-desc">
+                    Reveal one hidden tile, visible only to you. On your turn,
+                    before rolling.
+                  </div>
+                </div>
+              </div>
+              <div class="ability-row">
+                <span class="ability-emoji">🌀</span>
+                <div>
+                  <div class="ability-name">Teleport</div>
+                  <div class="ability-desc">
+                    Jump straight to any tile with no walking — landing effects
+                    still fire. On your turn, before rolling.
+                  </div>
+                </div>
+              </div>
+            </div>
             <div id="turn-notification" class="turn-notification">
               🍌 Your Turn! 🍌
             </div>
@@ -1057,6 +1193,134 @@
                 </div>
                 <div id="auction-bids" class="auction-bids"></div>
                 <div id="bid-toast" class="bid-toast"></div>
+              </div>
+
+              <!-- Item Auction Overlay (simple mode wheel + silent bid) -->
+              <div
+                id="item-auction-box"
+                class="item-auction-box"
+                style="display: none"
+              >
+                <div class="item-auction-inner">
+                  <h4 class="item-auction-title">🎡 Item Auction 🎡</h4>
+
+                  <!-- Wheel phase -->
+                  <div id="item-auction-wheel-phase" class="item-auction-wheel-phase">
+                    <div id="item-auction-pointer" class="item-auction-pointer">
+                      <svg viewBox="0 0 32 40" width="32" height="40" aria-hidden="true">
+                        <path d="M16 38 L2 6 Q16 14 30 6 Z" />
+                      </svg>
+                    </div>
+                    <div class="item-auction-rim">
+                      <div class="item-auction-rim-studs"></div>
+                      <div id="item-auction-wheel" class="item-auction-wheel">
+                        <div class="item-auction-wheel-bg"></div>
+                        <div class="item-auction-wheel-spokes"></div>
+                        <div class="item-auction-wheel-slot slot-refreshDice" data-item="refreshDice">
+                          <div class="slot-emoji">🔄</div>
+                          <div class="slot-name">Refresh<br>Dice</div>
+                        </div>
+                        <div class="item-auction-wheel-slot slot-swapTiles" data-item="swapTiles">
+                          <div class="slot-emoji">🔀</div>
+                          <div class="slot-name">Swap<br>Tiles</div>
+                        </div>
+                        <div class="item-auction-wheel-slot slot-scout" data-item="scout">
+                          <div class="slot-emoji">🔭</div>
+                          <div class="slot-name">Scout</div>
+                        </div>
+                        <div class="item-auction-wheel-slot slot-teleport" data-item="teleport">
+                          <div class="slot-emoji">🌀</div>
+                          <div class="slot-name">Teleport</div>
+                        </div>
+                      </div>
+                      <div class="item-auction-hub" aria-hidden="true">🍌</div>
+                    </div>
+                  </div>
+
+                  <!-- Bidding phase -->
+                  <div
+                    id="item-auction-bid-phase"
+                    class="item-auction-bid-phase"
+                    style="display: none"
+                  >
+                    <div class="item-auction-item">
+                      <div class="item-auction-item-emoji" id="item-auction-item-emoji">🌲</div>
+                      <div class="item-auction-item-name" id="item-auction-item-name">Vine Swing Card</div>
+                    </div>
+                    <div class="item-auction-timer">
+                      <div class="item-auction-timer-bar-bg">
+                        <div class="item-auction-timer-bar" id="item-auction-timer-bar"></div>
+                      </div>
+                      <div class="item-auction-timer-text" id="item-auction-timer-text">15s</div>
+                    </div>
+                    <div class="item-auction-bid-controls">
+                      <label class="item-auction-bid-label">Your silent bid (max <span id="item-auction-bid-max">0</span>🍌)</label>
+                      <div class="bid-input-row">
+                        <input
+                          type="text"
+                          id="item-auction-bid-input"
+                          class="bid-input"
+                          inputmode="numeric"
+                          value="0"
+                          readonly
+                        />
+                        <span class="bid-input-label">🍌</span>
+                      </div>
+                      <div class="bid-keypad">
+                        <button class="bid-key" onclick="itemBidKey('1')">1</button>
+                        <button class="bid-key" onclick="itemBidKey('2')">2</button>
+                        <button class="bid-key" onclick="itemBidKey('3')">3</button>
+                        <button class="bid-key" onclick="itemBidKey('4')">4</button>
+                        <button class="bid-key" onclick="itemBidKey('5')">5</button>
+                        <button class="bid-key" onclick="itemBidKey('6')">6</button>
+                        <button class="bid-key" onclick="itemBidKey('7')">7</button>
+                        <button class="bid-key" onclick="itemBidKey('8')">8</button>
+                        <button class="bid-key" onclick="itemBidKey('9')">9</button>
+                        <button class="bid-key bid-key-wide" onclick="itemBidClear()">C</button>
+                        <button class="bid-key" onclick="itemBidKey('0')">0</button>
+                        <button class="bid-key bid-key-wide" onclick="itemBidBackspace()">⌫</button>
+                      </div>
+                      <div class="bid-btn-row">
+                        <button
+                          class="btn btn-sm"
+                          id="item-auction-bid-submit"
+                          onclick="submitItemBid()"
+                        >
+                          Submit
+                        </button>
+                        <button class="btn btn-sm btn-preset" onclick="setItemBidPreset('half')">½</button>
+                        <button class="btn btn-sm btn-preset" onclick="setItemBidPreset('max')">MAX</button>
+                      </div>
+                      <div class="item-auction-bid-locked" id="item-auction-bid-locked" style="display: none">
+                        🔒 Bid locked in
+                      </div>
+                    </div>
+                    <div class="item-auction-bidders" id="item-auction-bidders"></div>
+                    <div
+                      class="item-auction-vickrey-note"
+                      id="item-auction-vickrey-note"
+                      style="display: none"
+                    >
+                      Vickrey: winner pays 2nd-highest bid
+                    </div>
+                  </div>
+
+                  <!-- Result phase -->
+                  <div
+                    id="item-auction-result-phase"
+                    class="item-auction-result-phase"
+                    style="display: none"
+                  >
+                    <div class="item-auction-item">
+                      <div class="item-auction-item-emoji" id="item-auction-result-emoji">🌲</div>
+                      <div class="item-auction-item-name" id="item-auction-result-name">Vine Swing Card</div>
+                    </div>
+                    <div class="item-auction-result-headline" id="item-auction-result-headline">
+
+                    </div>
+                    <div class="item-auction-result-bids" id="item-auction-result-bids"></div>
+                  </div>
+                </div>
               </div>
 
               <!-- Poker Table Overlay (rendered in board center) -->
@@ -1663,6 +1927,46 @@
                   </button>
                 </label>
               </div>
+              <!-- Simple-mode Magic Dice (replaces pet-ability-box) -->
+              <div
+                class="magic-dice-box"
+                id="magic-dice-box"
+                style="display: none"
+              >
+                <div class="magic-dice-runes" aria-hidden="true"></div>
+                <div class="magic-dice-top">
+                  <div class="magic-dice-gauge" id="magic-dice-gauge">
+                    <svg class="magic-dice-ring-svg" viewBox="0 0 64 64" aria-hidden="true">
+                      <circle class="magic-dice-ring-track" cx="32" cy="32" r="27" />
+                      <circle
+                        class="magic-dice-ring-fill"
+                        id="magic-dice-ring-fill"
+                        cx="32"
+                        cy="32"
+                        r="27"
+                      />
+                    </svg>
+                    <div class="magic-dice-gauge-center" id="magic-dice-gauge-center">🎲</div>
+                  </div>
+                  <div class="magic-dice-titleblock">
+                    <div class="magic-dice-title">Magic Dice</div>
+                    <div class="magic-dice-status" id="magic-dice-status">Ready</div>
+                  </div>
+                </div>
+                <div class="magic-dice-picker-label" id="magic-dice-picker-label">
+                  Choose your steps
+                </div>
+                <div class="magic-dice-picker" id="magic-dice-picker"></div>
+                <button
+                  class="magic-dice-upgrade"
+                  id="btn-upgrade-magic-dice"
+                  onclick="upgradeMagicDice()"
+                >
+                  <span class="mdu-icon">⬆</span>
+                  <span class="mdu-text">Upgrade to Lvl 1</span>
+                  <span class="mdu-cost">1000🍌</span>
+                </button>
+              </div>
               <div style="display: flex; gap: 8px; margin-top: 4px">
                 <button
                   class="btn btn-alt"
@@ -1881,6 +2185,102 @@
               >
                 🍍 Place Pineapple Bomb
               </button>
+
+              <!-- Simple Mode Shop (cards) -->
+              <div
+                id="simple-shop"
+                class="simple-shop"
+                style="display: none"
+              >
+                <div
+                  class="simple-shop-row"
+                  data-card="refreshDice"
+                  id="shop-row-refreshDice"
+                >
+                  <button
+                    class="btn btn-shop simple-shop-main"
+                    id="btn-shop-refreshDice"
+                    onclick="onShopCardClick('refreshDice')"
+                  >
+                    🔄 Refresh Dice 500🍌
+                  </button>
+                  <button
+                    class="btn btn-shop-plus"
+                    id="btn-shop-plus-refreshDice"
+                    onclick="buyCard('refreshDice')"
+                    title="Buy another Refresh Dice card"
+                    style="display: none"
+                  >
+                    +
+                  </button>
+                </div>
+                <div
+                  class="simple-shop-row"
+                  data-card="swapTiles"
+                  id="shop-row-swapTiles"
+                >
+                  <button
+                    class="btn btn-shop simple-shop-main"
+                    id="btn-shop-swapTiles"
+                    onclick="onShopCardClick('swapTiles')"
+                  >
+                    🔀 Swap Tiles 500🍌
+                  </button>
+                  <button
+                    class="btn btn-shop-plus"
+                    id="btn-shop-plus-swapTiles"
+                    onclick="buyCard('swapTiles')"
+                    title="Buy another Swap Tiles card"
+                    style="display: none"
+                  >
+                    +
+                  </button>
+                </div>
+                <div
+                  class="simple-shop-row"
+                  data-card="scout"
+                  id="shop-row-scout"
+                >
+                  <button
+                    class="btn btn-shop simple-shop-main"
+                    id="btn-shop-scout"
+                    onclick="onShopCardClick('scout')"
+                  >
+                    🔭 Scout 500🍌
+                  </button>
+                  <button
+                    class="btn btn-shop-plus"
+                    id="btn-shop-plus-scout"
+                    onclick="buyCard('scout')"
+                    title="Buy another Scout card"
+                    style="display: none"
+                  >
+                    +
+                  </button>
+                </div>
+                <div
+                  class="simple-shop-row"
+                  data-card="teleport"
+                  id="shop-row-teleport"
+                >
+                  <button
+                    class="btn btn-shop simple-shop-main"
+                    id="btn-shop-teleport"
+                    onclick="onShopCardClick('teleport')"
+                  >
+                    🌀 Teleport 500🍌
+                  </button>
+                  <button
+                    class="btn btn-shop-plus"
+                    id="btn-shop-plus-teleport"
+                    onclick="buyCard('teleport')"
+                    title="Buy another Teleport card"
+                    style="display: none"
+                  >
+                    +
+                  </button>
+                </div>
+              </div>
               <button
                 class="btn btn-alt"
                 id="btn-end"
@@ -2083,6 +2483,22 @@
         <div class="board-preview-header">
           <h2>🗺️ Board Variations</h2>
           <p class="board-preview-subtitle">Every game is different — tiles shuffle each time!</p>
+          <div class="bp-mode-toggle">
+            <button
+              id="bp-mode-classic"
+              class="bp-mode-btn active"
+              onclick="setPreviewMode('classic')"
+            >
+              Classic
+            </button>
+            <button
+              id="bp-mode-simple"
+              class="bp-mode-btn"
+              onclick="setPreviewMode('simple')"
+            >
+              Simple
+            </button>
+          </div>
         </div>
         <!-- Variations Content -->
         <div id="bp-view-variations" class="bp-view">

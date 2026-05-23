@@ -229,6 +229,12 @@ io.on("connection", (socket) => {
       data.bombMode,
       data.monkeyPoker,
       data.isPublic,
+      {
+        enabled: data.itemAuctionEnabled,
+        vickrey: data.itemAuctionVickrey,
+        timerSec: data.itemAuctionTimer,
+        startValue: data.itemAuctionStartValue,
+      },
     );
     games.set(code, game);
     game.onUpdate = () => emitGameUpdate(code, game);
@@ -390,6 +396,80 @@ io.on("connection", (socket) => {
     }
   });
 
+  // ── Simple mode: pick starting tile (first turn only) ────────
+  socket.on("pick_start_tile", (data) => {
+    const game = games.get(data.gameId);
+    if (!game) return;
+    if (game.pickStartTile(socket.id, data.position)) {
+      emitGameUpdate(data.gameId, game);
+      // First-turn pick can land on the Super Banana; if the player can't
+      // afford it a swap is queued. Complete it like every other handler,
+      // otherwise the turn never ends and the game hangs.
+      if (game.mushroomPending) {
+        setTimeout(() => {
+          if (game.mushroomPending) {
+            game.completeMushroomSwap();
+            emitGameUpdate(data.gameId, game);
+          }
+        }, 7000);
+      }
+    }
+  });
+
+  // ── Simple mode: Magic Dice (replaces dice roll) ─────────────
+  socket.on("use_magic_dice", (data) => {
+    const game = games.get(data.gameId);
+    if (!game) return;
+    const result = game.useMagicDice(socket.id, data.steps);
+    if (result) {
+      emitGameUpdate(data.gameId, game);
+      if (game.mushroomPending) {
+        setTimeout(() => {
+          if (game.mushroomPending) {
+            game.completeMushroomSwap();
+            emitGameUpdate(data.gameId, game);
+          }
+        }, 7000);
+      }
+    }
+  });
+
+  // ── Simple mode: upgrade Magic Dice (+1 step, 1000🍌) ────────
+  socket.on("upgrade_magic_dice", (data) => {
+    const game = games.get(data.gameId);
+    if (!game) return;
+    if (game.upgradeMagicDice(socket.id)) {
+      emitGameUpdate(data.gameId, game);
+    }
+  });
+
+  // ── Simple mode shop: buy a card (500🍌) ─────────────────────
+  socket.on("buy_card", (data) => {
+    const game = games.get(data.gameId);
+    if (!game) return;
+    if (game.buyCard(socket.id, data.cardType)) {
+      emitGameUpdate(data.gameId, game);
+    }
+  });
+
+  // ── Simple mode: use an ability card (refresh/swap/scout/teleport) ──
+  socket.on("use_card", (data) => {
+    const game = games.get(data.gameId);
+    if (!game) return;
+    const result = game.useCard(socket.id, data.cardType, data);
+    if (result) {
+      emitGameUpdate(data.gameId, game);
+      if (game.mushroomPending) {
+        setTimeout(() => {
+          if (game.mushroomPending) {
+            game.completeMushroomSwap();
+            emitGameUpdate(data.gameId, game);
+          }
+        }, 7000);
+      }
+    }
+  });
+
   // ── Roll dice ────────────────────────────────────────────────
   socket.on("roll_dice", (data) => {
     const game = games.get(data.gameId);
@@ -489,6 +569,15 @@ io.on("connection", (socket) => {
     const game = games.get(data.gameId);
     if (!game) return;
     if (game.respondAuction(socket.id, data.accept)) {
+      emitGameUpdate(data.gameId, game);
+    }
+  });
+
+  // ── Submit silent bid for simple-mode item auction ──────────
+  socket.on("submit_item_bid", (data) => {
+    const game = games.get(data.gameId);
+    if (!game) return;
+    if (game.submitItemBid(socket.id, data.amount)) {
       emitGameUpdate(data.gameId, game);
     }
   });

@@ -460,6 +460,9 @@ function initSocket() {
     gs = state;
     gameId = state.gameId;
     myId = socket.id;
+    // Simple mode re-skins the four player colours to Red/Green/Blue/Black
+    // (scoped CSS overrides hang off this body class).
+    document.body.classList.toggle("mode-simple", state.gameMode === "simple");
     // Sync no-timer toggle with server state
     const noTimerChk = document.getElementById("chk-no-timer");
     if (noTimerChk) noTimerChk.checked = !!gs.noAuctionTimer;
@@ -862,10 +865,14 @@ function showReveal() {
   const farmGroups = {};
   const nonFarms = [];
   const cacti = [];
+  const grows = [];
   let mushroom = null;
 
   for (const tile of gs.boardLayout) {
-    if (tile.type === "grow") continue;
+    if (tile.type === "grow") {
+      grows.push(tile);
+      continue;
+    }
     if (tile.type === "desert") {
       cacti.push(tile);
     } else if (tile.group && tile.group !== "desert" && tile.group !== "mushroom") {
@@ -979,6 +986,38 @@ function showReveal() {
     tilesGrid.appendChild(section);
   }
 
+  // Grow tiles (now shuffled into the board like any other tile)
+  if (grows.length > 0) {
+    const section = document.createElement("div");
+    section.className = "reveal-group";
+
+    const header = document.createElement("div");
+    header.className = "reveal-group-header";
+    header.innerHTML =
+      '<span class="reveal-group-dot" style="background:#2e7d32"></span> Grow Tiles 🌴 ' +
+      '<span class="reveal-group-meta">' +
+      grows.length +
+      " tiles (hidden & shuffled)</span>";
+    section.appendChild(header);
+
+    const row = document.createElement("div");
+    row.className = "reveal-group-tiles";
+
+    grows.sort((a, b) => (a.growPct || 0) - (b.growPct || 0));
+    for (const t of grows) {
+      const el = document.createElement("div");
+      el.className = "reveal-tile reveal-tile-other";
+      const pct = Math.round((t.growPct || 0) * 100);
+      el.innerHTML =
+        '<span class="reveal-tile-emoji">🌴</span>' +
+        '<span class="reveal-tile-label">' + pct + '%</span>';
+      row.appendChild(el);
+      delay++;
+    }
+    section.appendChild(row);
+    tilesGrid.appendChild(section);
+  }
+
   // Mushroom — last tile (#52 feeling)
   if (mushroom) {
     const section = document.createElement("div");
@@ -1079,7 +1118,12 @@ function showLobby() {
 
   // Settings summary (non-host read-only view)
   const settingsEl = document.getElementById("lobby-settings");
-  const modeLabel = gs.gameMode === "teams" ? "2v2 Teams" : "Free for All";
+  const modeLabel =
+    gs.gameMode === "teams"
+      ? "2v2 Teams"
+      : gs.gameMode === "simple"
+        ? "Simple Mode"
+        : "Free for All";
   settingsEl.innerHTML = `
     <div class="lobby-setting">\ud83c\udf4c <span class="lobby-setting-val">${gs.startingMoney || 500}</span></div>
     <div class="lobby-setting">\ud83d\udc65 <span class="lobby-setting-val">${gs.maxPlayers || 4} max</span></div>
@@ -1162,11 +1206,14 @@ function showLobby() {
       gs.gameMode === "teams"
         ? `<span class="lobby-team-tag">${idx < 2 ? "Team A" : "Team B"}</span>`
         : "";
-    const petBadge = p.pet
-      ? p.pet === "hidden"
-        ? `<span class="lobby-pet-badge">\u2713 Pet chosen</span>`
-        : `<span class="lobby-pet-badge">${PET_EMOJIS[p.pet] || "\ud83d\udc3e"} ${PET_NAMES[p.pet] || ""}</span>`
-      : "";
+    const petBadge =
+      gs.gameMode === "simple"
+        ? ""
+        : p.pet
+          ? p.pet === "hidden"
+            ? `<span class="lobby-pet-badge">\u2713 Pet chosen</span>`
+            : `<span class="lobby-pet-badge">${PET_EMOJIS[p.pet] || "\ud83d\udc3e"} ${petDisplayName(p.pet)}</span>`
+          : "";
     const hostActions = (isHost && !isMe && gs.state === "waiting")
       ? `<div class="lobby-host-actions">
            <button class="lobby-btn-transfer" data-id="${p.id}" title="Transfer host">👑</button>
@@ -1316,6 +1363,12 @@ const PET_NAMES = {
   magic: "Magic Pet",
 };
 
+// Simple mode renames the strong pet to "Magic Dice" everywhere it shows up.
+function petDisplayName(petType) {
+  if (gs && gs.gameMode === "simple" && petType === "strong") return "Magic Dice";
+  return PET_NAMES[petType] || "Pet";
+}
+
 function selectPet(petType) {
   if (!socket || !gameId) return;
   socket.emit("select_pet", { gameId, petType });
@@ -1334,9 +1387,124 @@ function cancelPet() {
   socket.emit("cancel_pet", { gameId });
 }
 
+// ── Simple-mode Magic Dice ────────────────────────────────────────
+function useMagicDice(steps) {
+  if (!socket || !gameId) return;
+  socket.emit("use_magic_dice", { gameId, steps });
+}
+
+function upgradeMagicDice() {
+  if (!socket || !gameId) return;
+  socket.emit("upgrade_magic_dice", { gameId });
+}
+
+// Magic Dice cooldown length (mirrors useMagicDice: cur.petCooldown = 10).
+const MAGIC_DICE_COOLDOWN = 10;
+
+// Build a die-shaped step button. 1–6 render real pip patterns; 0 and 7+
+// render a centered number (no real die face above 6).
+function _makeMagicDieButton(n) {
+  const die = document.createElement("button");
+  die.className = "magic-dice-step";
+  die.dataset.value = String(n);
+  if (n >= 1 && n <= 6) {
+    die.classList.add("die-pips", "pips-" + n);
+    for (let i = 0; i < 9; i++) {
+      const pip = document.createElement("span");
+      pip.className = "pip";
+      die.appendChild(pip);
+    }
+  } else {
+    die.classList.add("die-num");
+    const label = document.createElement("span");
+    label.className = "die-num-label";
+    label.textContent = String(n);
+    die.appendChild(label);
+  }
+  return die;
+}
+
+function updateMagicDiceBox(me, isMyTurn) {
+  const box = document.getElementById("magic-dice-box");
+  if (!box) return;
+  if (!me || gs.state === "finished" || me.startPickPending) {
+    box.style.display = "none";
+    return;
+  }
+  box.style.display = "";
+
+  const max = Math.max(0, Number(me.magicDiceMaxSteps) || 0);
+  const cd = Math.max(0, Number(me.petCooldown) || 0);
+  const ready = cd === 0;
+  const canUse = isMyTurn && !gs.diceRolled && ready;
+
+  // Cooldown gauge ring.
+  const gauge = document.getElementById("magic-dice-gauge");
+  const ringFill = document.getElementById("magic-dice-ring-fill");
+  const center = document.getElementById("magic-dice-gauge-center");
+  const status = document.getElementById("magic-dice-status");
+  const R = 27;
+  const CIRC = 2 * Math.PI * R;
+  if (ringFill) {
+    ringFill.style.strokeDasharray = String(CIRC);
+    // Ring depletes as cooldown ticks down; full when ready.
+    const frac = ready ? 1 : Math.max(0, Math.min(1, cd / MAGIC_DICE_COOLDOWN));
+    ringFill.style.strokeDashoffset = String(CIRC * (1 - frac));
+  }
+  if (gauge) {
+    gauge.classList.toggle("ready", ready);
+    gauge.classList.toggle("cooling", !ready);
+    gauge.classList.toggle("usable", canUse);
+  }
+  if (center) {
+    center.textContent = ready ? "🎲" : String(cd);
+  }
+  if (status) {
+    if (!ready) status.textContent = `Charging · ${cd} ${cd === 1 ? "roll" : "rolls"}`;
+    else if (canUse) status.textContent = "Ready — pick steps!";
+    else status.textContent = "Ready";
+  }
+
+  // Step picker (pip dice). Step 0 (stay put / fire GROW 0) is always offered,
+  // so Magic Dice is usable even at level 0.
+  const pickerLabel = document.getElementById("magic-dice-picker-label");
+  const picker = document.getElementById("magic-dice-picker");
+  if (picker) {
+    picker.innerHTML = "";
+    if (pickerLabel) pickerLabel.style.display = "";
+    for (let n = 0; n <= max; n++) {
+      const die = _makeMagicDieButton(n);
+      die.disabled = !canUse;
+      die.title = n === 0 ? "Stay put (fires GROW 0 if labeled)" : `Move ${n}`;
+      die.onclick = () => useMagicDice(n);
+      picker.appendChild(die);
+    }
+    if (max === 0) {
+      const hint = document.createElement("div");
+      hint.className = "magic-dice-hint";
+      hint.textContent = "Upgrade to unlock more steps";
+      picker.appendChild(hint);
+    }
+  }
+
+  // Upgrade button — shows current level.
+  const upBtn = document.getElementById("btn-upgrade-magic-dice");
+  if (upBtn) {
+    const txt = upBtn.querySelector(".mdu-text");
+    if (txt) txt.textContent = `Upgrade to Lvl ${max + 1}`;
+    upBtn.disabled = (Number(me.money) || 0) < 1000;
+  }
+}
+
 function updateLobbyPets() {
   const petSection = document.getElementById("lobby-pet-section");
   if (!petSection || !gs) return;
+  // Simple mode auto-assigns Magic Dice — hide the picker entirely.
+  if (gs.gameMode === "simple") {
+    petSection.style.display = "none";
+    return;
+  }
+  petSection.style.display = "";
   const me = _gsPlayerMap[myId];
   if (!me) return;
 
@@ -1350,6 +1518,14 @@ function updateLobbyPets() {
 
 function updatePetAbilityBox(me, isMyTurn) {
   const box = document.getElementById("pet-ability-box");
+  // Simple mode swaps the pet-ability box for the Magic Dice picker.
+  if (gs && gs.gameMode === "simple") {
+    if (box) box.style.display = "none";
+    updateMagicDiceBox(me, isMyTurn);
+    return;
+  }
+  const magicBox = document.getElementById("magic-dice-box");
+  if (magicBox) magicBox.style.display = "none";
   if (!box || !me) {
     if (box) box.style.display = "none";
     return;
@@ -1368,7 +1544,7 @@ function updatePetAbilityBox(me, isMyTurn) {
   const petBtn = document.getElementById("btn-auto-pet");
 
   const petEmoji = PET_EMOJIS[me.pet] || "\ud83d\udc3e";
-  const petName = PET_NAMES[me.pet] || "Pet";
+  const petName = petDisplayName(me.pet);
 
   const petUsable = me.petCooldown <= 0;
   const canAffordPet = true;
@@ -1681,12 +1857,18 @@ function showGame() {
   // Turn info
   {
     const isMyTurnLabel = cur && cur.id === myId;
+    const startPickLabel =
+      cur && cur.startPickPending && gs.gameMode === "simple";
     document.getElementById("turn-name").textContent = cur
       ? isMyTurnLabel
-        ? gs.petUsedThisTurn
-          ? "\ud83d\udc3e Pet used!"
-          : "Your turn!"
-        : cur.name
+        ? startPickLabel
+          ? "Pick your start tile!"
+          : gs.petUsedThisTurn
+            ? "\ud83d\udc3e Pet used!"
+            : "Your turn!"
+        : startPickLabel
+          ? `${cur.name} is picking a tile\u2026`
+          : cur.name
       : "—";
     document.getElementById("turn-name").style.color = isMyTurnLabel
       ? "#ffe135"
@@ -1722,11 +1904,16 @@ function showGame() {
     }, ROLL_DELAY);
   }
   const rollDelayDone = window._rollReady || gs.diceRolled;
+  const needsStartPick =
+    gs.gameMode === "simple" &&
+    gs.currentPlayer &&
+    !!gs.currentPlayer.startPickPending;
   const canRoll =
     isMyTurn &&
     !gs.diceRolled &&
     !gs.mushroomPending &&
     !gs.petResolving &&
+    !needsStartPick &&
     rollDelayDone;
   document.getElementById("btn-roll").disabled = !canRoll;
   document.getElementById("btn-debug-move").disabled = !canRoll;
@@ -1808,9 +1995,19 @@ function showGame() {
     }
   }
 
-  // Universal dice roll notification — show for all players when dice are rolled
+  // Universal dice roll notification — show for all players when dice are rolled.
+  // Simple-mode start picks teleport instantly, so skip the walk animation path.
   const diceNotif = document.getElementById("dice-roll-notification");
-  if (diceNotif && gs.diceRolled && !gs.petUsedThisTurn && cur) {
+  const isStartPickTeleport =
+    !!(gs.lastStartPick && gs.lastStartPick.turn === gs.turn) ||
+    !!(gs.lastTeleport && gs.lastTeleport.turn === gs.turn);
+  if (
+    diceNotif &&
+    gs.diceRolled &&
+    !gs.petUsedThisTurn &&
+    !isStartPickTeleport &&
+    cur
+  ) {
     const diceKey = gs.dice.join("-") + "-" + gs.turn;
     if (diceKey !== window._lastDiceKey) {
       window._lastDiceKey = diceKey;
@@ -2180,7 +2377,7 @@ function showGame() {
     if (petKey !== window._lastPetNotifKey) {
       window._lastPetNotifKey = petKey;
       const emoji = PET_EMOJIS[gs.lastPetUsed.petType] || "\ud83d\udc3e";
-      const name = PET_NAMES[gs.lastPetUsed.petType] || "Pet";
+      const name = petDisplayName(gs.lastPetUsed.petType);
       petNotifEl.textContent = `${emoji} You used ${name}!`;
       petNotifEl.classList.remove("show");
       void petNotifEl.offsetWidth;
@@ -2677,14 +2874,15 @@ function showGame() {
   const buyBombBtn = document.getElementById("btn-buy-bomb");
   const placeBombBtn = document.getElementById("btn-place-bomb");
   const bombCount = Number(me.bomb) || 0;
+  const bombPrice = 5000;
   if (buyBombBtn) {
     if (gs.bombMode) {
       buyBombBtn.style.display = "";
-      buyBombBtn.disabled = me.money < 5000;
+      buyBombBtn.disabled = me.money < bombPrice;
       buyBombBtn.textContent =
         bombCount > 0
-          ? `🍍 Buy Pineapple Bomb 5000🍌 (own ${bombCount})`
-          : "🍍 Buy Pineapple Bomb 5000🍌";
+          ? `🍍 Buy Pineapple Bomb ${bombPrice}🍌 (own ${bombCount})`
+          : `🍍 Buy Pineapple Bomb ${bombPrice}🍌`;
     } else {
       buyBombBtn.style.display = "none";
     }
@@ -2701,6 +2899,29 @@ function showGame() {
       placeBombBtn.style.display = "none";
     }
   }
+
+  // Cancel ability targeting if it's no longer valid (turn ended, rolled,
+  // an interactive element took over, etc.).
+  if (window._abilityTargetMode) {
+    const stillValid =
+      isMyTurn &&
+      !gs.diceRolled &&
+      me &&
+      !me.startPickPending &&
+      !gs.auction &&
+      !gs.poker &&
+      !gs.vineSwing &&
+      !gs.mushroomPending &&
+      !gs.petResolving &&
+      !gs.itemAuction;
+    if (!stillValid) cancelAbilityTargeting();
+  }
+
+  // Simple Mode Shop
+  updateSimpleShop(me, isMyTurn);
+
+  // Simple Mode Item Auction (wheel + silent bid overlay)
+  updateItemAuctionUI(me);
 
   // In team mode: hide jungle log (trade panel replaces it)
   const logBox = document.querySelector(".log-box");
@@ -2879,22 +3100,27 @@ function updateOwnerPanel() {
   const el = document.getElementById("owner-list");
   if (!el) return;
   el.innerHTML = "";
-  const GROUP_NAMES = {
-    yellow: "Cavendish",
-    lightblue: "Blue Java",
-    red: "Red Dacca",
-    pink: "Lady Finger",
-    darkblue: "Gros Michel",
-    orange: "Goldfinger",
-  };
-  const GROUP_ACRONYMS = {
-    yellow: "CV",
-    lightblue: "BJ",
-    red: "RD",
-    pink: "LF",
-    darkblue: "GM",
-    orange: "GF",
-  };
+  const isSimpleMode = gs && gs.gameMode === "simple";
+  const GROUP_NAMES = isSimpleMode
+    ? { simple: "Farms" }
+    : {
+        yellow: "Cavendish",
+        lightblue: "Blue Java",
+        red: "Red Dacca",
+        pink: "Lady Finger",
+        darkblue: "Gros Michel",
+        orange: "Goldfinger",
+      };
+  const GROUP_ACRONYMS = isSimpleMode
+    ? { simple: "F" }
+    : {
+        yellow: "CV",
+        lightblue: "BJ",
+        red: "RD",
+        pink: "LF",
+        darkblue: "GM",
+        orange: "GF",
+      };
   gs.players.forEach((player) => {
     const section = document.createElement("div");
     section.className = "owner-section";
@@ -2903,6 +3129,8 @@ function updateOwnerPanel() {
     let propsHTML;
     if (ownedIds.length === 0) {
       propsHTML = '<div class="owner-empty">No farms yet</div>';
+    } else if (isSimpleMode) {
+      propsHTML = buildSimpleGrowGroupedProps(player);
     } else {
       const counts = {};
       const prices = {};
@@ -2931,8 +3159,9 @@ function updateOwnerPanel() {
         }
       }
       // Compute chain multipliers for this player's farms
+      // (simple mode has no chain bonuses — leave map empty so every farm shows 1x)
       const _playerChainMults = {};
-      {
+      if (!isSimpleMode) {
         const ownedProps = ownedIds
           .map((id) => {
             const tile = gs.boardLayout && gs.boardLayout[id];
@@ -2941,7 +3170,6 @@ function updateOwnerPanel() {
           .filter(Boolean);
         const posSet = new Set(ownedProps.map((p) => p.id));
         const visited = new Set();
-        const CORNERS = new Set([0, 13, 26, 39]);
         for (const prop of ownedProps) {
           if (visited.has(prop.id)) continue;
           const chain = [];
@@ -2952,7 +3180,7 @@ function updateOwnerPanel() {
             chain.push(cur);
             const neighbors = [(cur - 1 + 52) % 52, (cur + 1) % 52];
             for (const n of neighbors) {
-              if (visited.has(n) || !posSet.has(n) || CORNERS.has(n)) continue;
+              if (visited.has(n) || !posSet.has(n)) continue;
               const nProp = ownedProps.find((p) => p.id === n);
               if (!nProp || nProp.group !== prop.group) continue;
               visited.add(n);
@@ -2992,6 +3220,85 @@ function updateOwnerPanel() {
   });
 }
 
+// Simple mode: group a player's owned farms by the grow tile whose range they
+// fall in \u2014 the nearest grow tile counterclockwise (the one whose number, when
+// rolled, grows them). Respects the viewer's fog of war: farms anchored to a
+// grow tile you haven't discovered go under "Undiscovered". Groups sort by grow
+// label (0-7, then Undiscovered last); farms within a group sort by yield desc.
+function buildSimpleGrowGroupedProps(player) {
+  const ownedIds = player.properties || [];
+  const N = (gs.boardLayout && gs.boardLayout.length) || 52;
+
+  // All grow tile positions and their labels.
+  const growPositions = new Set();
+  const growLabelByPos = {};
+  if (gs.boardLayout) {
+    gs.boardLayout.forEach((t, pos) => {
+      if (t && t.type === "grow") {
+        growPositions.add(pos);
+        growLabelByPos[pos] = t.growLabel;
+      }
+    });
+  }
+
+  // Viewer's revealed tiles (fog of war).
+  const me = _gsPlayerMap[socket.id];
+  const myRevealed = me && me.revealedTiles ? new Set(me.revealedTiles) : null;
+
+  // Nearest grow tile counterclockwise from a board position.
+  const anchorGrowOf = (p) => {
+    for (let off = 1; off <= N; off++) {
+      const pos = (p - off + N) % N;
+      if (growPositions.has(pos)) return pos;
+    }
+    return null;
+  };
+
+  const byLabel = new Map(); // growLabel -> farms[]
+  const undiscovered = [];
+  for (const id of ownedIds) {
+    const tile = gs.boardLayout && gs.boardLayout[id];
+    if (!tile || tile.group !== "simple") continue;
+    const anchor = anchorGrowOf(id);
+    const revealed = anchor != null && (!myRevealed || myRevealed.has(anchor));
+    if (revealed && growLabelByPos[anchor] != null) {
+      const label = growLabelByPos[anchor];
+      if (!byLabel.has(label)) byLabel.set(label, []);
+      byLabel.get(label).push(tile);
+    } else {
+      undiscovered.push(tile);
+    }
+  }
+
+  if (byLabel.size === 0 && undiscovered.length === 0) {
+    return '<div class="owner-empty">No farms yet</div>';
+  }
+
+  const byYield = (a, b) => (b.price || 0) - (a.price || 0);
+  const farmRow = (f) =>
+    `<div class="owner-set-farm"><span class="owner-farm-name">${f.tileLabel || f.tileName || f.name}</span><span class="owner-prop-price">${f.price}\uD83C\uDF4C</span></div>`;
+
+  let html = '<div class="owner-props">';
+  for (const label of [...byLabel.keys()].sort((a, b) => a - b)) {
+    const farms = byLabel.get(label).slice().sort(byYield);
+    html +=
+      `<div class="owner-set-group">` +
+      `<div class="owner-set-header"><span class="owner-prop-dot" style="background:#2e7d32"></span><span class="owner-set-name">\uD83C\uDF34 GROW ${label}</span> <span class="owner-set-count">${farms.length}</span></div>` +
+      farms.map(farmRow).join("") +
+      `</div>`;
+  }
+  if (undiscovered.length > 0) {
+    const farms = undiscovered.slice().sort(byYield);
+    html +=
+      `<div class="owner-set-group">` +
+      `<div class="owner-set-header"><span class="owner-prop-dot" style="background:#555"></span><span class="owner-set-name">\u2753 Undiscovered</span> <span class="owner-set-count">${farms.length}</span></div>` +
+      farms.map(farmRow).join("") +
+      `</div>`;
+  }
+  html += "</div>";
+  return html;
+}
+
 // ── Actions ────────────────────────────────────────────────────────
 
 const CHART_GROUPS = [
@@ -3002,6 +3309,7 @@ const CHART_GROUPS = [
   { key: "darkblue", label: "GM — Gros Michel" },
   { key: "orange", label: "GF — Goldfinger" },
 ];
+const CHART_GROUPS_SIMPLE = [{ key: "simple", label: "F — Farms" }];
 
 function updatePropertyChart() {
   const el = document.getElementById("property-chart");
@@ -3009,9 +3317,12 @@ function updatePropertyChart() {
   el.innerHTML = "";
   if (!gs || !gs.boardLayout) return;
 
+  const chartGroups =
+    gs.gameMode === "simple" ? CHART_GROUPS_SIMPLE : CHART_GROUPS;
+
   // Build map: group -> [{name, price, owner, ownerColor}]
   const grouped = {};
-  CHART_GROUPS.forEach((g) => (grouped[g.key] = []));
+  chartGroups.forEach((g) => (grouped[g.key] = []));
 
   // Build set of tiles revealed to current player
   const me = _gsPlayerMap[socket.id];
@@ -3034,12 +3345,14 @@ function updatePropertyChart() {
     });
   });
 
-  CHART_GROUPS.forEach(({ key, label }) => {
+  chartGroups.forEach(({ key, label }) => {
     const items = grouped[key];
     if (!items || items.length === 0) return;
 
     // Sort by label number so LF1, LF2, LF3 appear in order
+    // (simple mode uses tile.price for ordering since there are no labels)
     items.sort((a, b) => {
+      if (key === "simple") return (a.price || 0) - (b.price || 0);
       const numA = parseInt((a.label || "").replace(/\D/g, "")) || 0;
       const numB = parseInt((b.label || "").replace(/\D/g, "")) || 0;
       return numA - numB;
@@ -3066,6 +3379,78 @@ function updatePropertyChart() {
   });
 
   updateTileLegend();
+  updateGrowChart();
+}
+
+// Simple-mode only: a discovery tracker for the 8 GROW tiles (labeled 0-7).
+// Lists every grow label; ones you've revealed show their board tile, the rest
+// stay "?" so the fog of war is preserved.
+function updateGrowChart() {
+  const section = document.getElementById("grow-chart-section");
+  const el = document.getElementById("grow-chart");
+  if (!section || !el) return;
+  // Only meaningful once play has started — grow labels (0-7) are assigned at
+  // that point; before then tiles still read "GROW 100%".
+  if (
+    !gs ||
+    gs.gameMode !== "simple" ||
+    gs.state !== "playing" ||
+    !gs.boardLayout
+  ) {
+    section.style.display = "none";
+    el.innerHTML = "";
+    return;
+  }
+
+  // Match the Farm Chart: reveal status is the viewer's own fog of war.
+  const me = _gsPlayerMap[socket.id];
+  const myRevealed = me && me.revealedTiles ? new Set(me.revealedTiles) : null;
+
+  const tiles = [];
+  gs.boardLayout.forEach((tile, pos) => {
+    if (tile.type !== "grow") return;
+    let label = tile.growLabel;
+    if (label == null && typeof tile.name === "string") {
+      const m = tile.name.match(/GROW\s+(\d+)/);
+      if (m) label = parseInt(m[1], 10);
+    }
+    tiles.push({
+      pos,
+      label: label == null ? "?" : label,
+      revealed: !myRevealed || myRevealed.has(pos),
+    });
+  });
+
+  if (tiles.length === 0) {
+    section.style.display = "none";
+    el.innerHTML = "";
+    return;
+  }
+  section.style.display = "";
+
+  tiles.sort((a, b) => (Number(a.label) || 0) - (Number(b.label) || 0));
+  const foundCount = tiles.filter((t) => t.revealed).length;
+
+  let html = `<div class="grow-chart-count">${foundCount}/${tiles.length} found</div>`;
+  html += '<div class="grow-chart-grid">';
+  tiles.forEach((t) => {
+    const cls = t.revealed ? "grow-cell found" : "grow-cell hidden";
+    const posText = t.revealed ? `tile ${t.pos}` : "?";
+    html += `<div class="${cls}"><span class="grow-cell-label">🌴 ${t.label}</span><span class="grow-cell-pos">${posText}</span></div>`;
+  });
+  html += "</div>";
+  el.innerHTML = html;
+}
+
+// Collapse/expand a left-panel chart by clicking its header. The content div is
+// the header's next sibling; toggling its inline display survives chart
+// re-renders (those only rewrite innerHTML, not the display style).
+function toggleChartCollapse(headerEl) {
+  const content = headerEl.nextElementSibling;
+  if (!content) return;
+  const collapsed = headerEl.classList.toggle("collapsed");
+  content.style.display = collapsed ? "none" : "";
+  headerEl.setAttribute("aria-expanded", String(!collapsed));
 }
 
 function updateTileLegend() {
@@ -3073,12 +3458,12 @@ function updateTileLegend() {
   if (!el || !gs || !gs.boardLayout) return;
   el.innerHTML = "";
 
+  // Special tiles only (vine swing, +500, -10% tax, super banana). GROW tiles
+  // have their own Grow Chart and desert tiles aren't "special".
   const counts = {
-    grow: 0,
     bus: 0,
     tax10: 0,
     freebananas: 0,
-    desert: 0,
     special: 0,
   };
   for (const tile of gs.boardLayout) {
@@ -3086,7 +3471,6 @@ function updateTileLegend() {
   }
 
   const entries = [
-    { icon: "🌴", name: "GROW", count: counts.grow },
     { icon: "🌿", name: "Vine Swing", count: counts.bus },
     {
       icon: "🍌",
@@ -3094,8 +3478,6 @@ function updateTileLegend() {
       count: counts.freebananas,
     },
     { icon: "🍌", name: "-10% Peel", count: counts.tax10 },
-
-    { icon: "🌵", name: "Desert", count: counts.desert },
     { icon: "\u2b50", name: "Super Banana", count: counts.special },
   ];
 
@@ -3119,6 +3501,16 @@ function createGame() {
   const bombMode = document.getElementById("create-bomb-mode").checked;
   const monkeyPoker = document.getElementById("create-monkey-poker").checked;
   const isPublic = document.getElementById("create-public").checked;
+  const itemAuctionEnabled = document.getElementById(
+    "create-item-auction-enabled",
+  ).checked;
+  const itemAuctionVickrey = document.getElementById(
+    "create-item-auction-vickrey",
+  ).checked;
+  const itemAuctionStart =
+    parseInt(document.getElementById("create-item-auction-start").value) || 50;
+  const itemAuctionTimer =
+    parseInt(document.getElementById("create-item-auction-timer").value) || 15;
   if (!socket.connected)
     return showToast("Connecting to server, please try again.", "warning");
   socket.emit("create_game", {
@@ -3129,7 +3521,23 @@ function createGame() {
     bombMode,
     monkeyPoker,
     isPublic,
+    itemAuctionEnabled,
+    itemAuctionVickrey,
+    itemAuctionStartValue: itemAuctionStart,
+    itemAuctionTimer,
   });
+}
+
+function toggleItemAuctionFields() {
+  const enabled = document.getElementById(
+    "create-item-auction-enabled",
+  ).checked;
+  document.querySelectorAll("#simple-settings .item-auction-sub").forEach(
+    (el) => {
+      el.style.opacity = enabled ? "1" : "0.4";
+      el.style.pointerEvents = enabled ? "" : "none";
+    },
+  );
 }
 
 function pasteCode() {
@@ -3186,7 +3594,12 @@ function _handlePublicLobbies(lobbies) {
     return;
   }
   container.innerHTML = lobbies.map(l => {
-    const modeLabel = l.gameMode === "teams" ? "Teams" : "FFA";
+    const modeLabel =
+      l.gameMode === "teams"
+        ? "Teams"
+        : l.gameMode === "simple"
+          ? "Simple"
+          : "FFA";
     return `<button class="public-lobby-item" onclick="joinPublicLobby('${l.gameId}')">
       <div class="public-lobby-host">${l.hostName}'s game</div>
       <div class="public-lobby-details">
@@ -4520,6 +4933,7 @@ function toggleModeSettings() {
   const mode = document.getElementById("create-mode").value;
   const teamSettings = document.getElementById("team-settings");
   const maxSelect = document.getElementById("create-max");
+  const simpleSettings = document.getElementById("simple-settings");
   if (mode === "teams") {
     teamSettings.style.display = "";
     maxSelect.value = "4";
@@ -4528,10 +4942,676 @@ function toggleModeSettings() {
     teamSettings.style.display = "none";
     maxSelect.disabled = false;
   }
+  if (simpleSettings) {
+    simpleSettings.style.display = mode === "simple" ? "" : "none";
+  }
+  if (mode === "simple") toggleItemAuctionFields();
 }
 
 function endTurn() {
   socket.emit("end_turn", { gameId });
+}
+
+// ── Simple Mode Shop ─────────────────────────────────────────────
+const SIMPLE_SHOP_CARDS = [
+  { key: "refreshDice", emoji: "🔄", name: "Refresh Dice" },
+  { key: "swapTiles", emoji: "🔀", name: "Swap Tiles" },
+  { key: "scout", emoji: "🔭", name: "Scout" },
+  { key: "teleport", emoji: "🌀", name: "Teleport" },
+];
+const SIMPLE_CARD_PRICE = 500;
+
+function buyCard(cardType) {
+  if (!socket || !gameId) return;
+  socket.emit("buy_card", { gameId, cardType });
+}
+
+// Refresh = no target, emit immediately. Swap/Scout/Teleport need tile
+// selection → enter board targeting mode.
+function useCard(cardType) {
+  if (!socket || !gameId) return;
+  if (cardType === "refreshDice") {
+    socket.emit("use_card", { gameId, cardType });
+    return;
+  }
+  if (cardType === "swapTiles" || cardType === "scout" || cardType === "teleport") {
+    startAbilityTargeting(cardType);
+    return;
+  }
+}
+
+// Single-button interaction: when count==0, the button buys; when count>=1
+// the button morphs into "USE …" and clicking uses one card. A separate "+"
+// chip lets you stack more.
+function onShopCardClick(cardType) {
+  if (!gs) return;
+  const me = _gsPlayerMap[myId];
+  if (!me) return;
+  const owned = (me.cards && me.cards[cardType]) || 0;
+  if (owned > 0) {
+    useCard(cardType);
+  } else {
+    buyCard(cardType);
+  }
+}
+
+function _canUseSimpleCard(me, cardType) {
+  if (!me || !gs) return false;
+  const owned = (me.cards && me.cards[cardType]) || 0;
+  if (owned <= 0) return false;
+  if (cardType === "refreshDice") {
+    return (me.petCooldown || 0) > 0;
+  }
+  if (cardType === "scout") {
+    const revealed = (me.revealedTiles || []).length;
+    const boardSize = (gs.boardLayout || []).length || 52;
+    return revealed < boardSize;
+  }
+  if (cardType === "swapTiles" || cardType === "teleport") {
+    return true;
+  }
+  return false;
+}
+
+// ── Ability target selection (Swap / Scout / Teleport) ────────────
+// window._abilityTargetMode = { card, picks: number[], needed }
+function _abilityNeeds(cardType) {
+  return cardType === "swapTiles" ? 2 : 1;
+}
+
+function _isAbilityTileSelectable(mode, pos, state) {
+  state = state || gs;
+  if (!mode || !state) return false;
+  const occupied =
+    state.players &&
+    state.players.some(
+      (p) =>
+        !p.bankrupt && !p.startPickPending && p.position === pos,
+    );
+  if (mode.card === "swapTiles") {
+    if (occupied) return false;
+    if (mode.picks && mode.picks.includes(pos)) return false;
+    return true;
+  }
+  if (mode.card === "scout") {
+    const me = _gsPlayerMap[myId];
+    const revealed = new Set((me && me.revealedTiles) || []);
+    return !revealed.has(pos); // only hidden tiles
+  }
+  if (mode.card === "teleport") {
+    return true; // any tile (occupied triggers poker server-side)
+  }
+  return false;
+}
+
+function startAbilityTargeting(cardType) {
+  window._abilityTargetMode = {
+    card: cardType,
+    picks: [],
+    needed: _abilityNeeds(cardType),
+  };
+  const board = document.getElementById("board");
+  if (board) board.classList.add("ability-targeting");
+  showAbilityTargetBanner();
+  window._abilityTargetKeyHandler = (e) => {
+    if (e.key === "Escape") {
+      e.preventDefault();
+      cancelAbilityTargeting();
+    }
+  };
+  document.addEventListener("keydown", window._abilityTargetKeyHandler);
+  if (typeof renderBoard === "function" && gs) renderBoard(gs);
+}
+
+function cancelAbilityTargeting() {
+  window._abilityTargetMode = null;
+  const board = document.getElementById("board");
+  if (board) board.classList.remove("ability-targeting");
+  hideAbilityTargetBanner();
+  if (window._abilityTargetKeyHandler) {
+    document.removeEventListener("keydown", window._abilityTargetKeyHandler);
+    window._abilityTargetKeyHandler = null;
+  }
+  if (typeof renderBoard === "function" && gs) renderBoard(gs);
+}
+
+function handleAbilityTileClick(pos) {
+  const mode = window._abilityTargetMode;
+  if (!mode) return;
+  if (!_isAbilityTileSelectable(mode, pos, gs)) {
+    showToast("You can't pick that tile.", "warning");
+    return;
+  }
+  mode.picks.push(pos);
+  if (mode.picks.length >= mode.needed) {
+    if (mode.card === "swapTiles") {
+      socket.emit("use_card", {
+        gameId,
+        cardType: "swapTiles",
+        posA: mode.picks[0],
+        posB: mode.picks[1],
+      });
+    } else if (mode.card === "scout") {
+      socket.emit("use_card", { gameId, cardType: "scout", pos: mode.picks[0] });
+    } else if (mode.card === "teleport") {
+      socket.emit("use_card", { gameId, cardType: "teleport", pos: mode.picks[0] });
+    }
+    cancelAbilityTargeting();
+  } else {
+    showAbilityTargetBanner();
+    if (typeof renderBoard === "function" && gs) renderBoard(gs);
+  }
+}
+
+const ABILITY_TARGET_PROMPTS = {
+  swapTiles: ["🔀 Pick the FIRST tile to swap", "🔀 Pick the SECOND tile to swap"],
+  scout: ["🔭 Pick a hidden tile to scout"],
+  teleport: ["🌀 Pick a tile to teleport to"],
+};
+
+function showAbilityTargetBanner() {
+  const mode = window._abilityTargetMode;
+  if (!mode) return;
+  let banner = document.getElementById("ability-target-banner");
+  if (!banner) {
+    banner = document.createElement("div");
+    banner.id = "ability-target-banner";
+    banner.className = "ability-target-banner";
+    document.body.appendChild(banner);
+  }
+  const prompts = ABILITY_TARGET_PROMPTS[mode.card] || ["Pick a tile"];
+  const promptText = prompts[Math.min(mode.picks.length, prompts.length - 1)];
+  banner.innerHTML =
+    `<span class="ability-target-text">${promptText}</span>` +
+    `<button class="ability-target-cancel" onclick="cancelAbilityTargeting()">✕ Cancel</button>`;
+  banner.style.display = "flex";
+}
+
+function hideAbilityTargetBanner() {
+  const banner = document.getElementById("ability-target-banner");
+  if (banner) banner.style.display = "none";
+}
+
+// Item-ability reference popover (simple mode), opened by clicking the
+// board-center auction counter. Pass `false` to force-close, or the click
+// event to toggle. Closes on outside click or Escape.
+function toggleAbilitiesPopover(arg) {
+  const pop = document.getElementById("abilities-popover");
+  if (!pop) return;
+  if (arg && typeof arg === "object" && arg.stopPropagation) arg.stopPropagation();
+  const willOpen = arg === false ? false : !pop.classList.contains("open");
+  pop.classList.toggle("open", willOpen);
+  if (willOpen) {
+    // Defer wiring the dismiss listeners so the opening click doesn't close it.
+    setTimeout(() => {
+      document.addEventListener("click", _dismissAbilitiesPopover);
+      document.addEventListener("keydown", _dismissAbilitiesPopoverKey);
+    }, 0);
+  } else {
+    document.removeEventListener("click", _dismissAbilitiesPopover);
+    document.removeEventListener("keydown", _dismissAbilitiesPopoverKey);
+  }
+}
+function _dismissAbilitiesPopover(e) {
+  const pop = document.getElementById("abilities-popover");
+  if (!pop || pop.contains(e.target)) return; // clicks inside keep it open
+  toggleAbilitiesPopover(false);
+}
+function _dismissAbilitiesPopoverKey(e) {
+  if (e.key === "Escape") toggleAbilitiesPopover(false);
+}
+
+function updateSimpleShop(me, isMyTurn) {
+  const shop = document.getElementById("simple-shop");
+  if (!shop) return;
+  if (!gs || gs.gameMode !== "simple" || gs.state !== "playing" || !me || me.startPickPending) {
+    shop.style.display = "none";
+    return;
+  }
+  shop.style.display = "";
+
+  // When item auctions are enabled, cards can ONLY be obtained via the auction.
+  // The shop UI degrades to a use-only inventory: rows for owned cards become
+  // "Use" buttons; rows with 0 owned are hidden entirely.
+  const auctionMode = !!gs.itemAuctionEnabled;
+  const canBuy =
+    !auctionMode && !me.bankrupt && me.money >= SIMPLE_CARD_PRICE;
+
+  // No global interactive element is taking over the screen.
+  const noBlockingState =
+    !gs.auction &&
+    !gs.poker &&
+    !gs.vineSwing &&
+    !gs.mushroomPending &&
+    !gs.petResolving &&
+    !gs.itemAuction &&
+    !window._abilityTargetMode;
+
+  // Swap/Scout/Teleport: only on your turn, before rolling, one card per turn.
+  const onTurnUsable =
+    isMyTurn &&
+    !gs.diceRolled &&
+    !me.startPickPending &&
+    !gs.simpleCardUsedThisTurn &&
+    noBlockingState;
+
+  for (const card of SIMPLE_SHOP_CARDS) {
+    const row = document.getElementById(`shop-row-${card.key}`);
+    const main = document.getElementById(`btn-shop-${card.key}`);
+    const plus = document.getElementById(`btn-shop-plus-${card.key}`);
+    if (!main || !plus) continue;
+    const owned = (me.cards && me.cards[card.key]) || 0;
+    if (auctionMode && owned <= 0) {
+      // Auction-only mode: nothing to do unless you own the card. Hide the row.
+      if (row) row.style.display = "none";
+      continue;
+    }
+    if (row) row.style.display = "";
+    if (owned > 0) {
+      main.classList.add("shop-use");
+      const ownedLabel = owned > 1 ? ` (x${owned})` : "";
+      main.textContent = `${card.emoji} Use ${card.name}${ownedLabel}`;
+      let usable;
+      if (card.key === "refreshDice") {
+        // Usable any time (even off-turn). Gated by being on cooldown. On your
+        // own turn it also respects the one-card-per-turn limit.
+        usable =
+          noBlockingState &&
+          _canUseSimpleCard(me, "refreshDice") &&
+          (!isMyTurn || (!gs.simpleCardUsedThisTurn && !me.startPickPending));
+      } else {
+        usable = onTurnUsable && _canUseSimpleCard(me, card.key);
+      }
+      main.disabled = !usable;
+      // In auction mode, no more shop purchases — hide the "+" button.
+      plus.style.display = auctionMode ? "none" : "";
+      plus.disabled = !canBuy;
+    } else {
+      main.classList.remove("shop-use");
+      main.textContent = `${card.emoji} ${card.name} ${SIMPLE_CARD_PRICE}🍌`;
+      main.disabled = !canBuy;
+      plus.style.display = "none";
+    }
+  }
+}
+
+// ── Simple Mode Item Auction (wheel + silent bid) ─────────────────
+const ITEM_AUCTION_META = {
+  refreshDice: { emoji: "🔄", name: "Refresh Magic Dice" },
+  swapTiles: { emoji: "🔀", name: "Swap Tiles" },
+  scout: { emoji: "🔭", name: "Scout" },
+  teleport: { emoji: "🌀", name: "Teleport" },
+};
+// Angular position on the wheel for each item (degrees, clockwise from 12 o'clock)
+const ITEM_AUCTION_ANGLE = {
+  refreshDice: 0,
+  swapTiles: 90,
+  scout: 180,
+  teleport: 270,
+};
+window._itemAuctionState = window._itemAuctionState || {
+  spinAppliedFor: null, // item key the spin animation was applied for
+  lastPhase: null,
+  lastItem: null,
+  bidLockedAt: null,
+};
+
+function submitItemBid() {
+  if (!gs || !gs.itemAuction || gs.itemAuction.phase !== "bidding") return;
+  const input = document.getElementById("item-auction-bid-input");
+  if (!input) return;
+  const me = _gsPlayerMap[myId];
+  if (!me) return;
+  const myMoney = Math.max(0, me.money || 0);
+  let n = Math.floor(Number(input.value));
+  if (!Number.isFinite(n) || n < 0) n = 0;
+  if (n > myMoney) n = myMoney;
+  if (!socket || !gameId) return;
+  socket.emit("submit_item_bid", { gameId, amount: n });
+}
+
+// RAF-driven wheel spin: fast start → smooth decel (cubic ease-out) → small
+// overshoot bounce-back. Plays a tick sound + wiggles the pointer each time
+// a 90° boundary passes the pointer. On completion, marks the winning slot.
+function _spinItemAuctionWheel(wheel, targetAngle, itemKey) {
+  if (window._itemAuctionSpinRAF) {
+    cancelAnimationFrame(window._itemAuctionSpinRAF);
+    window._itemAuctionSpinRAF = null;
+  }
+  // Clear any previous winner highlight before this new spin.
+  document
+    .querySelectorAll(".item-auction-wheel-slot.is-winner")
+    .forEach((el) => el.classList.remove("is-winner"));
+
+  const spins = 5; // number of full rotations before settling
+  const overshoot = 10; // degrees past the target before bounce-back
+  const decelMs = 2800; // long smooth deceleration
+  const bounceMs = 450; // bounce back from overshoot to target
+  const totalMs = decelMs + bounceMs;
+  const finalRotation = spins * 360 - targetAngle;
+  const peakRotation = finalRotation + overshoot;
+
+  const pointer = document.getElementById("item-auction-pointer");
+  let lastTickBoundary = 0;
+  const startTime = performance.now();
+
+  function easeOutCubic(t) {
+    return 1 - Math.pow(1 - t, 3);
+  }
+  function easeOutQuad(t) {
+    return 1 - Math.pow(1 - t, 2);
+  }
+
+  function tick(now) {
+    const elapsed = now - startTime;
+    let rotation;
+    let done = false;
+    if (elapsed < decelMs) {
+      const t = elapsed / decelMs;
+      rotation = peakRotation * easeOutCubic(t);
+    } else if (elapsed < totalMs) {
+      const t = (elapsed - decelMs) / bounceMs;
+      rotation = peakRotation - overshoot * easeOutQuad(t);
+    } else {
+      rotation = finalRotation;
+      done = true;
+    }
+    wheel.style.transform = `rotate(${rotation}deg)`;
+
+    // Tick: every time the rotation crosses a multiple of 90° (a slot
+    // boundary passes the pointer), play a short click + wiggle the pointer.
+    const crossings = Math.floor(rotation / 90);
+    if (crossings !== lastTickBoundary) {
+      // Account for multiple crossings in a single frame (early spin is fast).
+      const delta = crossings - lastTickBoundary;
+      lastTickBoundary = crossings;
+      // Only play one sound per frame to avoid overlap; wiggle once.
+      playWheelTick();
+      if (pointer) {
+        pointer.classList.remove("pointer-tick");
+        // Force reflow so the class re-apply triggers a fresh transition.
+        void pointer.offsetWidth;
+        pointer.classList.add("pointer-tick");
+        setTimeout(() => pointer.classList.remove("pointer-tick"), 60);
+      }
+    }
+
+    if (!done) {
+      window._itemAuctionSpinRAF = requestAnimationFrame(tick);
+    } else {
+      window._itemAuctionSpinRAF = null;
+      // Snap to exact final rotation and mark winner.
+      wheel.style.transform = `rotate(${finalRotation}deg)`;
+      const winnerSlot = document.querySelector(
+        `.item-auction-wheel-slot[data-item="${itemKey}"]`,
+      );
+      if (winnerSlot) winnerSlot.classList.add("is-winner");
+      // Final solid "lock" tick.
+      playWheelTick(1.4);
+    }
+  }
+  window._itemAuctionSpinRAF = requestAnimationFrame(tick);
+}
+
+// Short metallic click — like a wheel ratchet pawl hitting a peg.
+function playWheelTick(volumeMult = 1) {
+  try {
+    if (!_sfxVolume || _sfxVolume === 0) return;
+    const ctx = _getAudioCtx();
+    if (!ctx) return;
+    const t = ctx.currentTime;
+    // Short high-pitched tone burst (the "tick")
+    const osc = ctx.createOscillator();
+    osc.type = "square";
+    osc.frequency.setValueAtTime(2200, t);
+    osc.frequency.exponentialRampToValueAtTime(900, t + 0.04);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.08 * volumeMult, t + 0.003);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.05);
+    osc.connect(g).connect(_sfxDest(ctx));
+    osc.start(t);
+    osc.stop(t + 0.06);
+    // Tiny noise burst layered on top for click texture
+    const buf = ctx.createBuffer(1, Math.floor(ctx.sampleRate * 0.02), ctx.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) {
+      d[i] = (Math.random() * 2 - 1) * Math.exp(-i / (ctx.sampleRate * 0.005));
+    }
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    const hp = ctx.createBiquadFilter();
+    hp.type = "highpass";
+    hp.frequency.value = 1800;
+    const ng = ctx.createGain();
+    ng.gain.value = 0.06 * volumeMult;
+    src.connect(hp).connect(ng).connect(_sfxDest(ctx));
+    src.start(t);
+    src.stop(t + 0.025);
+  } catch (e) {}
+}
+
+function setItemBidPreset(kind) {
+  const input = document.getElementById("item-auction-bid-input");
+  if (!input || input.disabled) return;
+  const money = _itemBidMax();
+  let val;
+  if (kind === "max") val = money;
+  else if (kind === "half") val = Math.floor(money / 2);
+  else val = 0;
+  input.value = String(val);
+}
+
+// ── Item-auction keypad (mirrors the farm-auction keypad) ──────────
+// Highest silent bid is capped at the player's bananas. The input is
+// readonly and driven entirely by these keys; they no-op once the bid
+// is locked in (input gets disabled in updateItemAuctionUI).
+function _itemBidMax() {
+  const me = _gsPlayerMap[myId];
+  return me ? Math.max(0, me.money || 0) : 0;
+}
+function itemBidKey(digit) {
+  const input = document.getElementById("item-auction-bid-input");
+  if (!input || input.disabled) return;
+  playTickSound();
+  const cur = input.value === "0" ? "" : input.value;
+  const num = parseInt(cur + digit, 10) || 0;
+  input.value = String(Math.min(num, _itemBidMax()));
+}
+function itemBidClear() {
+  const input = document.getElementById("item-auction-bid-input");
+  if (!input || input.disabled) return;
+  playTickSound();
+  input.value = "0";
+}
+function itemBidBackspace() {
+  const input = document.getElementById("item-auction-bid-input");
+  if (!input || input.disabled) return;
+  playTickSound();
+  const cur = input.value;
+  input.value = cur.length <= 1 ? "0" : cur.slice(0, -1);
+}
+
+function updateItemAuctionUI(me) {
+  const box = document.getElementById("item-auction-box");
+  if (!box) return;
+  const a = gs && gs.itemAuction;
+  if (!gs || !a) {
+    box.style.display = "none";
+    window._itemAuctionState.spinAppliedFor = null;
+    window._itemAuctionState.lastPhase = null;
+    window._itemAuctionState.lastItem = null;
+    window._itemAuctionState.bidLockedAt = null;
+    // Clear winner highlight + cancel any in-flight spin RAF.
+    document
+      .querySelectorAll(".item-auction-wheel-slot.is-winner")
+      .forEach((el) => el.classList.remove("is-winner"));
+    if (window._itemAuctionSpinRAF) {
+      cancelAnimationFrame(window._itemAuctionSpinRAF);
+      window._itemAuctionSpinRAF = null;
+    }
+    return;
+  }
+  box.style.display = "";
+  const wheelPhase = document.getElementById("item-auction-wheel-phase");
+  const bidPhase = document.getElementById("item-auction-bid-phase");
+  const resultPhase = document.getElementById("item-auction-result-phase");
+
+  // Wheel spin: RAF-driven animation, keyed by wheelStartedAt so back-to-back
+  // auctions on the same item still re-spin. Includes tick sounds + pointer
+  // wiggle as slot boundaries pass under the pointer, and an overshoot bounce
+  // at the end for satisfaction.
+  const wheel = document.getElementById("item-auction-wheel");
+  if (wheel) {
+    const targetAngle = ITEM_AUCTION_ANGLE[a.item] ?? 0;
+    const auctionKey = a.wheelStartedAt || a.item;
+    if (window._itemAuctionState.spinAppliedFor !== auctionKey) {
+      window._itemAuctionState.spinAppliedFor = auctionKey;
+      _spinItemAuctionWheel(wheel, targetAngle, a.item);
+    }
+  }
+
+  if (wheelPhase) wheelPhase.style.display = a.phase === "wheel" ? "" : "none";
+  if (bidPhase) bidPhase.style.display = a.phase === "bidding" ? "" : "none";
+  if (resultPhase)
+    resultPhase.style.display = a.phase === "result" ? "" : "none";
+
+  const meta = ITEM_AUCTION_META[a.item] || { emoji: "🎁", name: "Item" };
+
+  if (a.phase === "bidding") {
+    const emojiEl = document.getElementById("item-auction-item-emoji");
+    const nameEl = document.getElementById("item-auction-item-name");
+    if (emojiEl) emojiEl.textContent = meta.emoji;
+    if (nameEl) nameEl.textContent = meta.name;
+    const myMoney = me ? Math.max(0, me.money || 0) : 0;
+    const maxEl = document.getElementById("item-auction-bid-max");
+    if (maxEl) maxEl.textContent = String(myMoney);
+    const input = document.getElementById("item-auction-bid-input");
+    if (input) {
+      input.max = String(myMoney);
+      // Reset input value only once per new auction.
+      const auctionKey = a.wheelStartedAt || a.item;
+      if (window._itemAuctionState.lastItem !== auctionKey) {
+        input.value = "0";
+      }
+    }
+    const myBid = a.bids && me && a.bids[me.id];
+    const submitted = !!(myBid && myBid.submitted);
+    const lockedEl = document.getElementById("item-auction-bid-locked");
+    const submitBtn = document.getElementById("item-auction-bid-submit");
+    if (lockedEl) lockedEl.style.display = submitted ? "" : "none";
+    if (submitBtn) submitBtn.disabled = submitted || !me || me.bankrupt;
+    if (input) input.disabled = submitted;
+    // Lock the keypad + presets once the bid is in.
+    const keypad = document.querySelector("#item-auction-bid-phase .bid-keypad");
+    if (keypad) keypad.classList.toggle("keypad-locked", submitted);
+    document
+      .querySelectorAll("#item-auction-bid-phase .bid-btn-row .btn-preset")
+      .forEach((b) => (b.disabled = submitted));
+    // Vickrey note
+    const vNote = document.getElementById("item-auction-vickrey-note");
+    if (vNote) vNote.style.display = a.vickrey ? "" : "none";
+
+    // Timer bar
+    const bar = document.getElementById("item-auction-timer-bar");
+    const txt = document.getElementById("item-auction-timer-text");
+    if (a.deadline) {
+      const total = (gs.itemAuctionTimer || 15) * 1000;
+      const tick = () => {
+        const left = Math.max(0, a.deadline - Date.now());
+        const pct = Math.max(0, Math.min(100, (left / total) * 100));
+        if (bar) bar.style.width = pct + "%";
+        if (txt) txt.textContent = Math.ceil(left / 1000) + "s";
+        if (left > 0 && gs && gs.itemAuction && gs.itemAuction.phase === "bidding") {
+          window._itemAuctionTimerRAF = requestAnimationFrame(tick);
+        }
+      };
+      if (window._itemAuctionTimerRAF) {
+        cancelAnimationFrame(window._itemAuctionTimerRAF);
+      }
+      tick();
+    }
+
+    // Bidders list (submitted / not-submitted)
+    const list = document.getElementById("item-auction-bidders");
+    if (list) {
+      list.innerHTML = "";
+      for (const pid of a.participantIds || []) {
+        const p = _gsPlayerMap[pid];
+        if (!p) continue;
+        const bid = a.bids[pid] || {};
+        const chip = document.createElement("div");
+        chip.className =
+          "item-auction-bidder" +
+          (bid.submitted ? " submitted" : "") +
+          (bid.autoPass ? " autopass" : "");
+        chip.innerHTML =
+          `<span class="bidder-name">${escapeHtml(p.name)}</span>` +
+          `<span class="bidder-status">${
+            bid.autoPass
+              ? "💤 auto-pass"
+              : bid.submitted
+                ? "✅ submitted"
+                : "✏️ thinking…"
+          }</span>`;
+        list.appendChild(chip);
+      }
+    }
+  } else if (a.phase === "result") {
+    const emojiEl = document.getElementById("item-auction-result-emoji");
+    const nameEl = document.getElementById("item-auction-result-name");
+    if (emojiEl) emojiEl.textContent = meta.emoji;
+    if (nameEl) nameEl.textContent = meta.name;
+    const headline = document.getElementById("item-auction-result-headline");
+    const bidsEl = document.getElementById("item-auction-result-bids");
+    const r = a.result || {};
+    if (headline) {
+      if (r.tied) {
+        headline.className =
+          "item-auction-result-headline tied";
+        headline.textContent =
+          `🤝 Tie at ${r.tiedAt}🍌 between ${r.tiedNames || "?"} — nobody wins.`;
+      } else if (r.winnerId) {
+        const won = r.winnerId === myId;
+        headline.className =
+          "item-auction-result-headline " + (won ? "won-mine" : "won-other");
+        headline.textContent = won
+          ? `🏆 You won ${meta.name} for ${r.pricePaid}🍌!`
+          : `🏆 ${r.winnerName} won ${meta.name} for ${r.pricePaid}🍌!`;
+      } else {
+        headline.className = "item-auction-result-headline";
+        headline.textContent = "—";
+      }
+    }
+    if (bidsEl) {
+      bidsEl.innerHTML = "";
+      const bids = Array.isArray(r.bids) ? [...r.bids] : [];
+      bids.sort((x, y) => (y.amount || 0) - (x.amount || 0));
+      for (const b of bids) {
+        const row = document.createElement("div");
+        row.className =
+          "item-auction-result-bid" +
+          (!r.tied && r.winnerId === b.playerId ? " winner" : "") +
+          (r.tied && (b.amount || 0) === r.tiedAt ? " tied" : "");
+        row.innerHTML =
+          `<span class="result-name">${escapeHtml(b.name)}</span>` +
+          `<span class="result-amount">${b.amount || 0}🍌${b.autoPass ? " (auto)" : ""}</span>`;
+        bidsEl.appendChild(row);
+      }
+    }
+  }
+
+  window._itemAuctionState.lastPhase = a.phase;
+  window._itemAuctionState.lastItem = a.wheelStartedAt || a.item;
+}
+
+function escapeHtml(s) {
+  if (s == null) return "";
+  return String(s)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
 }
 
 function buyBomb() {
@@ -4541,6 +5621,11 @@ function buyBomb() {
     socket.emit("buy_bomb", { gameId });
     return;
   }
+  const bombPrice = 5000;
+  const priceEl = overlay.querySelector(".bomb-confirm-price");
+  if (priceEl) priceEl.textContent = `${bombPrice}🍌`;
+  const confirmBtn = overlay.querySelector(".btn-bomb");
+  if (confirmBtn) confirmBtn.textContent = `🍍 Buy for ${bombPrice}🍌`;
   overlay.style.display = "flex";
   // Escape cancels, Enter confirms — wired once per open
   window._buyBombKeyHandler = (e) => {
@@ -5677,20 +6762,32 @@ function showEmojiReaction(playerId, emoji) {
 // ── Board Preview ──────────────────────────────────────────────────
 
 let _previewLayout = null;
+let _previewMode = "classic"; // "classic" | "simple"
 
 function openBoardPreview() {
   const overlay = document.getElementById("board-preview-overlay");
   overlay.style.display = "flex";
-  shuffleBoardPreview();
+  setPreviewMode(_previewMode);
 }
 
 function closeBoardPreview() {
   document.getElementById("board-preview-overlay").style.display = "none";
 }
 
+// Switch the preview between the classic and simple-mode boards, then re-shuffle.
+function setPreviewMode(mode) {
+  _previewMode = mode === "simple" ? "simple" : "classic";
+  const classicBtn = document.getElementById("bp-mode-classic");
+  const simpleBtn = document.getElementById("bp-mode-simple");
+  if (classicBtn) classicBtn.classList.toggle("active", _previewMode === "classic");
+  if (simpleBtn) simpleBtn.classList.toggle("active", _previewMode === "simple");
+  shuffleBoardPreview();
+}
+
 function shuffleBoardPreview() {
   playShuffleSound();
-  _previewLayout = buildPreviewLayout();
+  _previewLayout =
+    _previewMode === "simple" ? buildSimplePreviewLayout() : buildPreviewLayout();
   renderPreviewBoard(_previewLayout);
 }
 

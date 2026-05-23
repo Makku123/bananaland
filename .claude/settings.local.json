@@ -8,7 +8,8 @@
       "Bash(powershell.exe -Command \"Stop-Process -Id 17720 -Force\")",
       "Bash(node -c frontend/game.js)",
       "Bash(node backend/server.js)",
-      "Bash(node -c \"c:/Users/You/Code/bananaland/frontend/board.js\")"
+      "Bash(node -c \"c:/Users/You/Code/bananaland/frontend/board.js\")",
+      "Bash(node -e ' *)"
     ]
   }
 }
