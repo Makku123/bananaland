@@ -9,7 +9,12 @@
       "Bash(node -c frontend/game.js)",
       "Bash(node backend/server.js)",
       "Bash(node -c \"c:/Users/You/Code/bananaland/frontend/board.js\")",
-      "Bash(node -e ' *)"
+      "Bash(node -e ' *)",
+      "Bash(timeout 120 node test_game.js)",
+      "Bash(git worktree *)",
+      "Bash(node backend/test_game.js)",
+      "PowerShell($conns = Get-NetTCPConnection -LocalPort 3000 -State Listen -ErrorAction SilentlyContinue; if \\($conns\\) { $conns | ForEach-Object { $p = Get-Process -Id $_.OwningProcess -ErrorAction SilentlyContinue; \"PID $\\($_.OwningProcess\\) \\($\\($p.ProcessName\\)\\) listening on 3000\" } } else { \"Nothing listening on port 3000\" }; \"---\"; Get-CimInstance Win32_Process -Filter \"Name='node.exe'\" -ErrorAction SilentlyContinue | Select-Object ProcessId, @{n='Cmd';e={$_.CommandLine}} | Format-List)",
+      "PowerShell(try { $r = Invoke-WebRequest -Uri \"http://localhost:3000/\" -UseBasicParsing -TimeoutSec 5; \"HTTP $\\($r.StatusCode\\), $\\($r.Content.Length\\) bytes served\" } catch { \"Request failed: $\\($_.Exception.Message\\)\" })"
     ]
   }
 }

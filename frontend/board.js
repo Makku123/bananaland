@@ -1,6 +1,11 @@
 ﻿// ——— Board Data & Rendering (MEGA EDITION — 52 spaces) ————————————
 
 const BOARD_SIZE = 52;
+// Simple mode uses a full square loop: 11 tiles per side + 4 corners = 48.
+const SIMPLE_BOARD_SIZE = 48;
+// Set true at the top of each render pass when the active board is the simple
+// 48-tile board, so spaceRect() returns the simple-mode square geometry.
+let _simpleBoardActive = false;
 
 const SPACE_DATA = {
   // Cavendish (12)
@@ -75,6 +80,7 @@ const SPECIAL_SPACES = {
 // ——— Layout calculation (52 spaces, 14×14 grid) ———————————————————
 
 function spaceRect(i) {
+  if (_simpleBoardActive) return spaceRectSimple(i);
   const C = 100 / 14; // all tiles same size (square)
   const S = C; // side tiles same as corner
 
@@ -107,6 +113,44 @@ function spaceRect(i) {
   return { l: 0, t: 0, w: 0, h: 0 };
 }
 
+// ——— Simple-mode layout: 48-tile full square loop ————————————————————
+// A 13×13 grid whose entire perimeter is filled (4·13 − 4 = 48): 4 real corner
+// tiles + 11 tiles per side, all the same size — same geometry as the Classic
+// board, just one cell smaller per side. Numbered counter-clockwise from the
+// bottom-right corner, mirroring Classic: 0 = BR corner, 1–11 bottom (R→L),
+// 12 = BL corner, 13–23 left (B→T), 24 = TL corner, 25–35 top (L→R),
+// 36 = TR corner, 37–47 right (T→B).
+function spaceRectSimple(i) {
+  const C = 100 / 13; // all tiles same size (square), corners included
+  const S = C;
+  // Corners (no `side` — like Classic's corner slots)
+  if (i === 0) return { l: 100 - C, t: 100 - C, w: C, h: C }; // bottom-right
+  if (i === 12) return { l: 0, t: 100 - C, w: C, h: C }; // bottom-left
+  if (i === 24) return { l: 0, t: 0, w: C, h: C }; // top-left
+  if (i === 36) return { l: 100 - C, t: 0, w: C, h: C }; // top-right
+  // Bottom row (1–11): right to left
+  if (i >= 1 && i <= 11) {
+    const idx = 11 - i;
+    return { l: C + idx * S, t: 100 - C, w: S, h: C, side: "bottom" };
+  }
+  // Left column (13–23): bottom to top
+  if (i >= 13 && i <= 23) {
+    const idx = 23 - i;
+    return { l: 0, t: C + idx * S, w: C, h: S, side: "left" };
+  }
+  // Top row (25–35): left to right
+  if (i >= 25 && i <= 35) {
+    const idx = i - 25;
+    return { l: C + idx * S, t: 0, w: S, h: C, side: "top" };
+  }
+  // Right column (37–47): top to bottom
+  if (i >= 37 && i <= 47) {
+    const idx = i - 37;
+    return { l: 100 - C, t: C + idx * S, w: C, h: S, side: "right" };
+  }
+  return { l: 0, t: 0, w: 0, h: 0 };
+}
+
 // ——— Free Bananas popup tracking ——————————————————————————————————
 let _prevFreeBananasTiles = new Set(); // positions where freebananas is known
 let _freeBananasShown = new Set(); // positions already shown this walk
@@ -114,6 +158,99 @@ window._freeBananasShown = _freeBananasShown;
 
 // ——— Banana pile tracking for collection animation ————————————————
 let _prevBananaPiles = {}; // { tileIndex: amount }
+
+// On-board pile chip label. Simple mode shows a compact grow multiplier
+// (×N = pile ÷ farm yield = how many un-collected grows are stacked) instead of
+// the raw banana count, so the board stays readable. Other modes keep the exact
+// amount. The Owned-Farms chart renders separately and still shows exact totals.
+function _pileChipLabel(tileIndex, amount) {
+  if (gs && gs.gameMode === "simple") {
+    const layout = gs.boardLayout && gs.boardLayout[tileIndex];
+    const yieldVal = layout && layout.price ? layout.price : 0;
+    if (yieldVal > 0) {
+      const count = Math.max(1, Math.round(amount / yieldVal));
+      return {
+        text: "×" + count,
+        mult: true,
+        // Hover reveals the real total behind the multiplier: yield × count.
+        title: yieldVal + " × " + count + " = " + amount + "🍌",
+      };
+    }
+  }
+  return { text: amount + "🍌", mult: false, title: "" };
+}
+
+// Fire the "Steal!" text floater at a tile immediately (no walk-end delay).
+// game.js calls this at walk-start when the player leaves a squatted tile, so
+// the steal reads at departure rather than at the end of the walk. Marks the
+// tile in _stealShown so the walk-end pile-decrease detector won't re-fire it.
+// Also marks the tile in _walkStartStealTiles so the pile counter chip drops
+// to 0 on the next walk frame — the box disappears in sync with the floater
+// instead of lingering on the squatted tile until the walk ends.
+function _showStealFloaterAt(tileIndex) {
+  if (_stealShown.has(tileIndex)) return;
+  _stealShown.add(tileIndex);
+  if (!window._walkStartStealTiles) window._walkStartStealTiles = new Set();
+  window._walkStartStealTiles.add(tileIndex);
+  const board = document.getElementById("board");
+  if (!board) return;
+  const r = spaceRect(tileIndex);
+  const stealFloater = document.createElement("div");
+  stealFloater.className = "steal-floater";
+  stealFloater.textContent = "Steal!";
+  const boardRect = board.getBoundingClientRect();
+  stealFloater.style.position = "fixed";
+  stealFloater.style.left =
+    boardRect.left + (r.l + r.w / 2) / 100 * boardRect.width + "px";
+  stealFloater.style.top =
+    boardRect.top + (r.t + r.h / 2) / 100 * boardRect.height + "px";
+  stealFloater.style.zIndex = "9999";
+  document.body.appendChild(stealFloater);
+  setTimeout(() => stealFloater.remove(), 2200);
+}
+
+// Place a banana-pile chip relative to its tile. In simple mode every pile sits
+// OUTSIDE the board ring (away from centre), matching the corner tiles, so it
+// never sits on top of the tile's yield / ×N text. Other modes keep the original
+// interior placement. Corner tiles always push straight out (top→up, bottom→down).
+function _positionPileChip(pileEl, r) {
+  const cx = r.l + r.w / 2;
+  const cy = r.t + r.h / 2;
+  const outside = !!(gs && gs.gameMode === "simple");
+  const above = () => {
+    pileEl.style.top = r.t - 0.3 + "%";
+    pileEl.style.setProperty("--pile-transform", "translate(-50%, -100%)");
+  };
+  const below = () => {
+    pileEl.style.top = r.t + r.h + 0.3 + "%";
+    pileEl.style.setProperty("--pile-transform", "translate(-50%, 0)");
+  };
+  const leftOf = () => {
+    pileEl.style.left = r.l - 0.3 + "%";
+    pileEl.style.setProperty("--pile-transform", "translate(-100%, -50%)");
+  };
+  const rightOf = () => {
+    pileEl.style.left = r.l + r.w + 0.3 + "%";
+    pileEl.style.setProperty("--pile-transform", "translate(0, -50%)");
+  };
+  if (!r.side) {
+    // Corner: straight out vertically (already outside on every board).
+    pileEl.style.left = cx + "%";
+    if (cy < 50) above(); else below();
+  } else if (r.side === "bottom") {
+    pileEl.style.left = cx + "%";
+    outside ? below() : above(); // interior of a bottom tile is UP
+  } else if (r.side === "top") {
+    pileEl.style.left = cx + "%";
+    outside ? above() : below(); // interior of a top tile is DOWN
+  } else if (r.side === "left") {
+    pileEl.style.top = cy + "%";
+    outside ? leftOf() : rightOf(); // interior of a left tile is RIGHT
+  } else if (r.side === "right") {
+    pileEl.style.top = cy + "%";
+    outside ? rightOf() : leftOf(); // interior of a right tile is LEFT
+  }
+}
 let _stealShown = new Set(); // tile indices where "Steal!" floater already fired this turn
 let _collectShown = new Set(); // tile indices where collect floater/popup already fired this turn
 let _wasTokenWalking = false; // tracks previous walk state to detect walk-start transitions
@@ -133,6 +270,22 @@ function resetBoardAnimationState() {
   _freeBananasShown = new Set();
   _chainCache = null;
   window._lastGrowFiredKey = null;
+}
+
+// Reset the per-walk dedup sets at the start of a new walk. Called by game.js
+// from the dice-rolled handler BEFORE _showStealFloaterAt fires the leave-steal
+// — otherwise the in-renderBoard reset would clobber that tile from _stealShown
+// and the walk-end pile-decrement detector would fire a second "Steal!".
+// Also pre-flips _wasTokenWalking so renderBoard's reset block becomes a no-op
+// for this walk, and clears the per-walk leave-steal-tile set used by the pile
+// rendering to hide the squatter-stolen counter the moment the player departs.
+function resetWalkDedup() {
+  _stealShown = new Set();
+  _collectShown = new Set();
+  _freeBananasShown = new Set();
+  window._freeBananasShown = _freeBananasShown;
+  window._walkStartStealTiles = new Set();
+  _wasTokenWalking = true;
 }
 
 // ——— Shared helper: show a floating popup at the "Your Bananas" box ——
@@ -208,7 +361,7 @@ function _setupBoardDelegation() {
       }
       return;
     }
-    // Simple-mode ability target selection (swap / scout / teleport)
+    // Simple-mode ability target selection (Vine Swing / Magic Dice)
     if (window._abilityTargetMode && !window._tokenWalking) {
       if (typeof handleAbilityTileClick === "function") {
         handleAbilityTileClick(i);
@@ -223,11 +376,26 @@ function _setupBoardDelegation() {
   });
 }
 
+// Mirror a tile's live banana pile into the owned-farms chart chip so it counts
+// down in sync with the walk animation. The chart panel isn't rebuilt mid-walk,
+// so we update the chip (matched by data-tile) directly. No-op if the tile has
+// no chip (unowned, or classic mode where the chart has none).
+function _syncFarmChartPile(tileId, amount) {
+  const chip = document.querySelector(`.owner-farm-pile[data-tile="${tileId}"]`);
+  if (!chip) return;
+  chip.textContent = amount + "🍌";
+  chip.classList.toggle("has-pile", amount > 0);
+}
+
 // ——— Lightweight walk-step update (skips full tile rebuild) ————————
 // Only updates token positions and banana pile collection visuals.
 // Call this instead of renderBoard() for intermediate walk steps.
 function walkStepUpdate(gs) {
   window._gs = gs;
+  _simpleBoardActive = !!(gs && gs.gameMode === "simple");
+  const _boardLen =
+    (gs && gs.boardLayout && gs.boardLayout.length) ||
+    (_simpleBoardActive ? SIMPLE_BOARD_SIZE : BOARD_SIZE);
   // Capture flag before pile detection clears it — used for steal suppression
   const vineSwingLanding = !!window._vineSwingJustLanded;
   const board = document.getElementById("board");
@@ -245,7 +413,7 @@ function walkStepUpdate(gs) {
   // Recalculate banana piles with frozen/visited logic
   const _bananaPiles = [];
   if (gs && gs.properties) {
-    for (let i = 0; i < BOARD_SIZE; i++) {
+    for (let i = 0; i < _boardLen; i++) {
       const prop = _propById[i];
       let pileAmount = prop ? prop.bananaPile : 0;
       if (window._frozenBananaPiles) {
@@ -253,11 +421,29 @@ function walkStepUpdate(gs) {
         const isDiceMatchTile =
           window._diceMatchUnfrozen &&
           gs.diceMatchTiles &&
-          gs.diceMatchTiles.includes(i);
-        if (window._tokenVisitedTiles && window._tokenVisitedTiles.has(i)) {
+          gs.diceMatchTiles.includes(i) &&
+          // Simple-mode grow pulse: a grown pile only appears once the pulse has
+          // swept over its tile. Null set = no pulse gating (show immediately).
+          (!window._pulseRevealedTiles || window._pulseRevealedTiles.has(i));
+        // Leave-steal: the player departed this tile and stole the pile. Clear
+        // the counter chip the moment the floater appears, instead of leaving
+        // it visible until the walk ends.
+        const isLeaveStolen =
+          window._walkStartStealTiles &&
+          window._walkStartStealTiles.has(i);
+        if (isLeaveStolen) {
+          pileAmount = 0;
+        } else if (window._tokenVisitedTiles && window._tokenVisitedTiles.has(i)) {
           const isOwn = prop && prop.owner === window._walkingPlayerId;
           const isLanding = i === window._walkingLandingPos;
-          if (isOwn || isLanding) {
+          // Simple mode: landing on an OPPONENT's farm no longer collects its
+          // pile — the steal is deferred until you LEAVE. Keep the pile
+          // visible on arrival instead of clearing it and snapping it back
+          // at walk-end.
+          const simpleDeferLanding =
+            gs && gs.gameMode === "simple" && isLanding &&
+            prop && prop.owner && prop.owner !== window._walkingPlayerId;
+          if ((isOwn || isLanding) && !simpleDeferLanding) {
             pileAmount = 0;
           } else {
             pileAmount = frozenVal;
@@ -286,6 +472,8 @@ function walkStepUpdate(gs) {
           tileEl.classList.remove("has-banana-pile");
         }
       }
+      // Keep the owned-farms chart chip in sync as piles are collected.
+      _syncFarmChartPile(i, pileAmount);
     }
   }
 
@@ -296,37 +484,21 @@ function walkStepUpdate(gs) {
     const pileEl = document.createElement("div");
     pileEl.className = "banana-pile";
     if (pile.ownerColor) pileEl.classList.add("pile-" + pile.ownerColor);
-    pileEl.textContent = pile.amount + "\ud83c\udf4c";
-    if (r.side === "bottom") {
-      pileEl.style.left = r.l + r.w / 2 + "%";
-      pileEl.style.top = r.t - 0.3 + "%";
-      pileEl.style.setProperty("--pile-transform", "translate(-50%, -100%)");
-    } else if (r.side === "top") {
-      pileEl.style.left = r.l + r.w / 2 + "%";
-      pileEl.style.top = r.t + r.h + 0.3 + "%";
-      pileEl.style.setProperty("--pile-transform", "translate(-50%, 0)");
-    } else if (r.side === "left") {
-      pileEl.style.left = r.l + r.w + 0.3 + "%";
-      pileEl.style.top = r.t + r.h / 2 + "%";
-      pileEl.style.setProperty("--pile-transform", "translate(0, -50%)");
-    } else if (r.side === "right") {
-      pileEl.style.left = r.l - 0.3 + "%";
-      pileEl.style.top = r.t + r.h / 2 + "%";
-      pileEl.style.setProperty("--pile-transform", "translate(-100%, -50%)");
-    } else {
-      // Corner tile: push the pile straight out vertically (top corners above,
-      // bottom corners below), centered horizontally, so it clears the board
-      // edge instead of overlapping a neighbour tile's pile box.
-      const cy = r.t + r.h / 2;
-      pileEl.style.left = r.l + r.w / 2 + "%";
-      if (cy < 50) {
-        pileEl.style.top = r.t - 0.3 + "%";
-        pileEl.style.setProperty("--pile-transform", "translate(-50%, -100%)");
-      } else {
-        pileEl.style.top = r.t + r.h + 0.3 + "%";
-        pileEl.style.setProperty("--pile-transform", "translate(-50%, 0)");
-      }
+    // Bounce the count box when the grow chain reaches this farm (even if it
+    // already had bananas). The tile stays in _pileBounceTiles for ~one bounce.
+    if (window._pileBounceTiles && window._pileBounceTiles.has(pile.tileIndex)) {
+      pileEl.classList.add("pile-bounce");
+      // Resume the bounce at the right frame after a mid-pulse chip rebuild, so
+      // it plays through once instead of restarting on every pulse step.
+      const _bStart = window._pileBounceStart && window._pileBounceStart[pile.tileIndex];
+      if (_bStart != null)
+        pileEl.style.animationDelay = -(performance.now() - _bStart) + "ms";
     }
+    const _chip = _pileChipLabel(pile.tileIndex, pile.amount);
+    pileEl.textContent = _chip.text;
+    if (_chip.mult) pileEl.classList.add("pile-mult");
+    if (_chip.title) pileEl.title = _chip.title;
+    _positionPileChip(pileEl, r);
     board.appendChild(pileEl);
   }
 
@@ -342,13 +514,29 @@ function walkStepUpdate(gs) {
       _collectShown.add(Number(idx));
       const collected = oldAmount - newAmount;
       const r = spaceRect(Number(idx));
-      const collectorId = gs.currentPlayer && gs.currentPlayer.id;
+      // Prefer the walking token's player over gs.currentPlayer: the backend's
+      // auto-end can advance the turn mid-animation (long grow pulses + walks
+      // can run past the auto-end delay), which would otherwise flip every
+      // owned-pile pickup into a phantom "Steal!" from the next player's view.
+      const collectorId =
+        window._walkingPlayerId ||
+        (gs.currentPlayer && gs.currentPlayer.id);
       // Flying banana burst for pile collection — delayed to sync with token arrival
       const stolenProp = _propById[Number(idx)];
       const isSteal = stolenProp && stolenProp.owner && stolenProp.owner !== collectorId && !gs.vineSwing && !vineSwingLanding && !_stealShown.has(Number(idx));
       if (isSteal) _stealShown.add(Number(idx));
+      // Leave-steal: the squatter is departing and just stole the tile's pile.
+      // Rain the bananas on the TILE the player is leaving (not the moving
+      // token), and fire immediately so it lines up visually with the "Steal!"
+      // floater and the counter chip disappearing.
+      const isLeaveStolen =
+        window._walkStartStealTiles &&
+        window._walkStartStealTiles.has(Number(idx));
+      const stealAnchorEl = isLeaveStolen
+        ? document.getElementById("space-" + Number(idx))
+        : null;
       const fireBurst = () => {
-        bananaBurst(collected, collectorId);
+        bananaBurst(collected, collectorId, stealAnchorEl);
         // Show floater near the collector's account score
         const _isMe = typeof myId !== "undefined" && collectorId === myId;
         if (_isMe) {
@@ -383,7 +571,11 @@ function walkStepUpdate(gs) {
           setTimeout(() => stealFloater.remove(), 2200);
         }
       };
-      setTimeout(fireBurst, 150);
+      // Leave-steal fires immediately so the rain syncs with the "Steal!" text
+      // and the counter chip drop; other collections wait 150ms for the token
+      // CSS transition to complete so bananas land on top of the arrived token.
+      if (isLeaveStolen) fireBurst();
+      else setTimeout(fireBurst, 150);
       window._walkPileCollected = (window._walkPileCollected || 0) + collected;
       // Sync pstat-pile counter: subtract collected amount from frozen total
       if (window._frozenPileTotals && collectorId) {
@@ -417,9 +609,22 @@ function walkStepUpdate(gs) {
       const tileRevealed = !myRevealed || myRevealed.has(pos);
       if (currentFB.has(pos) && !_freeBananasShown.has(pos) && tileRevealed) {
         _freeBananasShown.add(pos);
+        // Flash the tile itself so the source of the bananas is obvious \u2014 the
+        // floater near the banana box alone doesn't tell you which tile fired.
+        const _fbTile = document.getElementById("space-" + pos);
+        if (_fbTile) {
+          _fbTile.classList.remove("freebananas-triggered");
+          void _fbTile.offsetWidth; // restart the animation
+          _fbTile.classList.add("freebananas-triggered");
+          _fbTile.addEventListener(
+            "animationend",
+            () => _fbTile.classList.remove("freebananas-triggered"),
+            { once: true },
+          );
+        }
         const isMe = typeof myId !== "undefined" && playerId === myId;
         if (isMe) {
-          showPopupAtBananaBox("+500\uD83C\uDF4C", "free-bananas-popup-player");
+          showPopupAtBananaBox((gs && gs.gameMode === "simple" ? "+25" : "+500") + "\uD83C\uDF4C", "free-bananas-popup-player");
         } else {
           const pstat = document.querySelector(`.pstat[data-player-id="${playerId}"]`);
           const anchor = pstat && pstat.querySelector(".pstat-money");
@@ -427,7 +632,7 @@ function walkStepUpdate(gs) {
             const rect = anchor.getBoundingClientRect();
             const floater = document.createElement("div");
             floater.className = "free-bananas-popup-player";
-            floater.textContent = "+500\uD83C\uDF4C";
+            floater.textContent = (gs && gs.gameMode === "simple" ? "+25" : "+500") + "\uD83C\uDF4C";
             floater.style.position = "fixed";
             floater.style.left = rect.left + rect.width / 2 + "px";
             floater.style.top = rect.top + "px";
@@ -447,12 +652,16 @@ function walkStepUpdate(gs) {
   const activePlayerIds = new Set();
   if (gs && gs.players) {
     const frozenPos = window._diceRollingPositions || null;
-    // Keep bomb victims visible while walking and until the explosion plays
+    // Keep bomb victims visible while walking and until the explosion plays.
+    // During the bomb-chain sweep, each victim is held in
+    // _bombChainHeldVictims until the chain reaches their tile.
     const bombPendingExplosion =
       !!(gs.lastExplosion && !window._explosionShown);
+    const heldByChain = window._bombChainHeldVictims;
     const posMap = {};
     gs.players.forEach((p) => {
-      if (p.bankrupt && !bombPendingExplosion) return;
+      const chainHeld = heldByChain && heldByChain.has(p.id);
+      if (p.bankrupt && !bombPendingExplosion && !chainHeld) return;
       if (p.startPickPending) return;
       const pos =
         frozenPos && frozenPos[p.id] != null ? frozenPos[p.id] : p.position;
@@ -547,6 +756,10 @@ function _animateAuctionCounter(from, to) {
 
 function renderBoard(gs) {
   window._gs = gs;
+  _simpleBoardActive = !!(gs && gs.gameMode === "simple");
+  const _boardLen =
+    (gs && gs.boardLayout && gs.boardLayout.length) ||
+    (_simpleBoardActive ? SIMPLE_BOARD_SIZE : BOARD_SIZE);
   // Capture vine-swing-just-landed flag before pile detection clears it —
   // needed later for token no-transition (teleport) and steal suppression.
   const vineSwingLanding = !!window._vineSwingJustLanded;
@@ -558,6 +771,9 @@ function renderBoard(gs) {
   const _bombWasPendingThisFrame =
     !!(gs && gs.lastExplosion && !window._explosionShown);
   const board = document.getElementById("board");
+  // Mark the live board with a mode class so CSS can scope simple-mode-only
+  // tile colours (hidden cover, farm/grow text) without leaking into classic.
+  if (board) board.classList.toggle("board-mode-simple", _simpleBoardActive);
   _setupBoardDelegation();
   // Preserve overlays across re-renders
   const chat = document.getElementById("board-chat");
@@ -643,6 +859,18 @@ function renderBoard(gs) {
     }
   }
 
+  // Tiles the viewer has only SCOUTED (peeked, not genuinely discovered). These
+  // render like revealed tiles but under a translucent leafy veil, so you can
+  // see what's there without it counting as fully revealed. Landing on a tile
+  // clears its scouted flag server-side, so this set is scouted-only.
+  let myScouted = null;
+  if (gs && gs.players && typeof myId !== "undefined") {
+    const me = _playerById[myId];
+    if (me && me.scoutedTiles && me.scoutedTiles.length) {
+      myScouted = new Set(me.scoutedTiles);
+    }
+  }
+
   // Compute chain multipliers (cached — only recompute when ownership changes)
   // Build a key from owned tile positions to detect changes
   let _chainMultipliers;
@@ -702,15 +930,45 @@ function renderBoard(gs) {
     }
   }
 
+  // Pending leaver-shuffle covers: each entry holds the leaver's color +
+  // positions of the tiles they abandoned. While the 2s notification window
+  // is open, those tiles render with a colored cover so everyone can see
+  // which player's farms are about to get reshuffled.
+  const _leaverCoverByPos = new Map();
+  if (gs && Array.isArray(gs.pendingTileShuffles)) {
+    const colorMap =
+      (typeof SIMPLE_PLAYER_COLOR_HEX !== "undefined" &&
+        SIMPLE_PLAYER_COLOR_HEX) ||
+      window.SIMPLE_PLAYER_COLOR_HEX || {
+        brown: "#e23b3b",
+        golden: "#2e7fe0",
+        silver: "#ff8c00",
+        red: "#8e44ad",
+      };
+    for (const pending of gs.pendingTileShuffles) {
+      const hex = colorMap[pending.color] || "#888888";
+      for (const pos of pending.positions || []) {
+        _leaverCoverByPos.set(pos, hex);
+      }
+    }
+  }
+
   // Grow tile glow: flash any grow tile that just fired this turn (landed-on or
-  // rolled-match). Deferred until the walk finishes so it reads as the payoff,
-  // and deduped by turn+positions so it plays once rather than every re-render.
+  // rolled-match) IN SYNC with the banana-grow animation — i.e. on the
+  // dice-settle "pop-in" render where the grown piles bounce in (signalled by
+  // _diceMatchUnfrozen), rather than deferred to the end of the walk. Outside a
+  // walk (_tokenWalking false) it still fires on the next render. Deduped by
+  // turn+positions so it plays once rather than on every re-render.
   let growGlowSet = null;
   if (
     gs &&
+    // Simple mode: the grow PULSE lights the grow tile itself, at the right
+    // moment (when its chain fires / when you land on it), so don't auto-glow
+    // it here — that made a grow you're about to land on glow during the walk.
+    gs.gameMode !== "simple" &&
     Array.isArray(gs.lastGrowFired) &&
     gs.lastGrowFired.length > 0 &&
-    !window._tokenWalking
+    (window._diceMatchUnfrozen || !window._tokenWalking)
   ) {
     const growKey = (gs.turn || 0) + ":" + gs.lastGrowFired.join(",");
     if (growKey !== window._lastGrowFiredKey) {
@@ -719,7 +977,7 @@ function renderBoard(gs) {
     }
   }
 
-  for (let i = 0; i < BOARD_SIZE; i++) {
+  for (let i = 0; i < _boardLen; i++) {
     const el = document.createElement("div");
     el.className = "space";
     el.id = "space-" + i;
@@ -752,6 +1010,11 @@ function renderBoard(gs) {
 
     if (!isRevealed) {
       el.classList.add("space-hidden");
+      const leaverHex = _leaverCoverByPos.get(i);
+      if (leaverHex) {
+        el.classList.add("leaver-cover-on");
+        el.style.setProperty("--leaver-color", leaverHex);
+      }
       el.innerHTML = `<span class="sname">${i}</span>`;
       // Vine Swing: hidden tiles are also clickable (only own properties)
       if (gs && gs.vineSwing && gs.vineSwing === myId && !window._tokenWalking) {
@@ -788,6 +1051,13 @@ function renderBoard(gs) {
       continue;
     }
 
+    // Scouted-only tiles render their full content but under a translucent
+    // veil (see .space-scouted in CSS). Skip when everything is revealed at
+    // game end so the veil doesn't linger.
+    if (myScouted && myScouted.has(i) && !(typeof revealAll !== "undefined" && revealAll)) {
+      el.classList.add("space-scouted");
+    }
+
     if (layout) {
       // Use the dynamic board layout from the server
       const tile = layout[i];
@@ -797,7 +1067,7 @@ function renderBoard(gs) {
         el.classList.add("corner");
         // Simple mode: grow tiles show only their number (0-7), not "GROW N".
         if (gs && gs.gameMode === "simple" && tile.growLabel != null) {
-          el.innerHTML = `<span class="grow-yield">${tile.growLabel}</span>`;
+          el.innerHTML = `<span class="grow-yield">G${tile.growLabel}</span>`;
         } else {
           el.textContent = tile.name;
         }
@@ -816,7 +1086,7 @@ function renderBoard(gs) {
         if (tile.group === "simple") {
           // Simple mode: each farm tile shows its own yield in large white text.
           el.classList.add("g-simple");
-          el.innerHTML = `<span class="simple-yield">${tile.price}</span>`;
+          el.innerHTML = `<span class="simple-yield">F${tile.price}</span>`;
         } else if (tile.group === "desert") {
           el.classList.add("type-desert");
           el.innerHTML = `<span class="sname desert-icon">${tile.tileName}</span>`;
@@ -899,7 +1169,7 @@ function renderBoard(gs) {
       el.classList.add("space-pickable", "bomb-target");
     }
 
-    // Simple-mode ability target selection (swap / scout / teleport)
+    // Simple-mode ability target selection (Vine Swing / Magic Dice)
     if (window._abilityTargetMode) {
       const mode = window._abilityTargetMode;
       if (_isAbilityTileSelectable(mode, i, gs)) {
@@ -920,12 +1190,30 @@ function renderBoard(gs) {
         const isDiceMatchTile =
           window._diceMatchUnfrozen &&
           gs.diceMatchTiles &&
-          gs.diceMatchTiles.includes(i);
-        if (window._tokenVisitedTiles && window._tokenVisitedTiles.has(i)) {
+          gs.diceMatchTiles.includes(i) &&
+          // Simple-mode grow pulse: a grown pile only appears once the pulse has
+          // swept over its tile. Null set = no pulse gating (show immediately).
+          (!window._pulseRevealedTiles || window._pulseRevealedTiles.has(i));
+        // Leave-steal: the player departed this tile and stole the pile. Drop
+        // the counter chip the moment the floater appears, in sync with the
+        // departure — the pile shouldn't linger on the squatted tile.
+        const isLeaveStolen =
+          window._walkStartStealTiles &&
+          window._walkStartStealTiles.has(i);
+        if (isLeaveStolen) {
+          pileAmount = 0;
+        } else if (window._tokenVisitedTiles && window._tokenVisitedTiles.has(i)) {
           // Token walked past this tile — collect visually (overrides dice-match display)
           const isOwn = prop && prop.owner === window._walkingPlayerId;
           const isLanding = i === window._walkingLandingPos;
-          if (isOwn || isLanding) {
+          // Simple mode: landing on an OPPONENT's farm no longer collects its
+          // pile — the steal is deferred until you LEAVE. Keep the pile
+          // visible on arrival instead of clearing it and snapping it back
+          // at walk-end.
+          const simpleDeferLanding =
+            gs && gs.gameMode === "simple" && isLanding &&
+            prop && prop.owner && prop.owner !== window._walkingPlayerId;
+          if ((isOwn || isLanding) && !simpleDeferLanding) {
             pileAmount = 0;
           } else {
             pileAmount = frozenVal;
@@ -947,6 +1235,10 @@ function renderBoard(gs) {
         });
         el.classList.add("has-banana-pile");
       }
+      // Mid-walk renders (dice-match / GROW unfreeze) don't rebuild the chart
+      // panel, so keep its pile chip in sync here too. Outside a walk the chart
+      // rebuilds itself from authoritative state, so this is walk-only.
+      if (window._tokenWalking) _syncFarmChartPile(i, pileAmount);
       // Ownership border
       if (prop && prop.owner) {
         const owner = _playerById[prop.owner];
@@ -979,59 +1271,60 @@ function renderBoard(gs) {
 
   const diceMatchSet = new Set(gs && gs.diceMatchTiles ? gs.diceMatchTiles : []);
 
-  // Detect which piles grew since last render
-  // _growUnfreezeRender: set when GROW corner unfreeze fires — treat all current piles as new
+  // Detect which piles grew since last render.
+  // _growUnfreezeRender: set when landing on a GROW tile unfreezes the piles.
+  // Classic mode treats every current pile as new (prev=0) so they all bounce.
+  // Simple mode instead bounces ONLY the piles that genuinely grew this turn
+  // (per diceMatchGrownAmounts), so landing on a GROW tile no longer makes every
+  // unrelated pile box bounce.
   const isGrowUnfreeze = !!window._growUnfreezeRender;
   window._growUnfreezeRender = false;
   const isDiceMatchSteal = !!window._diceMatchStealRender;
   window._diceMatchStealRender = false;
+  const simpleGrowScoped = isGrowUnfreeze && gs && gs.gameMode === "simple";
+  const grownAmtFor = (idx) =>
+    (gs && gs.diceMatchGrownAmounts && gs.diceMatchGrownAmounts[idx]) || 0;
   const grewTiles = new Map(); // tileIndex -> delta
   for (const pile of _bananaPiles) {
-    const prev = isGrowUnfreeze ? 0 : (_prevBananaPiles[pile.tileIndex] || 0);
+    let prev;
+    if (simpleGrowScoped) {
+      // Only tiles that actually grew this turn get a positive delta (bounce);
+      // every other remaining pile keeps its amount, so it stays still.
+      const g = grownAmtFor(pile.tileIndex);
+      prev = g > 0 ? pile.amount - g : pile.amount;
+    } else if (isGrowUnfreeze) {
+      prev = 0; // classic GROW-corner unfreeze: unchanged behavior
+    } else {
+      prev = _prevBananaPiles[pile.tileIndex] || 0;
+    }
     if (pile.amount > prev) {
       grewTiles.set(pile.tileIndex, pile.amount - prev);
     }
   }
 
-  // Render banana pile indicators outside tiles, toward board interior
+  // Render banana pile indicators next to their tiles (see _positionPileChip).
   for (const pile of _bananaPiles) {
     const r = spaceRect(pile.tileIndex);
     const pileEl = document.createElement("div");
     pileEl.className = "banana-pile";
     if (pile.ownerColor) pileEl.classList.add("pile-" + pile.ownerColor);
-    pileEl.textContent = pile.amount + "\ud83c\udf4c";
-
-    // Position toward board interior based on which side the tile is on
-    if (r.side === "bottom") {
-      pileEl.style.left = r.l + r.w / 2 + "%";
-      pileEl.style.top = r.t - 0.3 + "%";
-      pileEl.style.setProperty("--pile-transform", "translate(-50%, -100%)");
-    } else if (r.side === "top") {
-      pileEl.style.left = r.l + r.w / 2 + "%";
-      pileEl.style.top = r.t + r.h + 0.3 + "%";
-      pileEl.style.setProperty("--pile-transform", "translate(-50%, 0)");
-    } else if (r.side === "left") {
-      pileEl.style.left = r.l + r.w + 0.3 + "%";
-      pileEl.style.top = r.t + r.h / 2 + "%";
-      pileEl.style.setProperty("--pile-transform", "translate(0, -50%)");
-    } else if (r.side === "right") {
-      pileEl.style.left = r.l - 0.3 + "%";
-      pileEl.style.top = r.t + r.h / 2 + "%";
-      pileEl.style.setProperty("--pile-transform", "translate(-100%, -50%)");
-    } else {
-      // Corner tile: push the pile straight out vertically (top corners above,
-      // bottom corners below), centered horizontally, so it clears the board
-      // edge instead of overlapping a neighbour tile's pile box.
-      const cy = r.t + r.h / 2;
-      pileEl.style.left = r.l + r.w / 2 + "%";
-      if (cy < 50) {
-        pileEl.style.top = r.t - 0.3 + "%";
-        pileEl.style.setProperty("--pile-transform", "translate(-50%, -100%)");
-      } else {
-        pileEl.style.top = r.t + r.h + 0.3 + "%";
-        pileEl.style.setProperty("--pile-transform", "translate(-50%, 0)");
-      }
+    // Bounce the count box when the grow chain reaches this farm (even if it
+    // already had bananas). The tile stays in _pileBounceTiles for ~one bounce.
+    if (window._pileBounceTiles && window._pileBounceTiles.has(pile.tileIndex)) {
+      pileEl.classList.add("pile-bounce");
+      // Resume the bounce at the right frame after a mid-pulse chip rebuild, so
+      // it plays through once instead of restarting on every pulse step.
+      const _bStart = window._pileBounceStart && window._pileBounceStart[pile.tileIndex];
+      if (_bStart != null)
+        pileEl.style.animationDelay = -(performance.now() - _bStart) + "ms";
     }
+    const _chip = _pileChipLabel(pile.tileIndex, pile.amount);
+    pileEl.textContent = _chip.text;
+    if (_chip.mult) pileEl.classList.add("pile-mult");
+    if (_chip.title) pileEl.title = _chip.title;
+
+    // Place the chip relative to its tile (outside the board ring in simple mode).
+    _positionPileChip(pileEl, r);
 
     // Pile-grew animation: pile amount increased since last render
     // Skip during walk animation UNLESS this is a dice-match or GROW unfreeze render
@@ -1132,13 +1425,29 @@ function renderBoard(gs) {
       _collectShown.add(Number(idx));
       const collected = oldAmount - newAmount;
       const r = spaceRect(Number(idx));
-      const collectorId = gs.currentPlayer && gs.currentPlayer.id;
+      // Prefer the walking token's player over gs.currentPlayer: the backend's
+      // auto-end can advance the turn mid-animation (long grow pulses + walks
+      // can run past the auto-end delay), which would otherwise flip every
+      // owned-pile pickup into a phantom "Steal!" from the next player's view.
+      const collectorId =
+        window._walkingPlayerId ||
+        (gs.currentPlayer && gs.currentPlayer.id);
       // Flying banana burst for pile collection — delayed to sync with token arrival
       const stolenProp = _propById[Number(idx)];
       const isSteal = stolenProp && stolenProp.owner && stolenProp.owner !== collectorId && !gs.vineSwing && !vineSwingLanding && !_stealShown.has(Number(idx));
       if (isSteal) _stealShown.add(Number(idx));
+      // Leave-steal: the squatter is departing and just stole the tile's pile.
+      // Rain the bananas on the TILE the player is leaving (not the moving
+      // token), and fire immediately so it lines up visually with the "Steal!"
+      // floater and the counter chip disappearing.
+      const isLeaveStolen =
+        window._walkStartStealTiles &&
+        window._walkStartStealTiles.has(Number(idx));
+      const stealAnchorEl = isLeaveStolen
+        ? document.getElementById("space-" + Number(idx))
+        : null;
       const fireBurst = () => {
-        bananaBurst(collected, collectorId);
+        bananaBurst(collected, collectorId, stealAnchorEl);
         // Show floater near the collector's account score
         const _isMe = typeof myId !== "undefined" && collectorId === myId;
         if (_isMe) {
@@ -1173,7 +1482,11 @@ function renderBoard(gs) {
           setTimeout(() => stealFloater.remove(), 2200);
         }
       };
-      setTimeout(fireBurst, 150);
+      // Leave-steal fires immediately so the rain syncs with the "Steal!" text
+      // and the counter chip drop; other collections wait 150ms for the token
+      // CSS transition to complete so bananas land on top of the arrived token.
+      if (isLeaveStolen) fireBurst();
+      else setTimeout(fireBurst, 150);
       window._walkPileCollected = (window._walkPileCollected || 0) + collected;
       // Sync pstat-pile counter: subtract collected amount from frozen total
       if (window._frozenPileTotals && collectorId) {
@@ -1227,7 +1540,7 @@ function renderBoard(gs) {
           _freeBananasShown.add(pos);
           const isMe = typeof myId !== "undefined" && playerId === myId;
           if (isMe) {
-            showPopupAtBananaBox("+500\uD83C\uDF4C", "free-bananas-popup-player");
+            showPopupAtBananaBox((gs && gs.gameMode === "simple" ? "+25" : "+500") + "\uD83C\uDF4C", "free-bananas-popup-player");
           } else {
             const pstat = document.querySelector(`.pstat[data-player-id="${playerId}"]`);
             const anchor = pstat && pstat.querySelector(".pstat-money");
@@ -1235,7 +1548,7 @@ function renderBoard(gs) {
               const rect = anchor.getBoundingClientRect();
               const floater = document.createElement("div");
               floater.className = "free-bananas-popup-player";
-              floater.textContent = "+500\uD83C\uDF4C";
+              floater.textContent = (gs && gs.gameMode === "simple" ? "+25" : "+500") + "\uD83C\uDF4C";
               floater.style.position = "fixed";
               floater.style.left = rect.left + rect.width / 2 + "px";
               floater.style.top = rect.top + "px";
@@ -1259,7 +1572,7 @@ function renderBoard(gs) {
           if (currentPlayer) {
             const isMe = typeof myId !== "undefined" && currentPlayer.id === myId;
             if (isMe) {
-              showPopupAtBananaBox("+500\uD83C\uDF4C", "free-bananas-popup-player");
+              showPopupAtBananaBox((gs && gs.gameMode === "simple" ? "+25" : "+500") + "\uD83C\uDF4C", "free-bananas-popup-player");
             } else {
               const pstat = document.querySelector(`.pstat[data-player-id="${currentPlayer.id}"]`);
               const anchor = pstat && pstat.querySelector(".pstat-money");
@@ -1267,7 +1580,7 @@ function renderBoard(gs) {
                 const rect = anchor.getBoundingClientRect();
                 const floater = document.createElement("div");
                 floater.className = "free-bananas-popup-player";
-                floater.textContent = "+500\uD83C\uDF4C";
+                floater.textContent = (gs && gs.gameMode === "simple" ? "+25" : "+500") + "\uD83C\uDF4C";
                 floater.style.position = "fixed";
                 floater.style.left = rect.left + rect.width / 2 + "px";
                 floater.style.top = rect.top + "px";
@@ -1333,7 +1646,7 @@ function renderBoard(gs) {
     centerTitle.innerHTML =
       '<div class="jungle-canopy">🌴🌳🍌🌳🌴</div>' +
       '<div class="auction-counter" title="Click for item abilities" onclick="toggleAbilitiesPopover(event)">' +
-      '<div class="auction-counter-label">Next auction in</div>' +
+      '<div class="auction-counter-label">Next item in</div>' +
       '<div class="auction-counter-value' + countingClass + '" id="auction-counter-value">' +
       String(displayVal) +
       '</div>' +
@@ -1416,11 +1729,6 @@ function renderBoard(gs) {
     // Explosion sound effect (once for the whole batch)
     if (typeof playExplosionSound === "function") playExplosionSound();
 
-    // Trigger deferred bomb-win game-over flow (announcement + credits)
-    if (typeof _runDeferredBombGameOver === "function") {
-      _runDeferredBombGameOver();
-    }
-
     // Screen shake (once for the whole batch)
     board.classList.add("board-shake");
     setTimeout(() => board.classList.remove("board-shake"), 800);
@@ -1431,11 +1739,60 @@ function renderBoard(gs) {
     board.appendChild(flash);
     flash.addEventListener("animationend", () => flash.remove());
 
-    // Per-explosion effects: shockwave, tile overlays, debris, kills
+    // Per-explosion effects: fiery chain sweep + kills.
+    //
+    // The chain starts at the bomb tile and spreads outward in both
+    // directions at 5 tiles per second (STEP_MS = 200). It naturally
+    // stops at the edge of the blast (simple mode: the corner tiles
+    // bounding the side; classic mode: the 3-tile cluster).
     let killCounter = 0;
+    const STEP_MS = 200;
+    const TILE_FLAME_MS = 600;
+    const SIMPLE_PLAYER_COLOR_HEX_FALLBACK = {
+      brown: "#e23b3b",
+      golden: "#2e7fe0",
+      silver: "#ff8c00",
+      red: "#8e44ad",
+    };
+    const colorHex = (window.SIMPLE_PLAYER_COLOR_HEX ||
+      (typeof SIMPLE_PLAYER_COLOR_HEX !== "undefined"
+        ? SIMPLE_PLAYER_COLOR_HEX
+        : SIMPLE_PLAYER_COLOR_HEX_FALLBACK));
+
+    if (!window._bombChainHeldVictims) window._bombChainHeldVictims = new Set();
+    let chainEndsAt = 0;
+
     for (const exp of gs.lastExplosion.explosions) {
-      // Shockwave ring from center tile
-      const cr = spaceRect(exp.position);
+      const bombPos = exp.position;
+      const blastTiles = Array.isArray(exp.tiles) ? exp.tiles : [];
+      const boardSize =
+        (gs.boardLayout && gs.boardLayout.length) ||
+        (_simpleBoardActive ? SIMPLE_BOARD_SIZE : BOARD_SIZE);
+      const placer = (gs.players || []).find((p) => p.id === exp.placerId);
+      const placerColor = placer && placer.color ? placer.color : null;
+      const hex =
+        (placerColor && colorHex && colorHex[placerColor]) || "#ff7020";
+
+      // Distance map: walk outward through the blast tiles until we exit them.
+      const tilesSet = new Set(blastTiles);
+      const distByTile = new Map();
+      distByTile.set(bombPos, 0);
+      for (let d = 1; d < boardSize; d++) {
+        const p = (bombPos + d) % boardSize;
+        if (!tilesSet.has(p)) break;
+        distByTile.set(p, d);
+      }
+      for (let d = 1; d < boardSize; d++) {
+        const p = (bombPos - d + boardSize) % boardSize;
+        if (!tilesSet.has(p)) break;
+        if (!distByTile.has(p) || distByTile.get(p) > d) {
+          distByTile.set(p, d);
+        }
+      }
+
+      // Shockwave + flying debris fire immediately at the bomb tile \u2014
+      // the "boom" feel at detonation, before the chain sweeps outward.
+      const cr = spaceRect(bombPos);
       const shockwave = document.createElement("div");
       shockwave.className = "bomb-shockwave";
       shockwave.style.left = cr.l + cr.w / 2 + "%";
@@ -1443,28 +1800,6 @@ function renderBoard(gs) {
       board.appendChild(shockwave);
       shockwave.addEventListener("animationend", () => shockwave.remove());
 
-      // Tile overlays
-      for (const tile of exp.tiles) {
-        const r = spaceRect(tile);
-        const fx = document.createElement("div");
-        fx.className =
-          tile === exp.position
-            ? "bomb-explosion bomb-explosion-center"
-            : "bomb-explosion";
-        fx.style.left = r.l + "%";
-        fx.style.top = r.t + "%";
-        fx.style.width = r.w + "%";
-        fx.style.height = r.h + "%";
-        fx.textContent = tile === exp.position ? "\ud83d\udca5" : "";
-        fx.style.display = "flex";
-        fx.style.alignItems = "center";
-        fx.style.justifyContent = "center";
-        fx.style.fontSize = tile === exp.position ? "28px" : "18px";
-        board.appendChild(fx);
-        fx.addEventListener("animationend", () => fx.remove());
-      }
-
-      // Flying debris particles from the center
       const cx = cr.l + cr.w / 2;
       const cy = cr.t + cr.h / 2;
       const debris = [
@@ -1475,12 +1810,13 @@ function renderBoard(gs) {
         "\ud83c\udf4c",
         "\ud83d\udca8",
       ];
-      for (let i = 0; i < 18; i++) {
+      for (let i = 0; i < 14; i++) {
         const particle = document.createElement("div");
         particle.className = "bomb-particle";
         particle.textContent = debris[i % debris.length];
-        const angle = (Math.PI * 2 * i) / 18 + (Math.random() - 0.5) * 0.4;
-        const dist = 12 + Math.random() * 20;
+        const angle =
+          (Math.PI * 2 * i) / 14 + (Math.random() - 0.5) * 0.4;
+        const dist = 12 + Math.random() * 18;
         particle.style.left = cx + "%";
         particle.style.top = cy + "%";
         particle.style.setProperty("--fly-x", Math.cos(angle) * dist + "%");
@@ -1490,18 +1826,81 @@ function renderBoard(gs) {
         particle.addEventListener("animationend", () => particle.remove());
       }
 
-      // Kill announcements + transferred-tile glow
+      // Light up each tile in the chain at dist * STEP_MS.
+      const lightTile = (pos, isCenter) => {
+        const el = document.getElementById("space-" + pos);
+        if (el) {
+          el.style.setProperty("--pulse-color", hex);
+          el.classList.add("bomb-chain-on");
+          if (el._bombChainTimer) clearTimeout(el._bombChainTimer);
+          el._bombChainTimer = setTimeout(() => {
+            el.classList.remove("bomb-chain-on");
+            el._bombChainTimer = null;
+          }, TILE_FLAME_MS);
+        }
+        const tr = spaceRect(pos);
+        const flame = document.createElement("div");
+        flame.className = "bomb-chain-flame";
+        flame.textContent = isCenter ? "\ud83d\udca5" : "\ud83d\udd25";
+        flame.style.left = tr.l + "%";
+        flame.style.top = tr.t + "%";
+        flame.style.width = tr.w + "%";
+        flame.style.height = tr.h + "%";
+        if (isCenter) flame.style.fontSize = "30px";
+        board.appendChild(flame);
+        flame.addEventListener("animationend", () => flame.remove());
+      };
+
+      let maxDist = 0;
+      for (const [pos, dist] of distByTile.entries()) {
+        if (dist > maxDist) maxDist = dist;
+        if (dist === 0) {
+          lightTile(pos, true);
+        } else {
+          setTimeout(() => lightTile(pos, false), dist * STEP_MS);
+        }
+      }
+      const chainTotalMs = maxDist * STEP_MS + TILE_FLAME_MS;
+      if (chainTotalMs > chainEndsAt) chainEndsAt = chainTotalMs;
+
+      // Kill handling: defer victim removal + announcement until the chain
+      // reaches each victim's tile. The bomb-trigger (player who landed on
+      // it) and any victim somehow off the blast path go immediately.
       const kills = Array.isArray(exp.kills) ? exp.kills : [];
+      for (const kill of kills) {
+        const vp = kill.victimPosition;
+        const isTrigger = exp.triggerId && kill.victimId === exp.triggerId;
+        const onChain = vp != null && distByTile.has(vp);
+        const dist = onChain ? distByTile.get(vp) : 0;
+        const delay = isTrigger || !onChain ? 0 : dist * STEP_MS;
+        if (delay > 0) window._bombChainHeldVictims.add(kill.victimId);
+
+        // When the chain reaches this victim's tile, drop their token by
+        // removing them from the held set and re-rendering.
+        setTimeout(() => {
+          if (window._bombChainHeldVictims)
+            window._bombChainHeldVictims.delete(kill.victimId);
+          if (typeof walkStepUpdate === "function") walkStepUpdate(gs);
+        }, delay);
+      }
+
+      // Kill announcements + transferred-tile glow (delayed per chain hit).
       for (let k = 0; k < kills.length; k++) {
         const kill = kills[k];
-        const placer = (gs.players || []).find((p) => p.id === kill.placerId);
+        const vp = kill.victimPosition;
+        const onChain = vp != null && distByTile.has(vp);
+        const isTrigger = exp.triggerId && kill.victimId === exp.triggerId;
+        const chainDelayMs =
+          isTrigger || !onChain ? 0 : distByTile.get(vp) * STEP_MS;
         const placerColor = placer && placer.color ? placer.color : null;
 
-        // Announcement banner
+        // Announcement banner \u2014 fires when the chain arrives, then staggers
+        // sequentially across multiple kills.
         const banner = document.createElement("div");
         banner.className = "bomb-kill-announcement";
         if (placerColor) banner.classList.add("kill-c-" + placerColor);
-        banner.style.animationDelay = 0.35 + killCounter * 0.9 + "s";
+        banner.style.animationDelay =
+          chainDelayMs / 1000 + 0.05 + killCounter * 0.9 + "s";
         const icon = document.createElement("span");
         icon.className = "bomb-kill-icon";
         icon.textContent = "\uD83D\uDCA5";
@@ -1546,7 +1945,8 @@ function renderBoard(gs) {
           3600 + thisKillIdx * 900,
         );
 
-        // Glow transferred tiles sequentially
+        // Glow transferred tiles sequentially — start after the chain hits
+        // the victim so the takeover follows the elimination visually.
         (kill.tiles || []).forEach((pos, idx) => {
           const tr = spaceRect(pos);
           const glow = document.createElement("div");
@@ -1557,16 +1957,23 @@ function renderBoard(gs) {
           glow.style.width = tr.w + "%";
           glow.style.height = tr.h + "%";
           glow.style.animationDelay =
-            0.5 + thisKillIdx * 0.2 + idx * 0.07 + "s";
+            chainDelayMs / 1000 + 0.5 + thisKillIdx * 0.2 + idx * 0.07 + "s";
           board.appendChild(glow);
           glow.addEventListener("animationend", () => glow.remove());
         });
         killCounter++;
       }
     }
+
+    // Defer the bomb-win game-over to AFTER the chain finishes so the win
+    // announcement doesn't pop in over a half-finished chain sweep.
+    if (typeof _runDeferredBombGameOver === "function") {
+      setTimeout(() => _runDeferredBombGameOver(), chainEndsAt);
+    }
   }
   if (gs && !gs.lastExplosion) {
     window._explosionShown = null;
+    window._bombChainHeldVictims = null;
   }
 
   // Player tokens (persistent for smooth animation)
@@ -1581,10 +1988,14 @@ function renderBoard(gs) {
     // Captured before the explosion block above (which sets _explosionShown)
     // so the victims still render on the same frame the explosion fires —
     // they then disappear on the next render once _explosionShown is set.
+    // After detonation, _bombChainHeldVictims keeps each victim's token on
+    // their tile until the fiery chain sweep reaches it.
     const bombPendingExplosion = _bombWasPendingThisFrame;
+    const heldByChain = window._bombChainHeldVictims;
     const posMap = {};
     gs.players.forEach((p) => {
-      if (p.bankrupt && !bombPendingExplosion) return;
+      const chainHeld = heldByChain && heldByChain.has(p.id);
+      if (p.bankrupt && !bombPendingExplosion && !chainHeld) return;
       // Simple mode: hide tokens for players who haven't taken their start pick yet.
       if (p.startPickPending) return;
       const pos =
@@ -1806,9 +2217,10 @@ function buildPreviewLayout() {
   return layout;
 }
 
-// Simple-mode board variation (mirrors backend BOARD_SIMPLE): 40 farms with
-// yields 10..400, 8 GROW tiles (labelled 0-7 like in play), and 4 special
-// tiles (vine swing, +500, -10% tax, super banana). Everything shuffled.
+// Simple-mode board variation (mirrors backend BOARD_SIMPLE): 48 tiles —
+// 40 farms with yields 1..40 (shown as F1..F40), 6 GROW tiles (labelled 1-6
+// like in play), and 2 special tiles (Super Banana 777🍌, +25 Free Bananas).
+// No tax, no Vine Swing tile (it's an ability now), no corners. All shuffled.
 function buildSimplePreviewLayout() {
   const allTiles = [];
   for (let i = 0; i < 40; i++) {
@@ -1816,30 +2228,28 @@ function buildSimplePreviewLayout() {
       type: "property",
       group: "simple",
       tileName: `F${i + 1}`,
-      price: (i + 1) * 10,
+      price: i + 1,
     });
   }
-  for (let i = 0; i < 8; i++) {
+  for (let i = 0; i < 6; i++) {
     allTiles.push({ type: "grow", name: "🌴 GROW 100%", growPct: 1.0 });
   }
-  allTiles.push({ type: "tax10", name: "🍌 -10%" });
   allTiles.push({
     type: "special",
     name: "⭐",
     tileName: "⭐ Super Banana",
     group: "mushroom",
-    price: 7777,
+    price: 777,
   });
-  allTiles.push({ type: "bus", name: "Vine Swing" });
-  allTiles.push({ type: "freebananas", name: "+500" });
+  allTiles.push({ type: "freebananas", name: "+25" });
 
   for (let i = allTiles.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
     [allTiles[i], allTiles[j]] = [allTiles[j], allTiles[i]];
   }
 
-  // Shuffle grow labels 0..7 across the grow tiles, matching the real game.
-  const growLabels = [0, 1, 2, 3, 4, 5, 6, 7];
+  // Shuffle grow labels 1..6 across the grow tiles, matching the real game.
+  const growLabels = [1, 2, 3, 4, 5, 6];
   for (let i = growLabels.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
     [growLabels[i], growLabels[j]] = [growLabels[j], growLabels[i]];
@@ -1847,7 +2257,7 @@ function buildSimplePreviewLayout() {
 
   const layout = [];
   let gIdx = 0;
-  for (let i = 0; i < BOARD_SIZE; i++) {
+  for (let i = 0; i < allTiles.length; i++) {
     const tile = { ...allTiles[i], id: i };
     if (tile.type === "grow") tile.growLabel = growLabels[gIdx++];
     layout.push(tile);
@@ -2022,7 +2432,7 @@ function renderPreviewTileList(layout) {
 }
 
 // Tile list panel for the simple-mode board variation: 40 farms (compact yield
-// grid), 8 GROW tiles (0-7), and the 4 special tiles.
+// grid), 6 GROW tiles (1-6), and the 2 special tiles.
 function renderSimplePreviewTileList(layout, panel) {
   const farms = layout
     .filter((t) => t.group === "simple")
@@ -2031,28 +2441,30 @@ function renderSimplePreviewTileList(layout, panel) {
     .filter((t) => t.type === "grow")
     .sort((a, b) => (a.growLabel || 0) - (b.growLabel || 0));
 
-  // Farms — a compact yield grid reads better than 40 rows.
+  // Farms — 40 chips in a compact yellow grid that matches the on-board
+  // colour, so the section reads as "the farms" at a glance.
   const farmSection = document.createElement("div");
-  farmSection.className = "bp-group";
+  farmSection.className = "bp-group bp-group--farms";
   const lo = farms.length ? farms[0].price : 0;
   const hi = farms.length ? farms[farms.length - 1].price : 0;
   farmSection.innerHTML =
     `<div class="bp-group-header">` +
     `<span class="bp-group-dot" style="background:#ffd633"></span>` +
-    `Farms 🌽 ` +
-    `<span class="bp-group-meta">${farms.length} farms · ${lo}–${hi}🍌</span>` +
+    `Farms 🌾 ` +
+    `<span class="bp-group-meta">${farms.length} farms · yields ${lo}–${hi}🍌</span>` +
     `</div>`;
   const farmGrid = document.createElement("div");
   farmGrid.className = "bp-yield-grid";
+  // Labelled F1..F40 to match the board (the number is also the yield).
   farmGrid.innerHTML = farms
-    .map((f) => `<span class="bp-yield-chip">${f.price}🍌</span>`)
+    .map((f) => `<span class="bp-yield-chip bp-yield-chip--farm">F${f.price}</span>`)
     .join("");
   farmSection.appendChild(farmGrid);
   panel.appendChild(farmSection);
 
-  // Grow tiles 0-7
+  // Grow tiles 1-6 — green chips that match the corner colour on the board.
   const growSection = document.createElement("div");
-  growSection.className = "bp-group";
+  growSection.className = "bp-group bp-group--grows";
   growSection.innerHTML =
     `<div class="bp-group-header">` +
     `<span class="bp-group-dot" style="background:#2e7d32"></span>` +
@@ -2062,42 +2474,72 @@ function renderSimplePreviewTileList(layout, panel) {
   const growGrid = document.createElement("div");
   growGrid.className = "bp-yield-grid";
   growGrid.innerHTML = grows
-    .map((g) => `<span class="bp-yield-chip">🌴 ${g.growLabel}</span>`)
+    .map((g) => `<span class="bp-yield-chip bp-yield-chip--grow">G${g.growLabel}</span>`)
     .join("");
   growSection.appendChild(growGrid);
   panel.appendChild(growSection);
 
-  // Special tiles
+  // Special tiles — +25 and Super Banana grouped together, with their own
+  // icon-coded swatches so they read distinctly from farms/grows.
   const specials = [
-    { icon: "🌿", name: "Vine Swing" },
-    { icon: "🍌", name: "+500 Bananas" },
-    { icon: "🍌", name: "-10% Peel" },
-    { icon: "⭐", name: "Super Banana" },
+    { icon: "🍌", name: "+25 Free Bananas", dot: "#ffd633" },
+    { icon: "⭐", name: "Super Banana — 777🍌 to win", dot: "#d24cff" },
   ];
   const specialSection = document.createElement("div");
-  specialSection.className = "bp-group";
+  specialSection.className = "bp-group bp-group--specials";
   specialSection.innerHTML =
     `<div class="bp-group-header">` +
-    `<span class="bp-group-dot" style="background:#666"></span>` +
-    `Special Tiles ` +
+    `<span class="bp-group-dot" style="background:linear-gradient(135deg,#ffd633,#d24cff)"></span>` +
+    `Special Tiles ✨ ` +
     `<span class="bp-group-meta">${specials.length} tiles</span>` +
     `</div>`;
   for (const s of specials) {
     const row = document.createElement("div");
-    row.className = "bp-tile";
+    row.className = "bp-tile bp-tile--special";
     row.innerHTML =
-      `<span class="bp-tile-dot" style="background:#666"></span>` +
+      `<span class="bp-tile-dot" style="background:${s.dot}"></span>` +
       `<span class="bp-tile-name">${s.icon} ${s.name}</span>`;
     specialSection.appendChild(row);
   }
   panel.appendChild(specialSection);
+
+  // Player colours — the four simple-mode monkeys (Red / Blue / Orange / Purple).
+  const colours = [
+    { name: "Red", hex: "#e23b3b" },
+    { name: "Blue", hex: "#2e7fe0" },
+    { name: "Orange", hex: "#ff8c00" },
+    { name: "Purple", hex: "#8e44ad" },
+  ];
+  const colourSection = document.createElement("div");
+  colourSection.className = "bp-group";
+  colourSection.innerHTML =
+    `<div class="bp-group-header">` +
+    `<span class="bp-group-dot" style="background:#888"></span>` +
+    `Player Colours ` +
+    `<span class="bp-group-meta">${colours.length} monkeys</span>` +
+    `</div>`;
+  const colourGrid = document.createElement("div");
+  colourGrid.className = "bp-yield-grid";
+  colourGrid.innerHTML = colours
+    .map(
+      (c) =>
+        `<span class="bp-yield-chip" style="border-color:${c.hex};color:${c.hex}">${c.name}</span>`,
+    )
+    .join("");
+  colourSection.appendChild(colourGrid);
+  panel.appendChild(colourSection);
 }
 
 function renderPreviewBoard(layout) {
   const board = document.getElementById("board-preview");
   board.innerHTML = "";
 
-  for (let i = 0; i < BOARD_SIZE; i++) {
+  // Simple-mode previews are 48 tiles (full square loop); classic is 52.
+  _simpleBoardActive = Array.isArray(layout) && layout.length === SIMPLE_BOARD_SIZE;
+  // Mirror the live board: tag the preview with a mode class so the simple-mode
+  // tile colour rules apply here too (hidden cover, farm/grow text).
+  board.classList.toggle("board-mode-simple", _simpleBoardActive);
+  for (let i = 0; i < layout.length; i++) {
     const el = document.createElement("div");
     el.className = "space";
 
@@ -2113,7 +2555,7 @@ function renderPreviewBoard(layout) {
       el.classList.add("corner");
       // Simple-mode grow tiles show just their number (0-7), like in play.
       if (tile.growLabel != null) {
-        el.innerHTML = `<span class="grow-yield">${tile.growLabel}</span>`;
+        el.innerHTML = `<span class="grow-yield">G${tile.growLabel}</span>`;
       } else {
         el.textContent = tile.name;
       }
@@ -2121,7 +2563,7 @@ function renderPreviewBoard(layout) {
       const label = tile.tileLabel || tile.tileName;
       if (tile.group === "simple") {
         el.classList.add("g-simple");
-        el.innerHTML = `<span class="simple-yield">${tile.price}</span>`;
+        el.innerHTML = `<span class="simple-yield">F${tile.price}</span>`;
       } else if (tile.group === "desert") {
         el.classList.add("type-desert");
         el.innerHTML =

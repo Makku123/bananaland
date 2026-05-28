@@ -231,10 +231,10 @@ io.on("connection", (socket) => {
       data.isPublic,
       {
         enabled: data.itemAuctionEnabled,
-        vickrey: data.itemAuctionVickrey,
         timerSec: data.itemAuctionTimer,
         startValue: data.itemAuctionStartValue,
       },
+      data.bombCost,
     );
     games.set(code, game);
     game.onUpdate = () => emitGameUpdate(code, game);
@@ -358,14 +358,47 @@ io.on("connection", (socket) => {
   socket.on("toggle_no_timer", (data) => {
     const game = games.get(data.gameId);
     if (!game) return;
+    const wasOn = !!game.noAuctionTimer;
     game.noAuctionTimer = !!data.noTimer;
-    // If turning on mid-auction, clear any running timer
-    if (game.noAuctionTimer && game._auctionTimer) {
-      clearTimeout(game._auctionTimer);
-      game._auctionTimer = null;
+    if (game.noAuctionTimer && !wasOn) {
+      // Turning OFF the timer mid-auction: cancel the pending timer and
+      // null out whichever deadline the current phase is using so the
+      // frontend stops showing a countdown.
+      if (game._auctionTimer) {
+        clearTimeout(game._auctionTimer);
+        game._auctionTimer = null;
+      }
       if (game.auction) {
         game.auction.respondDeadline = null;
         game.auction.respondStartTime = null;
+        game.auction.silentDeadline = null;
+        game.auction.silentStartTime = null;
+      }
+    } else if (!game.noAuctionTimer && wasOn && game.auction) {
+      // Turning the timer back ON mid-auction: re-schedule the timer for
+      // the current phase. Without this, a silent tie-breaker can hang
+      // forever after a toggle-off / toggle-on, because the deadline that
+      // got cleared above is never restored.
+      const a = game.auction;
+      if (a.phase === "respond") {
+        a.respondDeadline = Date.now() + 15000;
+        a.respondStartTime = Date.now();
+        game._auctionTimer = setTimeout(() => {
+          game._auctionTimer = null;
+          if (!game.auction || game.auction.phase !== "respond") return;
+          game._log(`⏰ Time's up!`);
+          game._closeRespondPhase();
+          if (game.onUpdate) game.onUpdate();
+        }, 15000);
+      } else if (a.phase === "silentbid") {
+        a.silentDeadline = Date.now() + 15000;
+        a.silentStartTime = Date.now();
+        game._auctionTimer = setTimeout(() => {
+          game._auctionTimer = null;
+          if (!game.auction || game.auction.phase !== "silentbid") return;
+          game._resolveSilentBid();
+          if (game.onUpdate) game.onUpdate();
+        }, 15000);
       }
     }
     emitGameUpdate(data.gameId, game);
@@ -452,6 +485,16 @@ io.on("connection", (socket) => {
     }
   });
 
+  // ── Simple mode: arm a special item for your next turn ──────────
+  socket.on("arm_ability", (data) => {
+    const game = games.get(data.gameId);
+    if (!game) return;
+    const ability = data && data.ability != null ? data.ability : null;
+    if (game.armAbility(socket.id, ability)) {
+      emitGameUpdate(data.gameId, game);
+    }
+  });
+
   // ── Simple mode: use an ability card (refresh/swap/scout/teleport) ──
   socket.on("use_card", (data) => {
     const game = games.get(data.gameId);
@@ -477,7 +520,7 @@ io.on("connection", (socket) => {
     const dc = data.diceCount;
     const result = game.rollDice(
       socket.id,
-      dc === 1 || dc === 3 ? dc : undefined,
+      dc === 1 || dc === 2 || dc === 3 ? dc : undefined,
     );
     if (result) {
       emitGameUpdate(data.gameId, game);
@@ -573,7 +616,34 @@ io.on("connection", (socket) => {
     }
   });
 
-  // ── Submit silent bid for simple-mode item auction ──────────
+  // ── Submit silent top-up bid (property auction tie-breaker) ──
+  socket.on("submit_silent_bid", (data) => {
+    const game = games.get(data.gameId);
+    if (!game) return;
+    if (game.submitSilentBid(socket.id, data.amount)) {
+      emitGameUpdate(data.gameId, game);
+    }
+  });
+
+  // ── Item auction: starter names a price for the mystery item ──
+  socket.on("pitch_item_price", (data) => {
+    const game = games.get(data.gameId);
+    if (!game) return;
+    if (game.pitchItemPrice(socket.id, data.amount)) {
+      emitGameUpdate(data.gameId, game);
+    }
+  });
+
+  // ── Item auction: accept/reject the priced mystery item ──────
+  socket.on("respond_item_auction", (data) => {
+    const game = games.get(data.gameId);
+    if (!game) return;
+    if (game.respondItemAuction(socket.id, data.accept)) {
+      emitGameUpdate(data.gameId, game);
+    }
+  });
+
+  // ── Item auction: submit silent top-up (tie-breaker) ─────────
   socket.on("submit_item_bid", (data) => {
     const game = games.get(data.gameId);
     if (!game) return;

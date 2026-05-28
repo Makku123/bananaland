@@ -1742,6 +1742,140 @@ body {
   transition: width 1s linear;
 }
 
+/* ——— Simple-mode reveal overrides ————————————————————————————————— */
+
+/* Roomier on the simple-mode reveal: 40 farm chips need horizontal space. */
+.reveal-content--simple {
+  max-width: 820px;
+}
+
+.reveal-grid--simple {
+  gap: 16px;
+}
+.reveal-grid--simple .reveal-group-tiles {
+  gap: 5px;
+}
+
+/* Farm chips — yellow gradient matching the on-board farm tile. Compact so 40
+   chips fit cleanly into ~4-5 rows on a typical screen. */
+.reveal-tile--farm {
+  width: 38px;
+  height: 32px;
+  border-radius: 7px;
+  background: linear-gradient(160deg, #ffe14a 0%, #f5c726 50%, #d9a800 100%);
+  border-color: rgba(120, 80, 0, 0.45);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.35),
+    inset 0 -1px 0 rgba(120, 80, 0, 0.25),
+    0 2px 6px rgba(0, 0, 0, 0.3);
+}
+.reveal-tile--farm .reveal-tile-yield {
+  font-family: "Baloo 2", "Fredoka", sans-serif;
+  font-size: 0.82em;
+  font-weight: 900;
+  color: #1a1a1a;
+  letter-spacing: 0.3px;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.25);
+}
+
+/* Grow chips — green gradient matching the on-board grow corner. Yellow text
+   so the G-number pops, matching the in-game grow-text styling. */
+.reveal-tile--grow {
+  width: 46px;
+  height: 46px;
+  border-radius: 9px;
+  background: linear-gradient(135deg, #2d9a22 0%, #258a18 50%, #186a10 100%);
+  border-color: rgba(20, 60, 10, 0.55);
+  box-shadow:
+    inset 0 1px 0 rgba(140, 220, 100, 0.25),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.25),
+    0 2px 8px rgba(0, 0, 0, 0.35);
+}
+.reveal-tile--grow .reveal-tile-yield {
+  font-family: "Baloo 2", "Fredoka", sans-serif;
+  font-size: 1.05em;
+  font-weight: 900;
+  color: #ffe135;
+  text-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.55),
+    0 0 4px rgba(0, 0, 0, 0.35);
+}
+
+/* Special tile rows: pill-shaped cards (icon + name) instead of square chips,
+   so +25 Free Bananas and Super Banana read clearly as their own category. */
+.reveal-group-tiles--specials {
+  gap: 8px;
+}
+.reveal-tile--special {
+  width: auto;
+  height: auto;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 14px;
+  border-radius: 12px;
+}
+.reveal-tile--special .reveal-tile-icon {
+  font-size: 1.4em;
+  line-height: 1;
+}
+.reveal-tile--special .reveal-tile-name {
+  font-family: "Baloo 2", "Fredoka", sans-serif;
+  font-size: 0.92em;
+  font-weight: 800;
+  letter-spacing: 0.3px;
+  color: #f4f0e0;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.55);
+}
+.reveal-tile--freebananas {
+  background:
+    radial-gradient(ellipse at 30% 30%, rgba(255, 235, 100, 0.45), transparent 60%),
+    linear-gradient(135deg, #ffd633 0%, #d9a800 100%);
+  border-color: rgba(120, 80, 0, 0.5);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.35),
+    0 0 14px rgba(255, 214, 51, 0.25),
+    0 2px 8px rgba(0, 0, 0, 0.35);
+}
+.reveal-tile--freebananas .reveal-tile-name {
+  color: #1a1a1a;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.3);
+}
+.reveal-tile--super {
+  background:
+    linear-gradient(
+      135deg,
+      #ff6b6b 0%,
+      #ffa94d 20%,
+      #ffe066 40%,
+      #69db7c 60%,
+      #4dabf7 80%,
+      #cc5de8 100%
+    );
+  border-color: rgba(255, 255, 255, 0.5);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.35),
+    0 0 18px rgba(255, 255, 255, 0.3),
+    0 2px 10px rgba(0, 0, 0, 0.4);
+  animation: revealSuperGlow 2.4s ease-in-out infinite;
+}
+.reveal-tile--super .reveal-tile-name {
+  color: #fff;
+  text-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.6),
+    0 0 6px rgba(0, 0, 0, 0.3);
+}
+@keyframes revealSuperGlow {
+  0%, 100% { box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35), 0 0 18px rgba(255, 255, 255, 0.3), 0 2px 10px rgba(0, 0, 0, 0.4); }
+  50%      { box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.4),  0 0 28px rgba(255, 255, 255, 0.45), 0 2px 12px rgba(0, 0, 0, 0.45); }
+}
+
+/* Slightly brighter subtitle in simple mode so the polished sections read as
+   one composed screen rather than a debug list. */
+.reveal-content--simple .reveal-subtitle {
+  color: #b5d68f;
+}
+
 /* ── Game Layout ──────────────────────────────────────────────── */
 .game-layout {
   display: flex;
@@ -1944,6 +2078,18 @@ body {
   font-size: 0.88em;
   font-weight: 800;
   opacity: 1;
+}
+/* Bananas currently piled on a farm (to-be-collected) — mirrors .pstat-pile
+   green, sits just left of the yellow yield. Always shown; empty (0) piles are
+   dimmed so farms with bananas waiting stand out. */
+.owner-farm-pile {
+  color: #a8d860;
+  font-weight: 600;
+  font-size: 0.82em;
+  opacity: 0.3;
+}
+.owner-farm-pile.has-pile {
+  opacity: 0.9;
 }
 .panel-divider {
   border: none;
@@ -3113,6 +3259,63 @@ body {
   align-items: center;
   justify-content: center;
 }
+
+/* Leaver cover: a hidden tile owned by a player who just left, awaiting the
+   2-second reshuffle. Painted in the leaver's color so everyone can see
+   whose farms are about to be reshuffled. */
+.space.space-hidden.leaver-cover-on {
+  background:
+    radial-gradient(circle at 35% 30%, rgba(255, 255, 255, 0.22) 0%, transparent 50%),
+    radial-gradient(circle at 70% 70%, rgba(0, 0, 0, 0.25) 0%, transparent 45%),
+    var(--leaver-color, #888) !important;
+  color: rgba(255, 255, 255, 0.92);
+  border: 2px solid rgba(255, 255, 255, 0.65);
+  box-shadow:
+    inset 0 0 12px rgba(0, 0, 0, 0.35),
+    0 0 14px 2px var(--leaver-color, rgba(255, 255, 255, 0.35));
+  animation: leaverCoverPulse 1s ease-in-out infinite alternate;
+}
+@keyframes leaverCoverPulse {
+  0% {
+    filter: brightness(0.92) saturate(1);
+  }
+  100% {
+    filter: brightness(1.2) saturate(1.25);
+  }
+}
+/* Scouted (peeked) tile: the real content shows through a translucent leafy
+   veil, so it reads as "seen but not truly discovered" — distinct from a fully
+   revealed tile (no veil) and a hidden tile (opaque .space-hidden cover). The
+   veil mirrors the hidden-cover gradient at ~half opacity. */
+.space.space-scouted::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: 6;
+  background:
+    radial-gradient(
+      circle at 35% 30%,
+      rgba(80, 160, 50, 0.18) 0%,
+      transparent 50%
+    ),
+    repeating-conic-gradient(
+      from 0deg at 50% 50%,
+      rgba(50, 120, 30, 0.10) 0deg 10deg,
+      transparent 10deg 20deg
+    ),
+    linear-gradient(
+      160deg,
+      rgba(42, 122, 32, 0.52) 0%,
+      rgba(30, 96, 24, 0.48) 40%,
+      rgba(21, 74, 16, 0.48) 70%,
+      rgba(14, 52, 10, 0.5) 100%
+    );
+  box-shadow:
+    inset 0 0 12px rgba(0, 0, 0, 0.2),
+    inset 0 0 0 1px rgba(120, 200, 70, 0.25);
+}
 .space.corner {
   background:
     radial-gradient(
@@ -3193,6 +3396,76 @@ body {
       inset 0 1px 0 rgba(100, 200, 60, 0.15),
       0 2px 8px rgba(0, 0, 0, 0.25);
     filter: brightness(1);
+  }
+}
+/* ── Simple-mode GROW pulse ─────────────────────────────────────────
+   A travelling glow in the ROLLER's colour (--pulse-color) sweeps tile-by-tile
+   from a fired grow along its range. The steady glow fades in/out via the
+   transition (walkStepUpdate doesn't rebuild tiles, so it animates smoothly),
+   giving a short comet tail as adjacent tiles light in sequence. */
+.space.grow-pulse-on {
+  z-index: 6;
+  box-shadow:
+    0 0 16px 5px var(--pulse-color, #ffe135),
+    inset 0 0 14px 3px var(--pulse-color, #ffe135);
+  filter: brightness(1.18);
+  transition:
+    box-shadow 0.13s ease-out,
+    filter 0.13s ease-out;
+}
+/* A farm's bananas growing as the pulse crosses it: a quick bouncy pop. */
+.space.grow-pop {
+  z-index: 7;
+  animation: growPulsePop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) 1;
+}
+@keyframes growPulsePop {
+  0% {
+    transform: scale(1);
+    filter: brightness(1);
+  }
+  35% {
+    transform: scale(1.22);
+    filter: brightness(1.5);
+    box-shadow:
+      0 0 22px 8px var(--pulse-color, #ffe135),
+      0 0 40px 16px var(--pulse-color, #ffe135);
+  }
+  100% {
+    transform: scale(1);
+    filter: brightness(1);
+  }
+}
+
+/* Grow fired: the G-number flashes bright yellow in sync with the tile pop.
+   Shares the .grow-fired trigger, so it only fires when the grow grew stuff. */
+.space.grow-fired .grow-yield {
+  animation: growTextGlow 0.8s cubic-bezier(0.34, 1.56, 0.64, 1) 1;
+}
+@keyframes growTextGlow {
+  0% {
+    color: #fff;
+    text-shadow:
+      0 1px 3px rgba(0, 0, 0, 0.55),
+      0 0 6px rgba(0, 0, 0, 0.35);
+  }
+  25% {
+    color: #ffe135;
+    text-shadow:
+      0 0 8px rgba(255, 225, 53, 1),
+      0 0 18px rgba(255, 225, 53, 0.9),
+      0 0 30px rgba(255, 200, 0, 0.65);
+  }
+  60% {
+    color: #fff4b0;
+    text-shadow:
+      0 0 6px rgba(255, 225, 53, 0.85),
+      0 0 16px rgba(255, 225, 53, 0.6);
+  }
+  100% {
+    color: #fff;
+    text-shadow:
+      0 1px 3px rgba(0, 0, 0, 0.55),
+      0 0 6px rgba(0, 0, 0, 0.35);
   }
 }
 
@@ -3948,6 +4221,45 @@ body {
   border-color: rgba(255, 220, 50, 0.4);
   font-size: 1.1em;
 }
+/* Free Bananas tile triggers: a bright golden flash pulse when a player
+   crosses or lands on it. Fires once; the .freebananas-triggered class is
+   added in board.js exactly when the +25 / +500 floater is shown, so the
+   source of the bananas reads clearly on the board. */
+.space.type-freebananas.freebananas-triggered {
+  animation: freebananasTriggeredPulse 1.1s cubic-bezier(0.34, 1.56, 0.64, 1) 1;
+  z-index: 8;
+}
+@keyframes freebananasTriggeredPulse {
+  0% {
+    transform: scale(1);
+    filter: brightness(1);
+    box-shadow:
+      0 0 0 0 rgba(255, 220, 60, 0.7),
+      inset 0 0 0 0 rgba(255, 240, 120, 0);
+  }
+  25% {
+    transform: scale(1.18);
+    filter: brightness(1.5) saturate(1.4);
+    box-shadow:
+      0 0 28px 10px rgba(255, 220, 60, 0.85),
+      0 0 60px 18px rgba(255, 200, 30, 0.45),
+      inset 0 0 18px 6px rgba(255, 245, 150, 0.55);
+  }
+  60% {
+    transform: scale(1.05);
+    filter: brightness(1.25) saturate(1.2);
+    box-shadow:
+      0 0 22px 7px rgba(255, 220, 60, 0.55),
+      inset 0 0 12px 3px rgba(255, 240, 130, 0.3);
+  }
+  100% {
+    transform: scale(1);
+    filter: brightness(1);
+    box-shadow:
+      0 0 0 0 rgba(255, 220, 60, 0),
+      inset 0 0 0 0 rgba(255, 240, 120, 0);
+  }
+}
 .space.type-auction {
   background:
     radial-gradient(circle at 35% 30%, rgba(200, 160, 255, 0.15) 0%, transparent 50%),
@@ -4107,6 +4419,24 @@ body.mode-simple .pile-red {
     pile-grow-bounce 0.8s ease-out,
     pile-glow 2s ease-in-out infinite alternate 0.8s;
   box-shadow: 0 0 12px rgba(127, 255, 0, 0.9);
+}
+/* Simple-mode grow: when the chain reaches a farm its count box does a
+   pronounced ~1s bounce — a big pop that settles with two decaying rebounds.
+   animation-delay is set inline (negative ms) by board.js so the bounce RESUMES
+   at the right frame after walkStepUpdate rebuilds the chip mid-pulse, instead
+   of restarting (which made it look like the box barely moved). */
+.banana-pile.pile-bounce {
+  animation: pile-grow-bobble 1s ease-out;
+  box-shadow: 0 0 16px rgba(127, 255, 0, 0.95);
+}
+@keyframes pile-grow-bobble {
+  0%   { transform: var(--pile-transform, translate(-50%, -100%)) scale(1); }
+  18%  { transform: var(--pile-transform, translate(-50%, -100%)) scale(1.7); }
+  36%  { transform: var(--pile-transform, translate(-50%, -100%)) scale(0.9); }
+  54%  { transform: var(--pile-transform, translate(-50%, -100%)) scale(1.18); }
+  70%  { transform: var(--pile-transform, translate(-50%, -100%)) scale(0.96); }
+  84%  { transform: var(--pile-transform, translate(-50%, -100%)) scale(1.06); }
+  100% { transform: var(--pile-transform, translate(-50%, -100%)) scale(1); }
 }
 @keyframes tile-grow-bounce {
   0% {
@@ -4977,6 +5307,91 @@ body.mode-simple .owned-red {
   opacity: 0.4;
   cursor: not-allowed;
 }
+
+/* ── "Your Special Items" box (simple mode) ─────────────────────── */
+.special-items {
+  margin-top: 8px;
+  padding: 8px 8px 10px;
+  border-radius: 12px;
+  background: linear-gradient(160deg, #241a3e 0%, #1a1530 100%);
+  border: 2px solid #6a4fae;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 3px 10px rgba(0, 0, 0, 0.4);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.special-items-title {
+  text-align: center;
+  font-weight: 800;
+  font-size: 0.82em;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: #ffe135;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+}
+.special-items-sub {
+  text-align: center;
+  font-size: 0.62em;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+  color: #9b86cc;
+  margin-top: -2px;
+}
+.special-item-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(154, 122, 232, 0.35);
+}
+.special-item-icon {
+  font-size: 1.1em;
+  line-height: 1;
+  white-space: nowrap;
+  filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.5));
+}
+.special-item-label {
+  flex: 1;
+  font-weight: 700;
+  font-size: 0.84em;
+  color: #efe8ff;
+}
+.special-item-count {
+  font-weight: 800;
+  font-size: 0.84em;
+  color: #ffe135;
+  min-width: 26px;
+  text-align: right;
+}
+.special-item-btn {
+  min-width: 76px;
+  min-height: 32px;
+  padding: 4px 10px;
+  font-size: 0.8em;
+  font-weight: 700;
+  background: linear-gradient(145deg, #3a6a2e, #4a8a3e) !important;
+  color: #fff !important;
+  border: 2px solid #7aca5a !important;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+}
+.special-item-btn:hover:not(:disabled) {
+  background: linear-gradient(145deg, #468436, #5aa44a) !important;
+  box-shadow: 0 0 10px rgba(122, 202, 90, 0.45);
+}
+.special-item-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.special-item-btn.special-item-armed {
+  background: linear-gradient(145deg, #b88a1e, #e0b020) !important;
+  border-color: #ffe135 !important;
+  box-shadow: 0 0 10px rgba(255, 225, 53, 0.55);
+}
 .bomb-placement-banner {
   position: fixed;
   top: 50%;
@@ -5142,6 +5557,26 @@ body.mode-simple .owned-red {
   transform: translateX(-50%);
   font-size: 14px;
   pointer-events: none;
+}
+/* Simple mode: Vine Swing choosable farms use the GOLDEN first-pick highlight
+   (gold outline + pickGlow) instead of the blue ability glow, and are lifted
+   ABOVE the coloured ownership border — whose !important box-shadow (higher
+   specificity) would otherwise hide the highlight underneath it. Specificity
+   here (body.mode-simple .space.ability-target) beats body.mode-simple .owned-*. */
+body.mode-simple .space.ability-target {
+  position: relative;
+  z-index: 13;
+  outline: 3px solid #ffe135 !important;
+  outline-offset: -3px !important;
+  box-shadow: 0 0 16px rgba(255, 225, 53, 0.7) !important;
+  animation: pickGlow 1.2s ease-in-out infinite alternate !important;
+}
+body.mode-simple .space.ability-target:hover {
+  outline-color: #fff3a0 !important;
+  box-shadow:
+    0 0 26px rgba(255, 225, 53, 0.95),
+    0 0 44px rgba(255, 225, 53, 0.4) !important;
+  background: rgba(255, 225, 53, 0.18) !important;
 }
 @keyframes abilityTargetPulse {
   0%,
@@ -5451,6 +5886,55 @@ body.mode-simple .owned-red {
   80% {
     transform: translate(1px, -1px);
   }
+}
+
+/* ── Bomb chain pulse: fiery sweep through blast tiles ───────
+   Same shape as .grow-pulse-on (player-color glow via --pulse-color)
+   but with a fiery inner-burn so it reads as fire, not growth. */
+.space.bomb-chain-on {
+  z-index: 6;
+  box-shadow:
+    0 0 18px 6px var(--pulse-color, #ff7020),
+    inset 0 0 18px 5px rgba(255, 90, 0, 0.85);
+  filter: brightness(1.32) saturate(1.45);
+  transition:
+    box-shadow 0.13s ease-out,
+    filter 0.13s ease-out;
+}
+.space.bomb-chain-on::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  background:
+    radial-gradient(ellipse at 50% 70%, rgba(255, 220, 80, 0.55) 0%, rgba(255, 120, 0, 0.45) 35%, transparent 70%),
+    radial-gradient(ellipse at 30% 40%, rgba(255, 60, 0, 0.35) 0%, transparent 60%);
+  mix-blend-mode: screen;
+  animation: bombChainFireFlicker 0.5s ease-out 1;
+}
+@keyframes bombChainFireFlicker {
+  0% { opacity: 0; transform: scaleY(0.6); }
+  35% { opacity: 1; transform: scaleY(1.05); }
+  100% { opacity: 0; transform: scaleY(0.85); }
+}
+/* Flame burst overlay placed on each tile as the chain reaches it. */
+.bomb-chain-flame {
+  position: absolute;
+  z-index: 61;
+  pointer-events: none;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  font-size: 26px;
+  filter: drop-shadow(0 0 8px rgba(255, 120, 0, 0.95));
+  animation: bombChainFlame 0.55s ease-out forwards;
+}
+@keyframes bombChainFlame {
+  0% { opacity: 0; transform: scale(0.55) translateY(10%); }
+  35% { opacity: 1; transform: scale(1.25) translateY(-5%); }
+  70% { opacity: 0.85; transform: scale(1.1) translateY(-18%); }
+  100% { opacity: 0; transform: scale(0.8) translateY(-32%); }
 }
 
 /* ── Bomb Kill Announcement + Transferred-Tile Glow ────────── */
@@ -7926,13 +8410,35 @@ body.mode-simple .board-chat-mention.c-red {
   padding: 2px 0;
 }
 .bp-yield-chip {
-  font-size: 0.74em;
-  font-weight: 700;
+  font-size: 0.78em;
+  font-weight: 800;
   color: #e8f0d8;
   background: rgba(0, 0, 0, 0.3);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 6px;
   padding: 3px 7px;
+  letter-spacing: 0.2px;
+}
+/* Farm chips: yellow-on-black to match the on-board farm tile colour. */
+.bp-yield-chip--farm {
+  color: #1a1a1a;
+  background: linear-gradient(160deg, #ffe14a 0%, #f5c726 50%, #d9a800 100%);
+  border-color: rgba(120, 80, 0, 0.45);
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.25);
+}
+/* Grow chips: green-on-black to match the on-board grow corner colour. */
+.bp-yield-chip--grow {
+  color: #0a0a0a;
+  background: linear-gradient(135deg, #2d9a22 0%, #258a18 50%, #186a10 100%);
+  border-color: rgba(20, 60, 10, 0.55);
+  color: #fff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+}
+/* Special-tile rows: subtle highlight so they read as a distinct category. */
+.bp-tile.bp-tile--special {
+  background: rgba(255, 214, 51, 0.06);
+  border-radius: 6px;
+  padding: 4px 6px;
 }
 
 .bp-tabs {
@@ -11533,11 +12039,11 @@ body.mode-simple .board-chat-mention.c-red {
 .auction-counter-floater {
   font-size: 30px;
   font-weight: 900;
-  color: #ff6363;
+  color: #fff;
   letter-spacing: 1px;
   text-shadow:
-    0 2px 0 rgba(120, 12, 12, 0.55),
-    0 0 14px rgba(255, 90, 90, 0.65);
+    0 2px 0 rgba(0, 0, 0, 0.45),
+    0 0 14px rgba(255, 255, 255, 0.6);
   animation: auctionFloaterRise 1.1s ease-out forwards;
 }
 @keyframes auctionFloaterRise {
@@ -11758,8 +12264,10 @@ body.mode-simple .board-chat-mention.c-red {
   z-index: 2;
 }
 .item-auction-wheel-slot .slot-emoji {
-  font-size: 36px;
+  /* Sized to fit up to three dice (🎲🎲🎲) on one line within the slot. */
+  font-size: 28px;
   line-height: 1;
+  white-space: nowrap;
   filter: drop-shadow(0 3px 5px rgba(0, 0, 0, 0.6));
 }
 .item-auction-wheel-slot .slot-name {
@@ -11769,13 +12277,13 @@ body.mode-simple .board-chat-mention.c-red {
   text-transform: uppercase;
   line-height: 1.1;
 }
-.item-auction-wheel-slot.slot-refreshDice {
+.item-auction-wheel-slot.slot-rabbitDice {
   transform: translate(-50%, -50%) translateY(-85px);
 }
-.item-auction-wheel-slot.slot-swapTiles {
+.item-auction-wheel-slot.slot-cheetahDice {
   transform: translate(-50%, -50%) translateX(85px);
 }
-.item-auction-wheel-slot.slot-scout {
+.item-auction-wheel-slot.slot-magicDice {
   transform: translate(-50%, -50%) translateY(85px);
 }
 .item-auction-wheel-slot.slot-teleport {
@@ -11786,13 +12294,13 @@ body.mode-simple .board-chat-mention.c-red {
   filter: drop-shadow(0 0 12px #ffe135) drop-shadow(0 0 4px #fff);
   animation: itemAuctionWinnerPulse 1.2s ease-in-out infinite;
 }
-.item-auction-wheel-slot.is-winner.slot-refreshDice {
+.item-auction-wheel-slot.is-winner.slot-rabbitDice {
   transform: translate(-50%, -50%) translateY(-85px) scale(1.18);
 }
-.item-auction-wheel-slot.is-winner.slot-swapTiles {
+.item-auction-wheel-slot.is-winner.slot-cheetahDice {
   transform: translate(-50%, -50%) translateX(85px) scale(1.18);
 }
-.item-auction-wheel-slot.is-winner.slot-scout {
+.item-auction-wheel-slot.is-winner.slot-magicDice {
   transform: translate(-50%, -50%) translateY(85px) scale(1.18);
 }
 .item-auction-wheel-slot.is-winner.slot-teleport {
@@ -11859,6 +12367,47 @@ body.mode-simple .board-chat-mention.c-red {
   color: #ffe135;
   letter-spacing: 0.5px;
 }
+/* Blind-bidder view: the item is hidden, so show the pool of possible items. */
+.item-auction-possible {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  margin: 2px 0;
+}
+.item-auction-possible-label {
+  font-size: 0.85em;
+  font-weight: 700;
+  color: #cfd8e3;
+  opacity: 0.9;
+}
+.item-auction-possible-grid {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.item-auction-possible-chip {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 6px 8px;
+  min-width: 56px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+.item-auction-possible-chip .chip-emoji {
+  font-size: 24px;
+}
+.item-auction-possible-chip .chip-name {
+  font-size: 0.7em;
+  font-weight: 700;
+  color: #e8eef5;
+  text-align: center;
+  line-height: 1.05;
+}
 .item-auction-timer {
   width: 100%;
   display: flex;
@@ -11891,6 +12440,20 @@ body.mode-simple .board-chat-mention.c-red {
   flex-direction: column;
   align-items: center;
   gap: 6px;
+}
+.item-auction-context {
+  font-size: 14px;
+  color: #ffe7a8;
+  font-weight: 600;
+  text-align: center;
+  margin: 6px 0;
+  line-height: 1.35;
+}
+.item-auction-respond-controls {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  margin: 8px 0;
 }
 .item-auction-bid-label {
   font-size: 13px;
@@ -12015,3 +12578,205 @@ body.mode-simple .board-chat-mention.c-red {
   font-weight: 700;
   color: #ffe135;
 }
+
+/* ════════════════════════════════════════════════════════════════════
+   SIMPLE-MODE UPDATES
+   1. Board pile chips show a "×N" grow multiplier — make it big & legible.
+   2. Player banana score counters enlarged for visibility.
+   3. Palette tweak: the green slot (silver) → ORANGE #ff8c00, and the
+      black slot (red) → PURPLE #8e44ad. These rules come after the
+      originals so they win on source order (equal specificity).
+   ════════════════════════════════════════════════════════════════════ */
+
+/* 1. "×N" multiplier chip on the board — larger, bolder, higher contrast. */
+.banana-pile.pile-mult {
+  font-size: 1.5em;
+  font-weight: 900;
+  letter-spacing: 0.5px;
+  padding: 2px 7px;
+  color: #fff;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9), 0 0 6px rgba(0, 0, 0, 0.6);
+  /* Re-enable hover so the native title tooltip (yield × count) shows. The base
+     .banana-pile is pointer-events:none; in simple mode these chips sit outside
+     the board ring, so accepting hover doesn't block any tile underneath. */
+  pointer-events: auto;
+  cursor: help;
+}
+
+/* 2. Enlarge the player banana totals in simple mode (HUD + per-player list). */
+body.mode-simple .info-box #info-money {
+  font-size: 1.7em;
+}
+body.mode-simple .pstat-money {
+  font-size: 1.2em;
+}
+body.mode-simple .pstat-me .pstat-money {
+  font-size: 1.28em;
+}
+
+/* 3a. Green slot → ORANGE (#ff8c00). */
+body.mode-simple .pile-silver {
+  background: rgba(255, 140, 0, 0.85);
+  border-color: #ffae42;
+  box-shadow:
+    0 0 5px rgba(255, 140, 0, 0.7),
+    inset 0 0 3px rgba(255, 140, 0, 0.3) !important;
+}
+body.mode-simple .owned-silver {
+  border-color: #ff8c00 !important;
+  outline-color: rgba(255, 140, 0, 0.4);
+  box-shadow:
+    inset 0 0 6px rgba(255, 140, 0, 0.3),
+    0 2px 6px rgba(0, 0, 0, 0.5),
+    0 0 8px rgba(255, 140, 0, 0.35) !important;
+  animation: ownGlowSimpleOrange 3s ease-in-out infinite alternate;
+}
+@keyframes ownGlowSimpleOrange {
+  from { box-shadow: inset 0 0 6px rgba(255, 140, 0, 0.3), 0 2px 6px rgba(0, 0, 0, 0.5), 0 0 8px rgba(255, 140, 0, 0.35); }
+  to   { box-shadow: inset 0 0 10px rgba(255, 140, 0, 0.5), 0 2px 8px rgba(0, 0, 0, 0.55), 0 0 12px rgba(255, 140, 0, 0.5); }
+}
+body.mode-simple .c-silver { background-color: #ff8c00; }
+body.mode-simple .lobby-player-avatar.c-silver { border-color: #ff8c00; }
+body.mode-simple .board-chat-dot.c-silver { background: #ff8c00; }
+body.mode-simple .board-chat-name.c-silver,
+body.mode-simple .board-chat-mention.c-silver { color: #ffb366; }
+body.mode-simple .bomb-kill-glow.glow-c-silver { --glow-core: 255, 180, 80; --glow-halo: 230, 110, 20; }
+
+/* 3b. Black slot → PURPLE (#8e44ad). */
+body.mode-simple .pile-red {
+  background: rgba(142, 68, 173, 0.85);
+  border-color: #a569c4;
+  box-shadow:
+    0 0 5px rgba(142, 68, 173, 0.7),
+    inset 0 0 3px rgba(142, 68, 173, 0.3) !important;
+}
+body.mode-simple .owned-red {
+  border-color: #8e44ad !important;
+  outline-color: rgba(142, 68, 173, 0.45);
+  box-shadow:
+    inset 0 0 6px rgba(142, 68, 173, 0.3),
+    0 2px 6px rgba(0, 0, 0, 0.5),
+    0 0 8px rgba(142, 68, 173, 0.35) !important;
+  animation: ownGlowSimplePurple 3s ease-in-out infinite alternate;
+}
+@keyframes ownGlowSimplePurple {
+  from { box-shadow: inset 0 0 6px rgba(142, 68, 173, 0.3), 0 2px 6px rgba(0, 0, 0, 0.5), 0 0 8px rgba(142, 68, 173, 0.35); }
+  to   { box-shadow: inset 0 0 10px rgba(142, 68, 173, 0.5), 0 2px 8px rgba(0, 0, 0, 0.55), 0 0 12px rgba(142, 68, 173, 0.5); }
+}
+body.mode-simple .c-red { background-color: #8e44ad; }
+body.mode-simple .lobby-player-avatar.c-red { border-color: #8e44ad; }
+body.mode-simple .board-chat-dot.c-red { background: #8e44ad; }
+body.mode-simple .board-chat-name.c-red,
+body.mode-simple .board-chat-mention.c-red { color: #c79be0; }
+
+/* ——— Simple-mode tile colour overrides ———————————————————————————————
+   Scoped to .board-mode-simple (set on #board and #board-preview when the
+   simple-mode layout is active) so classic-mode styling is untouched. */
+
+/* Hidden / unrevealed tiles: dark green with a bushy/grassy texture and
+   bright white text. Layered gradients build the look:
+   - Two off-centre radial blobs read as overlapping "bushes".
+   - A repeating diagonal gradient suggests grass-blade strokes.
+   - A repeating conic-gradient adds finer leafy noise.
+   - A base linear-gradient gives top-down lighting on a deep-green field. */
+.board-mode-simple .space.space-hidden {
+  background:
+    radial-gradient(
+      ellipse 60% 55% at 28% 32%,
+      rgba(120, 200, 90, 0.30) 0%,
+      rgba(40, 110, 30, 0) 70%
+    ),
+    radial-gradient(
+      ellipse 55% 50% at 72% 70%,
+      rgba(80, 160, 60, 0.28) 0%,
+      rgba(20, 70, 15, 0) 70%
+    ),
+    repeating-linear-gradient(
+      72deg,
+      rgba(180, 240, 150, 0.10) 0px,
+      rgba(180, 240, 150, 0.10) 1px,
+      transparent 1px,
+      transparent 5px
+    ),
+    repeating-linear-gradient(
+      -68deg,
+      rgba(20, 60, 15, 0.18) 0px,
+      rgba(20, 60, 15, 0.18) 1px,
+      transparent 1px,
+      transparent 7px
+    ),
+    repeating-conic-gradient(
+      from 0deg at 50% 50%,
+      rgba(40, 100, 25, 0.16) 0deg 8deg,
+      transparent 8deg 18deg
+    ),
+    linear-gradient(160deg, #1f5a18 0%, #174612 45%, #103a0d 75%, #0a2807 100%);
+  color: #fff;
+  font-size: 20px;
+  font-weight: 800;
+  border-color: rgba(20, 50, 12, 0.7);
+  text-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.75),
+    0 0 6px rgba(0, 0, 0, 0.5);
+  box-shadow:
+    inset 0 1px 0 rgba(140, 220, 100, 0.18),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.4),
+    inset 0 0 14px rgba(0, 0, 0, 0.18),
+    0 2px 6px rgba(0, 0, 0, 0.35);
+}
+.board-mode-simple .space.space-hidden .sname {
+  color: #fff;
+}
+
+/* Hidden tile + grow pulse: the default .grow-pulse-on rule only adds an
+   outer glow, which gets buried by the dark hidden-tile background and reads
+   as a faint white halo. Override here with a strong colour wash so the chain
+   animation visibly tints the cover in the activating player's colour as it
+   sweeps. Higher specificity than .board-mode-simple .space.space-hidden so
+   the pulse styling wins. */
+.board-mode-simple .space.space-hidden.grow-pulse-on {
+  border-color: var(--pulse-color, #ffe135);
+  box-shadow:
+    0 0 18px 6px var(--pulse-color, #ffe135),
+    inset 0 0 22px 8px var(--pulse-color, #ffe135);
+  filter: brightness(1.3) saturate(1.2);
+}
+/* Tint the leafy texture itself with the pulse colour via a translucent
+   ::before overlay set to mix-blend-mode: color so the bushy detail still
+   shows through. */
+.board-mode-simple .space.space-hidden.grow-pulse-on::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--pulse-color, #ffe135);
+  opacity: 0.45;
+  mix-blend-mode: color;
+  pointer-events: none;
+  z-index: 1;
+}
+/* Make sure the hidden-tile label sits above the colour overlay. */
+.board-mode-simple .space.space-hidden.grow-pulse-on .sname {
+  position: relative;
+  z-index: 2;
+}
+
+/* Simple-mode farm tiles: black text on the yellow farm background, instead
+   of white. Both the tile's base colour and the F-number yield. */
+.board-mode-simple .space.g-simple,
+.board-mode-simple .space.g-simple .simple-yield {
+  color: #000;
+  text-shadow: none;
+}
+
+/* Simple-mode grow tiles: yellow text on the green corner background. The
+   .grow-yield span is only emitted for simple-mode grow tiles, so this rule
+   targets exactly those without leaking into classic. */
+.board-mode-simple .space.corner,
+.board-mode-simple .space.corner .grow-yield {
+  color: #ffe135;
+  text-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.55),
+    0 0 4px rgba(0, 0, 0, 0.35);
+}
+body.mode-simple .bomb-kill-glow.glow-c-red { --glow-core: 210, 140, 255; --glow-halo: 140, 60, 220; }

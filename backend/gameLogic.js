@@ -545,25 +545,37 @@ const BOARD = [
 const BUYABLE = _BUYABLE_MAP;
 
 // --- Simple Mode Board ---------------------------------------------
-// 40 farm tiles (yields 10..400 in steps of 10, all "simple" group),
-// 8 grow tiles (all 100%), 4 special tiles (vine swing, +500, -10% tax,
-// super banana). No set/chain multipliers, no dice-match growth.
-const SIMPLE_FARM_POSITIONS = [
-  1, 3, 4, 5, 7, 8, 9, 10, 11, 12,
-  14, 15, 16, 17, 18, 20, 22, 23, 24,
-  27, 28, 29, 30, 31,
-  33, 34, 35, 36, 37, 38,
-  40, 41, 43, 44, 46, 47, 48, 49, 50, 51,
-];
-const SIMPLE_GROW_POSITIONS = [0, 6, 13, 19, 26, 32, 39, 45];
+// 48 tiles arranged as a CORNERLESS square (12 tiles per side, no corner
+// slots):
+//   40 farm tiles (yields 10..400 in steps of 10, all "simple" group),
+//   6 grow tiles (all 100%, labelled 1..6 in play),
+//   2 special tiles (Super Banana, +500 Free Bananas).
+// No tax (-10%), no Vine Swing tile (it's now an ability), no corners. Every
+// tile is shuffled at game start, so these initial positions only matter for
+// the pre-shuffle reveal.
+const SIMPLE_BOARD_SIZE = 48;
+const SIMPLE_GROW_POSITIONS = [0, 8, 16, 24, 32, 40]; // 6 grow tiles
+const SIMPLE_SUPER_BANANA_POS = 12;
+const SIMPLE_FREE_BANANAS_POS = 36;
+
+const SIMPLE_SPECIAL_POSITIONS = new Set([
+  ...SIMPLE_GROW_POSITIONS,
+  SIMPLE_SUPER_BANANA_POS,
+  SIMPLE_FREE_BANANAS_POS,
+]);
+
+const SIMPLE_FARM_POSITIONS = [];
+for (let i = 0; i < SIMPLE_BOARD_SIZE; i++) {
+  if (!SIMPLE_SPECIAL_POSITIONS.has(i)) SIMPLE_FARM_POSITIONS.push(i);
+}
 
 const PROPERTIES_SIMPLE = SIMPLE_FARM_POSITIONS.map((pos, idx) => ({
   id: pos,
-  // F1..F40 — sequential index (there are 40 farms). Value/yield is the
-  // separate `price` field (10..400), ascending with the index.
+  // F1..F40 — sequential index (there are 40 farms). The yield (`price`) equals
+  // the F-number: 1..40, ascending with the index. The board shows "F"+price.
   name: `F${idx + 1}`,
   group: "simple",
-  price: (idx + 1) * 10,
+  price: idx + 1,
   rent: [0, 0, 0, 0, 0, 0],
 }));
 
@@ -575,7 +587,7 @@ PROPERTIES_SIMPLE.forEach((p) =>
 const BOARD_SIMPLE = (() => {
   const board = [];
   const growSet = new Set(SIMPLE_GROW_POSITIONS);
-  for (let i = 0; i < BOARD_SIZE; i++) {
+  for (let i = 0; i < SIMPLE_BOARD_SIZE; i++) {
     if (growSet.has(i)) {
       board.push({
         id: i,
@@ -583,9 +595,7 @@ const BOARD_SIMPLE = (() => {
         type: "grow",
         growPct: 1.0,
       });
-    } else if (i === 2) {
-      board.push({ id: i, name: "🍌 -10%", type: "tax10" });
-    } else if (i === 21) {
+    } else if (i === SIMPLE_SUPER_BANANA_POS) {
       board.push({
         id: i,
         name: "⭐",
@@ -594,14 +604,12 @@ const BOARD_SIMPLE = (() => {
           name: "⭐ Super Banana",
           type: "property",
           group: "mushroom",
-          price: 7777,
+          price: 777,
           rent: [0, 0, 0, 0, 0, 0],
         },
       });
-    } else if (i === 25) {
-      board.push({ id: i, name: "Vine Swing", type: "bus" });
-    } else if (i === 42) {
-      board.push({ id: i, name: "+500", type: "freebananas" });
+    } else if (i === SIMPLE_FREE_BANANAS_POS) {
+      board.push({ id: i, name: "+25", type: "freebananas" });
     } else {
       board.push({
         id: i,
@@ -613,13 +621,16 @@ const BOARD_SIMPLE = (() => {
   return board;
 })();
 
-// Simple-mode ability labels (emoji + name), shared by the shop log and the
-// item auction. Keys are the canonical card types.
+// Simple-mode special-item labels (emoji + name), shared by the log and the
+// item auction. These are the four biddable items — won only via the item
+// auction, held as consumables, spent one per use. Keys are canonical.
 const SIMPLE_CARD_LABELS = {
-  refreshDice: "🔄 Refresh Magic Dice",
-  swapTiles: "🔀 Swap Tiles",
-  scout: "🔭 Scout",
-  teleport: "🌀 Teleport",
+  // Internal keys are legacy; the displayed items are:
+  rabbitDice: "🐢 Turtle Dice", // roll 1 die
+  cheetahDice: "🐇 Rabbit Dice", // roll 3 dice
+  magicDice: "1️⃣ Roll One", // guaranteed move of 1
+  // Internal key stays "teleport"; displayed as Vine Swing in simple mode.
+  teleport: "🌿 Vine Swing",
 };
 
 // --- Pet Definitions -----------------------------------------------
@@ -658,6 +669,7 @@ class MonopolyGame {
     monkeyPoker,
     isPublic,
     itemAuctionOpts,
+    bombCost,
   ) {
     this.gameId = gameId;
     this.isPublic = !!isPublic;
@@ -666,7 +678,6 @@ class MonopolyGame {
     // Simple-mode item auction settings
     const ia = itemAuctionOpts || {};
     this.itemAuctionEnabled = ia.enabled !== false; // default ON
-    this.itemAuctionVickrey = !!ia.vickrey; // default OFF
     this.itemAuctionTimer = Math.min(
       Math.max(Math.floor(ia.timerSec) || 15, 5),
       60,
@@ -676,13 +687,16 @@ class MonopolyGame {
       500,
     );
     this.itemAuctionCounter = this.itemAuctionStartValue;
-    this.itemAuction = null; // { phase, item, deadline, bids, ... }
+    this.itemAuction = null; // { phase, item, startedBy, deadline, bids, ... }
     this._itemAuctionTimer = null;
     this._itemAuctionQueued = false;
+    this._itemAuctionStarterId = null; // who triggered the queued/active auction
     // Simple-mode ability bookkeeping
     this.simpleCardUsedThisTurn = false; // at most one card use per turn
     this.lastTeleport = null; // { playerId, position, turn } — no-walk anim hint
     this.lastTileSwap = null; // { a, b, turn } — swap anim hint
+    this.pendingTileShuffles = null; // [{ color, leavingName, positions, endsAt }]
+    this.lastTileShuffle = null; // { positions, ts } — sound-effect trigger
     if (this.gameMode === "teams") {
       this.maxPlayers = 4;
     } else {
@@ -693,6 +707,8 @@ class MonopolyGame {
       99999,
     );
     this.bombMode = bombMode !== false; // on by default
+    // Cost to buy a pineapple bomb. Adjustable (create page / lobby); default 666.
+    this.bombCost = Math.min(Math.max(Math.floor(bombCost) || 666, 0), 99999);
     this.monkeyPoker = monkeyPoker !== false; // on by default
     this.noAuctionTimer = false;
     this.state = "waiting"; // waiting | playing | finished
@@ -706,6 +722,9 @@ class MonopolyGame {
     this.properties = new Map();
     this.board =
       this.gameMode === "simple" ? [...BOARD_SIMPLE] : [...BOARD]; // will be shuffled on start
+    // Number of tiles in this game's loop: 52 (classic) or 48 (simple,
+    // cornerless). All movement/wrap math uses this instead of BOARD_SIZE.
+    this.boardSize = this.board.length;
     this.auction = null;
     this._auctionTimer = null;
     this.mushroomPending = null; // { mushroomPos, swapPos } — waiting for 3s delay before swap
@@ -762,24 +781,33 @@ class MonopolyGame {
       properties: [],
       bankrupt: false,
       revealedTiles: new Set([START_POSITION]),
-      // Simple mode only offers the strong pet ("Magic Dice") — auto-select it
-      // so no pet-picker UI is needed.
+      // Tiles revealed only as fog-of-war hints (not genuine discoveries for
+      // grow ranges, rolled-grow firing, or the Owned-Farms chart). A tile
+      // leaves this set the moment it is genuinely revealed (landed on). Kept
+      // for grow-anchoring logic even though the Scout ability is retired.
+      scoutedTiles: new Set(),
+      // Simple mode auto-selects the strong pet internally; the Magic Dice it
+      // backs is now a won consumable, not an always-on cooldown ability.
       pet: this.gameMode === "simple" ? "strong" : null,
       petCooldown: 0,
       pendingPet: null,
       bomb: 0,
       hasRolled: false,
       startPickPending: false,
-      // Simple mode "Magic Dice" upgrade level. Starts at 0 — players must
-      // pay 1000🍌 to unlock the first step.
-      magicDiceMaxSteps: 0,
-      // Simple mode ability inventory. Stockpile, 1 use per card.
+      // Magic Dice picker offers all six numbers 1..6 (no "stay put" / 0 step).
+      magicDiceMaxSteps: this.gameMode === "simple" ? 6 : 0,
+      // Simple mode special-item inventory. Won via the item auction only,
+      // stockpiled, spent one per use. Players start empty.
       cards: {
-        refreshDice: 0,
-        swapTiles: 0,
-        scout: 0,
+        rabbitDice: 0,
+        cheetahDice: 0,
+        magicDice: 0,
         teleport: 0,
       },
+      // Simple mode: the special item armed (during others' turns) to fire when
+      // this player's turn starts. One of the card keys, or null. Private —
+      // only this player sees it (see getState).
+      armedAbility: null,
     };
     this.players.push(player);
     return player;
@@ -805,13 +833,14 @@ class MonopolyGame {
         this.gameMode = settings.gameMode;
         this.board =
           this.gameMode === "simple" ? [...BOARD_SIMPLE] : [...BOARD];
+        this.boardSize = this.board.length;
         this._initProperties();
         // Simple mode auto-assigns the strong pet ("Magic Dice"); leaving
         // other modes wipes pets so players can re-pick from the full set.
         if (this.gameMode === "simple") {
           for (const p of this.players) {
             p.pet = "strong";
-            p.magicDiceMaxSteps = 0;
+            p.magicDiceMaxSteps = 6; // fixed at 6 (no upgrades)
           }
         } else {
           for (const p of this.players) {
@@ -835,6 +864,12 @@ class MonopolyGame {
     if (settings.bombMode != null) {
       this.bombMode = !!settings.bombMode;
     }
+    if (settings.bombCost != null) {
+      this.bombCost = Math.min(
+        Math.max(Math.floor(settings.bombCost) || 666, 0),
+        99999,
+      );
+    }
     if (settings.monkeyPoker != null) {
       this.monkeyPoker = !!settings.monkeyPoker;
     }
@@ -846,9 +881,6 @@ class MonopolyGame {
     }
     if (settings.itemAuctionEnabled != null) {
       this.itemAuctionEnabled = !!settings.itemAuctionEnabled;
-    }
-    if (settings.itemAuctionVickrey != null) {
-      this.itemAuctionVickrey = !!settings.itemAuctionVickrey;
     }
     if (settings.itemAuctionTimer != null) {
       this.itemAuctionTimer = Math.min(
@@ -1098,7 +1130,7 @@ class MonopolyGame {
     }
 
     const oldPos = target.position;
-    target.position = (target.position + 1) % BOARD_SIZE;
+    target.position = (target.position + 1) % this.boardSize;
     target.revealedTiles.add(target.position);
     this._collectBananasOnPath(target, oldPos, target.position);
     this._log(
@@ -1131,7 +1163,7 @@ class MonopolyGame {
       // Set cooldown now that the effect is resolving
       player.petCooldown = pp.cooldown;
       const oldPos = player.position;
-      player.position = (player.position + 1) % BOARD_SIZE;
+      player.position = (player.position + 1) % this.boardSize;
       player.revealedTiles.add(player.position);
       this._collectBananasOnPath(player, oldPos, player.position);
       this._log(
@@ -1259,7 +1291,7 @@ class MonopolyGame {
     }
 
     const oldPos = player.position;
-    player.position = (player.position + 1) % BOARD_SIZE;
+    player.position = (player.position + 1) % this.boardSize;
     player.revealedTiles.add(player.position);
     this._collectBananasOnPath(player, oldPos, player.position);
     this._log(
@@ -1319,14 +1351,14 @@ class MonopolyGame {
 
     const oldPos = player.position;
     if (isForward) {
-      player.position = (player.position + 1) % BOARD_SIZE;
+      player.position = (player.position + 1) % this.boardSize;
       player.revealedTiles.add(player.position);
       this._collectBananasOnPath(player, oldPos, player.position);
       this._log(
         `\u{1F984} ${player.name}'s Magic Pet flipped HEADS \u2014 moved forward 1!`,
       );
     } else {
-      player.position = (player.position - 1 + BOARD_SIZE) % BOARD_SIZE;
+      player.position = (player.position - 1 + this.boardSize) % this.boardSize;
       player.revealedTiles.add(player.position);
       this._collectBananasAtTile(player, player.position);
       this._log(
@@ -1430,27 +1462,56 @@ class MonopolyGame {
       }
     }
 
-    // If this player is in an active auction, mark them as passed
+    // If this player is in an active property auction, drop them cleanly so it
+    // doesn't hang: lander leaving abandons it; otherwise count them as a
+    // reject (respond) or a 0 top-up (silent bid).
     if (this.auction && this.auction.bids[socketId]) {
-      this.auction.bids[socketId].passed = true;
-      this._checkPhaseComplete();
+      const a = this.auction;
+      if (socketId === a.landingPlayer) {
+        if (this._auctionTimer) {
+          clearTimeout(this._auctionTimer);
+          this._auctionTimer = null;
+        }
+        this.auction = null;
+      } else {
+        const b = a.bids[socketId];
+        if (a.phase === "respond" && !b.responded) {
+          b.responded = true;
+          b.accepted = false;
+        } else if (
+          a.phase === "silentbid" &&
+          a.acceptorIds &&
+          a.acceptorIds.includes(socketId) &&
+          !b.submittedTopup
+        ) {
+          b.topup = 0;
+          b.submittedTopup = true;
+        }
+        this._checkPhaseComplete();
+      }
     }
 
-    // If this player is in an active item auction, force-submit a 0 bid
-    // so the auction doesn't hang waiting on them.
-    if (this.itemAuction && this.itemAuction.bids[socketId]) {
-      const b = this.itemAuction.bids[socketId];
-      if (!b.submitted) {
-        b.submitted = true;
-        b.autoPass = true;
-        b.amount = 0;
-        if (this.itemAuction.phase === "bidding") {
-          const allIn = Object.values(this.itemAuction.bids).every(
-            (x) => x.submitted,
-          );
-          if (allIn) {
-            this._resolveItemAuction();
-          }
+    // Same for the item auction: the starter leaving abandons it; otherwise
+    // count the leaver as a reject / 0 top-up.
+    if (this.itemAuction) {
+      const a = this.itemAuction;
+      if (socketId === a.startedBy) {
+        this._cancelItemAuction();
+      } else if (a.bids && a.bids[socketId]) {
+        const b = a.bids[socketId];
+        if (a.phase === "respond" && !b.responded) {
+          b.responded = true;
+          b.accepted = false;
+          this._checkItemPhaseComplete();
+        } else if (
+          a.phase === "silentbid" &&
+          a.acceptorIds &&
+          a.acceptorIds.includes(socketId) &&
+          !b.submittedTopup
+        ) {
+          b.topup = 0;
+          b.submittedTopup = true;
+          this._checkItemPhaseComplete();
         }
       }
     }
@@ -1460,13 +1521,30 @@ class MonopolyGame {
       this.state === "playing" && idx === this.currentPlayerIndex;
     const leavingName = this.players[idx].name;
 
-    // Release properties and clear banana piles
-    for (const pid of this.players[idx].properties) {
+    // Release properties.
+    //
+    // SIMPLE MODE (active game): the leaver's tiles get their owner cleared
+    // and any bananaPile wiped to 0. The now-empty tiles are then SHUFFLED
+    // into random hidden positions — visually "covered back up" so the rest
+    // of the game has to rediscover and auction them. Any player who happens
+    // to be sitting on one of those tiles is NOT auto-auctioned — they
+    // didn't land on the new tile, so it stays hidden under them until
+    // someone actually lands on it via dice. This avoids back-to-back
+    // auctions when multiple players are sitting on leaver tiles.
+    //
+    // OTHER MODES: the legacy behaviour — owner cleared, pile wiped, tile
+    // auctionable again at its original position.
+    const _shuffleInSimple =
+      this.gameMode === "simple" && this.state === "playing";
+    const _leaverColor = this.players[idx].color;
+    const _leaverTilePositions = Array.isArray(this.players[idx].properties)
+      ? [...this.players[idx].properties]
+      : [];
+    for (const pid of _leaverTilePositions) {
       const prop = this.properties.get(pid);
-      if (prop) {
-        prop.owner = null;
-        prop.bananaPile = 0;
-      }
+      if (!prop) continue;
+      prop.owner = null;
+      prop.bananaPile = 0;
     }
 
     // Remove any pending magic pets that involve this player (as caster or target)
@@ -1474,7 +1552,94 @@ class MonopolyGame {
       (mp) => mp.userId !== socketId && mp.targetId !== socketId,
     );
 
+    // Splice the leaver out BEFORE the shuffle so player.properties lists are
+    // adjusted by _swapTilePositions only for the remaining players.
     this.players.splice(idx, 1);
+
+    // Simple mode leave-shuffle:
+    // 1) IMMEDIATELY cover the leaver's tiles with their colour (un-reveal +
+    //    publish a pendingTileShuffles entry the frontend renders as coloured
+    //    covers + a "Bob left — tiles will be reshuffled" notification).
+    // 2) After a 2s pause, shuffle the leaver tiles AMONG THEMSELVES (other
+    //    hidden tiles are no longer dragged into the swap) and broadcast a
+    //    lastTileShuffle stamp so the frontend plays the shuffle sound.
+    // Wrapped so a bug in the deferred branch never tears down the server —
+    // worst case the tiles stay where they are (still unowned, still covered).
+    if (_shuffleInSimple && _leaverTilePositions.length > 0) {
+      try {
+        // Un-reveal the leaver's tiles right away so the cover is visible
+        // while the notification holds. Other tiles are left alone.
+        for (const pos of _leaverTilePositions) {
+          for (const p of this.players) {
+            if (p.revealedTiles) p.revealedTiles.delete(pos);
+            if (p.scoutedTiles) p.scoutedTiles.delete(pos);
+          }
+        }
+
+        const pending = {
+          color: _leaverColor,
+          leavingName,
+          positions: [..._leaverTilePositions],
+          scheduledAt: Date.now(),
+          endsAt: Date.now() + 2000,
+        };
+        if (!this.pendingTileShuffles) this.pendingTileShuffles = [];
+        this.pendingTileShuffles.push(pending);
+
+        this._log(
+          `🌪️ ${leavingName} left the game! Their tiles will be reshuffled in 2 seconds...`,
+        );
+
+        setTimeout(() => {
+          try {
+            // Drop this entry from the pending list (frontend cover goes away).
+            if (Array.isArray(this.pendingTileShuffles)) {
+              this.pendingTileShuffles = this.pendingTileShuffles.filter(
+                (p) => p !== pending,
+              );
+              if (this.pendingTileShuffles.length === 0) {
+                this.pendingTileShuffles = null;
+              }
+            }
+            // Shuffle the leaver tiles AMONG THEMSELVES only. Fisher–Yates
+            // over the positions array, swapping pair-wise via the existing
+            // _swapTilePositions helper so all bookkeeping (properties Map,
+            // tile labels, grow labels, player.properties) follows the move.
+            const positions = [...pending.positions];
+            for (let i = positions.length - 1; i > 0; i--) {
+              const j = Math.floor(Math.random() * (i + 1));
+              if (j !== i) this._swapTilePositions(positions[i], positions[j]);
+            }
+            // Re-un-reveal in case another player revealed one of these
+            // positions during the 2s notification window.
+            for (const pos of pending.positions) {
+              for (const p of this.players) {
+                if (p.revealedTiles) p.revealedTiles.delete(pos);
+                if (p.scoutedTiles) p.scoutedTiles.delete(pos);
+              }
+            }
+            this.lastTileShuffle = {
+              positions: [...pending.positions],
+              ts: Date.now(),
+            };
+            this._log(
+              `🔀 ${leavingName}'s ${pending.positions.length} farm${pending.positions.length === 1 ? "" : "s"} got shuffled and covered!`,
+            );
+            if (this.onUpdate) this.onUpdate();
+          } catch (err) {
+            console.error(
+              "[removePlayer] deferred shuffle failed:",
+              (err && err.stack) || err,
+            );
+          }
+        }, 2000);
+      } catch (err) {
+        console.error(
+          "[removePlayer] leave-shuffle setup failed:",
+          (err && err.stack) || err,
+        );
+      }
+    }
     if (this.currentPlayerIndex >= this.players.length)
       this.currentPlayerIndex = 0;
     if (this.admin === socketId && this.players.length > 0)
@@ -1549,6 +1714,7 @@ class MonopolyGame {
     this.properties = new Map();
     this.board =
       this.gameMode === "simple" ? [...BOARD_SIMPLE] : [...BOARD];
+    this.boardSize = this.board.length;
     if (this._auctionTimer) clearTimeout(this._auctionTimer);
     this.auction = null;
     this._auctionTimer = null;
@@ -1575,6 +1741,7 @@ class MonopolyGame {
     this.diceMatchEarlyPickup = null;
     this.growSquatterSteals = null;
     this.lastGrowFired = null;
+    this.lastGrowActivated = null;
     this.superBananaWin = null;
     this.autoEndDelay = false;
     this.autoEndDelayMs = 0;
@@ -1598,6 +1765,8 @@ class MonopolyGame {
     this.simpleCardUsedThisTurn = false;
     this.lastTeleport = null;
     this.lastTileSwap = null;
+    this.pendingTileShuffles = null;
+    this.lastTileShuffle = null;
     // Reset players to lobby state
     for (const p of this.players) {
       p.position = 0;
@@ -1605,19 +1774,26 @@ class MonopolyGame {
       p.properties = [];
       p.bankrupt = false;
       p.revealedTiles = new Set([START_POSITION]);
-      p.pet = null;
+      p.scoutedTiles = new Set();
+      // Simple mode auto-selects the strong pet (it has no lobby pet picker), so
+      // restore it here — otherwise every player returns to the lobby pet-less and
+      // startGame's "all players must have a pet" check blocks the host from ever
+      // starting again. FFA/teams keep null so players re-pick in the lobby.
+      p.pet = this.gameMode === "simple" ? "strong" : null;
       p.petCooldown = 0;
       p.pendingPet = null;
       p.bomb = 0;
       p.hasRolled = false;
       p.startPickPending = false;
-      p.magicDiceMaxSteps = 0;
+      // Simple mode: Magic Dice fixed at 6 (no upgrades); other modes don't use it.
+      p.magicDiceMaxSteps = this.gameMode === "simple" ? 6 : 0;
       p.cards = {
-        refreshDice: 0,
-        swapTiles: 0,
-        scout: 0,
+        rabbitDice: 0,
+        cheetahDice: 0,
+        magicDice: 0,
         teleport: 0,
       };
+      p.armedAbility = null;
     }
     this._initProperties();
   }
@@ -1688,6 +1864,11 @@ class MonopolyGame {
       for (const p of this.players) {
         p.startPickPending = true;
         p.revealedTiles = new Set();
+        p.scoutedTiles = new Set();
+        // Everyone starts with one of each special item. They can't be used on
+        // the start-pick (first) turn — that turn is consumed by the pick and
+        // diceRolled is set — so they're usable from each player's second turn.
+        p.cards = { rabbitDice: 1, cheetahDice: 1, magicDice: 1, teleport: 1 };
       }
     }
     this._log(`Tiles shuffled! Game started! \uD83C\uDF4C`);
@@ -1783,6 +1964,38 @@ class MonopolyGame {
     return prop && prop.owner === null;
   }
 
+  // Decide how many dice `player` rolls, consuming a won item where needed.
+  //   Simple mode: the FREE default is 2d6. A Turtle Dice item drops you to 1
+  //   die; a Rabbit Dice item bumps you to 3 dice — each spent on the roll.
+  //   (Legacy card keys: rabbitDice = Turtle Dice / 1 die, cheetahDice = Rabbit
+  //   Dice / 3 dice.) With no matching item, you roll the default 2 dice.
+  //   Other modes: 2 dice default; pay 300 to drop to 1 or bump to 3.
+  _resolveDiceCount(player, diceCount) {
+    if (this.gameMode === "simple") {
+      if (!player.cards) {
+        player.cards = { rabbitDice: 0, cheetahDice: 0, magicDice: 0, teleport: 0 };
+      }
+      if (diceCount === 1 && (player.cards.rabbitDice || 0) > 0) {
+        player.cards.rabbitDice -= 1; // Turtle Dice → 1 die
+        return 1;
+      }
+      if (diceCount === 3 && (player.cards.cheetahDice || 0) > 0) {
+        player.cards.cheetahDice -= 1; // Rabbit Dice → 3 dice
+        return 3;
+      }
+      return 2; // default 2d6
+    }
+    if (diceCount === 1 && player.money >= 300) {
+      player.money -= 300;
+      return 1;
+    }
+    if (diceCount === 3 && player.money >= 300) {
+      player.money -= 300;
+      return 3;
+    }
+    return 2;
+  }
+
   rollDice(socketId, diceCount) {
     this.lastExplosion = null;
     this.bombSelfDamage = null;
@@ -1791,6 +2004,7 @@ class MonopolyGame {
     this.diceMatchEarlyPickup = null;
     this.growSquatterSteals = null;
     this.lastGrowFired = null;
+    this.lastGrowActivated = null;
     const cur = this.getCurrentPlayer();
     if (
       !cur ||
@@ -1803,15 +2017,8 @@ class MonopolyGame {
     )
       return null;
 
-    // Validate paid dice override (1 or 3)
-    let numDice = 2;
-    if (diceCount === 1 && cur.money >= 300) {
-      cur.money -= 300;
-      numDice = 1;
-    } else if (diceCount === 3 && cur.money >= 300) {
-      cur.money -= 300;
-      numDice = 3;
-    }
+    // Charge for the chosen dice tier and decide how many dice to roll.
+    const numDice = this._resolveDiceCount(cur, diceCount);
 
     const rolls = [];
     for (let i = 0; i < numDice; i++) {
@@ -1820,6 +2027,7 @@ class MonopolyGame {
     this.dice = rolls;
     this.diceRolled = true;
     cur.hasRolled = true;
+    cur.armedAbility = null; // an armed item (if any) is spent/moot once you roll
     this.petCoinFlip = null;
 
     // Tick pet cooldowns for all players
@@ -1831,7 +2039,16 @@ class MonopolyGame {
     // Simple-mode item auction: every dice value subtracts from the counter.
     this._subtractItemAuctionCounter(diceSum);
     const oldPos = cur.position;
-    cur.position = (cur.position + diceSum) % BOARD_SIZE;
+
+    // Simple mode: the GROW tile whose label matches the dice SUM fires BEFORE
+    // the player moves — the player still moves the full sum. (Grows are labeled
+    // 1..6, so sums 7..12 match none.) Fresh piles on the start tile are
+    // early-picked, and piles it creates on farms along the path are collected
+    // during the walk below. (A GROW tile the player physically lands on still
+    // fires after the move, in _processLanding.)
+    this._processSimpleRolledGrow(cur, diceSum);
+
+    cur.position = (cur.position + diceSum) % this.boardSize;
     cur.revealedTiles.add(cur.position);
 
     // Collect own banana piles on crossed/landed tiles & steal opponent piles on landing
@@ -1845,13 +2062,11 @@ class MonopolyGame {
     // affordability) use the correct post-collection balance. The log/UI notification is still
     // deferred below so the animation fires at the right visual moment.
     if (crossedFreeBananas.length > 0) {
-      cur.money += crossedFreeBananas.length * 500;
+      cur.money += crossedFreeBananas.length * this._freeBananasAmount();
     }
 
     // Dice-match grow: if dice sum matches a farm label number you own, 100% grow
     this._processDiceMatchGrow(cur, diceSum);
-    // Simple mode: dice sum 0..7 also fires the matching labeled GROW tile.
-    this._processSimpleRolledGrow(cur, diceSum);
 
     // Flag early pickup: player was sitting on a dice-match tile they own
     if (this.diceMatchTiles && this.diceMatchTiles.includes(oldPos)) {
@@ -1897,9 +2112,9 @@ class MonopolyGame {
       const pathTiles = new Set();
       // Include the starting tile — the player was standing here when the grow happened
       pathTiles.add(oldPos);
-      const pathSteps = (cur.position - oldPos + BOARD_SIZE) % BOARD_SIZE;
+      const pathSteps = (cur.position - oldPos + this.boardSize) % this.boardSize;
       for (let s = 1; s <= pathSteps; s++) {
-        pathTiles.add((oldPos + s) % BOARD_SIZE);
+        pathTiles.add((oldPos + s) % this.boardSize);
       }
       let diceMatchCollected = 0;
       for (const tileId of this.diceMatchTiles) {
@@ -1938,22 +2153,20 @@ class MonopolyGame {
       setTimeout(() => {
         for (const pos of crossedFreeBananas) {
           this._log(
-            `${cur.name} crossed Free Bananas +500 and collected 500\ud83c\udf4c! \ud83c\udf4c`,
+            `${cur.name} crossed Free Bananas +${this._freeBananasAmount()} and collected ${this._freeBananasAmount()}\ud83c\udf4c! \ud83c\udf4c`,
           );
           if (this.onUpdate) this.onUpdate();
         }
       }, walkAnimMs);
-      this._scheduleAutoEnd(cur, walkAnimMs + 2000, 2000);
+      this._scheduleAutoEnd(cur, walkAnimMs + 3000, 2000);
     }
 
     return { dice: this.dice, moved: true };
   }
 
-  // Simple-mode Magic Dice: replaces the normal dice roll with a player-chosen
-  // step count (0..magicDiceMaxSteps). 10-roll cooldown. Walks normally and
-  // fires GROW(steps) just like a regular roll. Step 0 is always available
-  // regardless of upgrade level — the player stays put but still fires
-  // GROW 0 (if labeled) and skips the landing effect on their current tile.
+  // Simple-mode "Roll One" item (legacy key magicDice): a guaranteed move of
+  // exactly 1 space — walks one tile and fires GROW 1 (sum 1) just like rolling
+  // a 1. Spends one item. The `steps` argument is ignored (always 1).
   useMagicDice(socketId, steps) {
     if (this.gameMode !== "simple") return null;
     if (this.state !== "playing") return null;
@@ -1965,10 +2178,9 @@ class MonopolyGame {
     if (this.auction || this.poker || this.vineSwing || this.mushroomPending)
       return null;
     if (this.itemAuction) return null;
-    const max = Number(cur.magicDiceMaxSteps) || 0;
-    const n = Math.floor(steps);
-    if (!Number.isFinite(n) || n < 0 || n > max) return null;
-    if ((cur.petCooldown || 0) > 0) return null;
+    // Must hold a won Roll One item to use it.
+    if (!cur.cards || (cur.cards.magicDice || 0) <= 0) return null;
+    const n = 1; // Roll One always moves exactly 1
 
     // Reset per-turn transient state (mirrors rollDice).
     this.lastExplosion = null;
@@ -1978,6 +2190,11 @@ class MonopolyGame {
     this.diceMatchEarlyPickup = null;
     this.growSquatterSteals = null;
     this.lastGrowFired = null;
+    this.lastGrowActivated = null;
+
+    // Consume the item now that the use is committed.
+    cur.cards.magicDice -= 1;
+    cur.armedAbility = null;
 
     this.dice = [n];
     this.diceRolled = true;
@@ -1986,7 +2203,6 @@ class MonopolyGame {
     for (const p of this.players) {
       if (p.petCooldown > 0) p.petCooldown--;
     }
-    cur.petCooldown = 10;
     this.petUsedThisTurn = true;
     // Simple-mode item auction: Magic Dice counts as a dice roll.
     this._subtractItemAuctionCounter(n);
@@ -1995,24 +2211,18 @@ class MonopolyGame {
       playerName: cur.name,
       petType: "strong",
     };
-    this._log(`🎲 ${cur.name} used Magic Dice and chose ${n}!`);
-
-    // Step 0 — stay put, fire GROW 0 if appropriate, skip landing.
-    if (n === 0) {
-      this._processSimpleRolledGrow(cur, 0);
-      if (
-        !this.auction &&
-        !this.vineSwing &&
-        !this.poker &&
-        !this.mushroomPending
-      ) {
-        this._scheduleAutoEnd(cur, 2000, 2000);
-      }
-      return { dice: this.dice, moved: false };
-    }
+    // No shared log line here on purpose: a Magic Dice roll must be
+    // indistinguishable from a normal roll to opponents. (A grow it fires still
+    // logs the same "rolled N — GROW N fired" line a normal roll would.)
 
     const oldPos = cur.position;
-    cur.position = (cur.position + n) % BOARD_SIZE;
+
+    // Simple mode: the chosen number fires its labeled GROW tile BEFORE the
+    // player moves (see rollDice for the rationale). A GROW tile the player
+    // physically lands on still fires after the move, in _processLanding.
+    this._processSimpleRolledGrow(cur, n);
+
+    cur.position = (cur.position + n) % this.boardSize;
     cur.revealedTiles.add(cur.position);
 
     const crossedFreeBananas = this._collectBananasOnPath(
@@ -2021,11 +2231,8 @@ class MonopolyGame {
       cur.position,
     );
     if (crossedFreeBananas.length > 0) {
-      cur.money += crossedFreeBananas.length * 500;
+      cur.money += crossedFreeBananas.length * this._freeBananasAmount();
     }
-
-    // Simple mode: dice value of n fires GROW n.
-    this._processSimpleRolledGrow(cur, n);
 
     if (this._checkBombDetonation(cur)) {
       if (cur.bankrupt || this.state === "finished") {
@@ -2058,80 +2265,78 @@ class MonopolyGame {
       setTimeout(() => {
         for (const _ of crossedFreeBananas) {
           this._log(
-            `${cur.name} crossed Free Bananas +500 and collected 500🍌! 🍌`,
+            `${cur.name} crossed Free Bananas +${this._freeBananasAmount()} and collected ${this._freeBananasAmount()}🍌! 🍌`,
           );
           if (this.onUpdate) this.onUpdate();
         }
       }, walkAnimMs);
-      this._scheduleAutoEnd(cur, walkAnimMs + 2000, 2000);
+      this._scheduleAutoEnd(cur, walkAnimMs + 3000, 2000);
     }
     return { dice: this.dice, moved: true };
   }
 
-  // Simple-mode Magic Dice upgrade: 1000🍌 per +1 step (no cap).
-  // Starts at 0 — the first upgrade unlocks the picker.
-  upgradeMagicDice(socketId) {
-    if (this.gameMode !== "simple") return false;
-    if (this.state !== "playing") return false;
-    const player = this.players.find((p) => p.id === socketId);
-    if (!player || player.bankrupt) return false;
-    if (player.money < 1000) return false;
-    const max = Number(player.magicDiceMaxSteps) || 0;
-    player.money -= 1000;
-    player.magicDiceMaxSteps = max + 1;
-    this._log(
-      `🎲 ${player.name} upgraded Magic Dice to ${player.magicDiceMaxSteps} steps! (-1000🍌)`,
-    );
-    return true;
+  // Magic Dice no longer upgrades — it's fixed at level 6 (all numbers 1..6).
+  // Kept as a no-op so the legacy upgrade_magic_dice event does nothing.
+  upgradeMagicDice() {
+    return false;
   }
 
-  // -- Simple Mode Abilities (won via the item auction) ------------
-  // Four abilities, won via the item auction, stockpiled (hold multiple),
-  // consumed one per use:
-  //   refreshDice — reset your Magic Dice cooldown. Usable ANY time (even on
-  //                 another player's turn). Requires being on cooldown. Free.
-  //   swapTiles   — swap two unoccupied tiles. Tile type, owner, banana pile,
-  //                 grow label and reveal-status all travel. Free action.
-  //   scout       — reveal one hidden tile, to you only. Free action.
-  //   teleport    — move to any tile (no walking); landing effects fire.
-  //                 Replaces your dice roll for the turn.
-  // "Free action" = does NOT consume your dice roll. At most one card may be
-  // used per turn (refresh used OFF-turn is exempt — gated by the cooldown).
+  // -- Simple Mode Special Items (won via the item auction) --------
+  // Four items, won at the item auction (or one of each free at game start),
+  // stockpiled and spent one per use. The dice items go through the roll path
+  // (rollDice 1/3 dice and useMagicDice); only Vine Swing flows through useCard.
+  // (Legacy keys → current items: rabbitDice = Turtle Dice / 1 die, cheetahDice
+  //  = Rabbit Dice / 3 dice, magicDice = Roll One / guaranteed move 1.)
+  //   teleport — "Vine Swing": swing (no walking) to one of your OWN farms;
+  //              landing effects fire (collect that farm's pile, poker if an
+  //              opponent squats there). Replaces your roll. Needs an owned farm.
+  // Each replaces your move for the turn, so at most one is used per turn.
 
   canUseSimpleCard(player, cardType) {
     if (!player || player.bankrupt) return false;
     if (!player.cards || player.cards[cardType] === undefined) return false;
     if (player.cards[cardType] <= 0) return false;
-    if (cardType === "refreshDice") {
-      return (player.petCooldown || 0) > 0;
-    }
-    if (cardType === "scout") {
-      return (player.revealedTiles ? player.revealedTiles.size : 0) < BOARD_SIZE;
-    }
-    if (cardType === "swapTiles" || cardType === "teleport") {
-      return true;
+    if (cardType === "teleport") {
+      // Vine Swing needs at least one farm YOU own to swing to.
+      return this._ownedFarmPositions(player).length > 0;
     }
     return false;
   }
 
-  buyCard(socketId, cardType) {
+  // Board positions of the simple-mode farm tiles a player currently owns.
+  _ownedFarmPositions(player) {
+    if (!player || !player.properties) return [];
+    return player.properties.filter((pos) => {
+      const prop = this.properties.get(pos);
+      return prop && prop.group === "simple";
+    });
+  }
+
+  // Special items are won via the item auction only — there is no shop. Kept as
+  // a no-op so the legacy buy_card socket event does nothing.
+  buyCard() {
+    return false;
+  }
+
+  // Simple mode: arm a special item to fire when YOUR turn starts. Arming a
+  // (non-null) item is only allowed when it's NOT your turn and you own it;
+  // passing null disarms (allowed anytime — e.g. cancelling on your turn).
+  armAbility(socketId, ability) {
     if (this.gameMode !== "simple") return false;
     if (this.state !== "playing") return false;
-    if (!["refreshDice", "swapTiles", "scout", "teleport"].includes(cardType)) {
-      return false;
-    }
     const player = this.players.find((p) => p.id === socketId);
     if (!player || player.bankrupt) return false;
-    const price = 500;
-    if (player.money < price) return false;
-    if (!player.cards) {
-      player.cards = { refreshDice: 0, swapTiles: 0, scout: 0, teleport: 0 };
+    if (ability === null || ability === undefined) {
+      player.armedAbility = null;
+      return true;
     }
-    player.money -= price;
-    player.cards[cardType] = (player.cards[cardType] || 0) + 1;
-    this._log(
-      `${player.name} bought a ${SIMPLE_CARD_LABELS[cardType]} for ${price}🍌!`,
-    );
+    if (!["rabbitDice", "cheetahDice", "magicDice", "teleport"].includes(ability)) {
+      return false;
+    }
+    if ((player.cards && player.cards[ability]) <= 0) return false; // must own it
+    const cur = this.getCurrentPlayer();
+    if (cur && cur.id === socketId) return false; // arm only before your turn
+    player.armedAbility = ability;
     return true;
   }
 
@@ -2145,51 +2350,29 @@ class MonopolyGame {
     this.diceMatchEarlyPickup = null;
     this.growSquatterSteals = null;
     this.lastGrowFired = null;
+    this.lastGrowActivated = null;
     this.petCoinFlip = null;
     cur.hasRolled = true;
     this.diceRolled = true;
+    cur.armedAbility = null;
     this.petUsedThisTurn = true;
     for (const p of this.players) {
       if (p.petCooldown > 0) p.petCooldown--;
     }
   }
 
-  _isTileOccupied(pos) {
-    return this.players.some(
-      (p) => !p.bankrupt && !p.startPickPending && p.position === pos,
-    );
-  }
-
-  // useCard accepts an optional `data` payload carrying ability targets:
-  //   swapTiles  → { posA, posB }
-  //   scout      → { pos }
-  //   teleport   → { pos }
-  //   refreshDice→ (none)
+  // useCard handles only Vine Swing now (internal key "teleport"):
+  //   teleport → { pos }
+  // The dice items (rabbit/cheetah/magic) are used through the roll path.
   useCard(socketId, cardType, data) {
     if (this.gameMode !== "simple") return null;
     if (this.state !== "playing") return null;
+    if (cardType !== "teleport") return null;
     const player = this.players.find((p) => p.id === socketId);
     if (!player || player.bankrupt) return null;
     if (!this.canUseSimpleCard(player, cardType)) return null;
 
-    // refreshDice: usable any time (on or off turn). Never consumes the roll.
-    if (cardType === "refreshDice") {
-      if (this.auction || this.poker || this.vineSwing || this.mushroomPending)
-        return null;
-      if (this.itemAuction) return null;
-      if (this.petResolving) return null;
-      const cur = this.getCurrentPlayer();
-      const isMyTurn = !!(cur && cur.id === socketId);
-      if (isMyTurn) {
-        if (player.startPickPending) return null;
-        if (this.simpleCardUsedThisTurn) return null;
-      }
-      player.cards[cardType] = Math.max(0, (player.cards[cardType] || 0) - 1);
-      if (isMyTurn) this.simpleCardUsedThisTurn = true;
-      return this._useRefreshDiceCard(player);
-    }
-
-    // swapTiles / scout / teleport: only on your turn, before rolling.
+    // Vine Swing: only on your turn, before rolling.
     const cur = this.getCurrentPlayer();
     if (!cur || cur.id !== socketId) return null;
     if (this.diceRolled) return null;
@@ -2200,124 +2383,67 @@ class MonopolyGame {
     if (this.itemAuction) return null;
     if (this.simpleCardUsedThisTurn) return null;
 
-    // Validate targets before spending the card.
-    if (cardType === "swapTiles") {
-      if (!this._validateSwapTargets(data)) return null;
-    } else if (cardType === "scout") {
-      if (!this._validateScoutTarget(cur, data)) return null;
-    } else if (cardType === "teleport") {
-      if (!this._validateTeleportTarget(data)) return null;
-    } else {
-      return null;
-    }
+    if (!this._validateTeleportTarget(cur, data)) return null;
 
-    cur.cards[cardType] = Math.max(0, (cur.cards[cardType] || 0) - 1);
+    cur.cards.teleport = Math.max(0, (cur.cards.teleport || 0) - 1);
     this.simpleCardUsedThisTurn = true;
-
-    if (cardType === "swapTiles")
-      return this._useSwapTilesCard(cur, Math.floor(data.posA), Math.floor(data.posB));
-    if (cardType === "scout") return this._useScoutCard(cur, Math.floor(data.pos));
-    if (cardType === "teleport") return this._useTeleportCard(cur, Math.floor(data.pos));
-    return null;
+    return this._useTeleportCard(cur, Math.floor(data.pos));
   }
 
-  _validateSwapTargets(data) {
+  _validateTeleportTarget(player, data) {
     if (!data) return false;
-    const a = Math.floor(data.posA);
-    const b = Math.floor(data.posB);
-    if (!Number.isFinite(a) || !Number.isFinite(b)) return false;
-    if (a < 0 || a >= BOARD_SIZE || b < 0 || b >= BOARD_SIZE) return false;
-    if (a === b) return false;
-    if (this._isTileOccupied(a) || this._isTileOccupied(b)) return false;
+    const pos = Math.floor(data.pos);
+    if (!Number.isFinite(pos) || pos < 0 || pos >= this.boardSize) return false;
+    // Vine Swing only swings to a farm YOU own — nothing else. Occupied is
+    // allowed (a squatting opponent there triggers poker, like a normal landing).
+    const prop = this.properties.get(pos);
+    if (!prop || prop.owner !== player.id || prop.group !== "simple") return false;
     return true;
   }
 
-  _validateScoutTarget(player, data) {
-    if (!data) return false;
-    const pos = Math.floor(data.pos);
-    if (!Number.isFinite(pos) || pos < 0 || pos >= BOARD_SIZE) return false;
-    if (player.revealedTiles.has(pos)) return false; // only hidden tiles
-    return true;
-  }
-
-  _validateTeleportTarget(data) {
-    if (!data) return false;
-    const pos = Math.floor(data.pos);
-    if (!Number.isFinite(pos) || pos < 0 || pos >= BOARD_SIZE) return false;
-    return true; // can teleport anywhere (occupied tiles trigger poker)
-  }
-
-  _useRefreshDiceCard(player) {
-    player.petCooldown = 0;
-    this._log(`🔄 ${player.name} refreshed their Magic Dice cooldown!`);
-    return { card: "refreshDice", moved: false };
-  }
-
-  _useScoutCard(player, pos) {
-    player.revealedTiles.add(pos);
-    // Keep the scouted location private — log without naming the tile.
-    this._log(`🔭 ${player.name} scouted a hidden tile!`);
-    return { card: "scout", moved: false, scoutedPos: pos };
-  }
-
-  // Swap two board positions. Tile contents (type/name), property (owner +
-  // banana pile), grow label and per-player reveal-status all travel with the
-  // tile. Requires both tiles unoccupied (validated by caller).
-  _useSwapTilesCard(player, a, b) {
-    const tmp = this.board[a];
-    this.board[a] = this.board[b];
-    this.board[b] = tmp;
-
-    const propA = this.properties.get(a);
-    const propB = this.properties.get(b);
-    this.properties.delete(a);
-    this.properties.delete(b);
-    if (propB) this.properties.set(a, propB);
-    if (propA) this.properties.set(b, propA);
-
-    // Update every player's owned-position list.
+  // True if any player has revealed this board position.
+  _isRevealedToAnyone(pos) {
     for (const p of this.players) {
-      if (!p.properties) continue;
-      p.properties = p.properties.map((pos) =>
-        pos === a ? b : pos === b ? a : pos,
-      );
+      if (p.revealedTiles && p.revealedTiles.has(pos)) return true;
     }
-
-    // Swap grow-tile labels.
-    if (this.growTileLabels) {
-      const la = this.growTileLabels.get(a);
-      const lb = this.growTileLabels.get(b);
-      this.growTileLabels.delete(a);
-      this.growTileLabels.delete(b);
-      if (lb !== undefined) this.growTileLabels.set(a, lb);
-      if (la !== undefined) this.growTileLabels.set(b, la);
-    }
-
-    // Reveal-status travels with the tile content.
-    for (const p of this.players) {
-      const hadA = p.revealedTiles.has(a);
-      const hadB = p.revealedTiles.has(b);
-      if (hadB) p.revealedTiles.add(a);
-      else p.revealedTiles.delete(a);
-      if (hadA) p.revealedTiles.add(b);
-      else p.revealedTiles.delete(b);
-    }
-
-    this.lastTileSwap = { a, b, turn: this.turn };
-    this._log(`🔀 ${player.name} swapped two tiles on the board!`);
-    return { card: "swapTiles", moved: false, swap: { a, b } };
+    return false;
   }
 
-  // Teleport: jump to any tile without walking. Landing effects fire fully
-  // (grow, poker, mushroom, etc.). Replaces the dice roll for the turn.
+  // Vine Swing (internal key "teleport"): jump to ANY tile without walking, then
+  // the destination's full landing effects fire — collect/steal its pile, fire
+  // GROW, win on Super Banana, +500 on Free Bananas, detonate a bomb, start
+  // poker if a player stands there, or open a banana-bid auction on an unowned
+  // farm. Replaces the dice roll for the turn.
   _useTeleportCard(cur, pos) {
     this._beginCardTurn(cur);
+    // Swinging away from a tile counts as LEAVING it: if you were squatting on
+    // an opponent's farm, you take its accumulated pile as you swing off (the
+    // squat steal-on-leave rule, TODO line 56 — also applied in
+    // _collectBananasOnPath for walked moves).
+    const leftProp = this.properties.get(cur.position);
+    if (
+      leftProp &&
+      leftProp.bananaPile > 0 &&
+      leftProp.owner &&
+      leftProp.owner !== cur.id
+    ) {
+      const victim = this.players.find((p) => p.id === leftProp.owner);
+      cur.money += leftProp.bananaPile;
+      this._log(
+        `🌿 ${cur.name} swung off ${victim?.name || "?"}'s farm and grabbed ${leftProp.bananaPile}🍌 on the way out! 👲`,
+      );
+      leftProp.bananaPile = 0;
+    }
     this.dice = [0];
     cur.position = pos;
     cur.revealedTiles.add(pos);
-    // Signal a no-walk teleport to the frontend (reuse the lastStartPick shape).
+    if (cur.scoutedTiles) cur.scoutedTiles.delete(pos); // genuine reveal, no veil
+    // Signal a no-walk jump to the frontend (reuse the lastStartPick shape).
     this.lastTeleport = { playerId: cur.id, position: pos, turn: this.turn };
-    this._log(`🌀 ${cur.name} teleported across the board!`);
+    this._log(`🌿 ${cur.name} swung the vines across the jungle!`);
+    // No walking, so collect/steal the destination pile here (a normal landing
+    // would do this during the walk). _processLanding below handles the rest.
+    this._collectBananasAtTile(cur, pos);
 
     if (this._checkBombDetonation(cur)) {
       if (cur.bankrupt || this.state === "finished") {
@@ -2361,6 +2487,10 @@ class MonopolyGame {
     this.itemAuctionCounter = Math.max(0, this.itemAuctionCounter - amount);
     if (this.itemAuctionCounter <= 0) {
       this._itemAuctionQueued = true;
+      // The roller whose dice ran the counter to 0 "started" this auction — only
+      // they get to see the spun item; everyone else bids blind.
+      const roller = this.getCurrentPlayer();
+      this._itemAuctionStarterId = roller ? roller.id : null;
     }
   }
 
@@ -2382,65 +2512,208 @@ class MonopolyGame {
   }
 
   _startItemAuction() {
-    const ITEMS = ["refreshDice", "swapTiles", "scout", "teleport"];
+    const ITEMS = ["rabbitDice", "cheetahDice", "magicDice", "teleport"];
     const item = ITEMS[Math.floor(Math.random() * ITEMS.length)];
     const now = Date.now();
     const WHEEL_MS = 2800;
-    const participants = this.players
-      .filter((p) => !p.bankrupt)
-      .map((p) => p.id);
-    const bids = {};
-    for (const id of participants) {
-      const p = this.players.find((pl) => pl.id === id);
-      const auto = !p || p.money <= 0;
-      bids[id] = {
-        submitted: auto,
-        autoPass: auto,
-        amount: auto ? 0 : null,
-      };
-    }
     this.itemAuction = {
       phase: "wheel",
       item,
+      // Only the starter sees `item` before the result is revealed.
+      startedBy: this._itemAuctionStarterId || null,
       wheelStartedAt: now,
       wheelEndsAt: now + WHEEL_MS,
-      deadline: null,
-      bids,
-      participantIds: participants,
+      listPrice: null,
+      respondDeadline: null,
+      respondStartTime: null,
+      silentDeadline: null,
+      silentStartTime: null,
+      bids: {},
+      participantIds: [],
+      excludedIds: [],
+      acceptorIds: [],
       result: null,
     };
-    const labels = this._itemAuctionLabels();
     this._log(`🎡 Item auction! The wheel is spinning... 🎡`);
     if (this._itemAuctionTimer) clearTimeout(this._itemAuctionTimer);
     this._itemAuctionTimer = setTimeout(() => {
       this._itemAuctionTimer = null;
-      this._beginItemAuctionBidding();
+      this._beginItemAuctionPitch();
     }, WHEEL_MS);
   }
 
-  _beginItemAuctionBidding() {
+  // The starter (who alone sees the spun item) is the "lander": they name a
+  // price for the mystery item that everyone else accepts or rejects blind.
+  _beginItemAuctionPitch() {
     const a = this.itemAuction;
     if (!a) return;
     if (this.state !== "playing") {
       this._cancelItemAuction();
       return;
     }
-    const now = Date.now();
+    const starter = this.players.find(
+      (p) => p.id === a.startedBy && !p.bankrupt,
+    );
+    if (!starter) {
+      this._cancelItemAuction();
+      return;
+    }
+    a.phase = "pitch";
+    this._log(`🎁 An item is up for auction — the starter is naming a price...`);
+    // Broke starter auto-lists for free, then straight to responses.
+    if (starter.money <= 0) {
+      a.listPrice = 0;
+      this._beginItemAuctionRespond();
+    }
+    if (this.onUpdate) this.onUpdate();
+  }
+
+  pitchItemPrice(socketId, amount) {
+    const a = this.itemAuction;
+    if (!a || a.phase !== "pitch") return false;
+    if (socketId !== a.startedBy) return false;
+    const starter = this.players.find((p) => p.id === socketId);
+    if (!starter) return false;
+    let n = Math.floor(Number(amount));
+    if (!Number.isFinite(n) || n < 0) return false;
+    if (n > starter.money) return false;
+    // Cap at richest opponent's bank so the price isn't impossible for everyone.
+    const others = this.players.filter((p) => p.id !== socketId && !p.bankrupt);
+    if (others.length > 0) {
+      const maxOther = Math.max(...others.map((p) => p.money));
+      if (starter.money >= maxOther && n > maxOther) return false;
+    }
+    // Minimum price is 1 (0 only allowed when the starter is broke).
+    if (n < 1 && starter.money !== 0) return false;
+    a.listPrice = n;
+    this._beginItemAuctionRespond();
+    if (this.onUpdate) this.onUpdate();
+    return true;
+  }
+
+  _beginItemAuctionRespond() {
+    const a = this.itemAuction;
+    if (!a) return;
+    const price = a.listPrice || 0;
+    const others = this.players.filter(
+      (p) => !p.bankrupt && p.id !== a.startedBy,
+    );
+    const eligible = [];
+    const excluded = [];
+    for (const p of others) {
+      if (p.money >= price) eligible.push(p.id);
+      else excluded.push(p.id);
+    }
+    a.participantIds = eligible;
+    a.excludedIds = excluded;
+    a.bids = {};
+    for (const id of eligible) {
+      a.bids[id] = {
+        accepted: null,
+        responded: false,
+        topup: null,
+        submittedTopup: false,
+      };
+    }
+    if (eligible.length === 0) {
+      // Nobody can afford it — the starter keeps the item.
+      this._resolveItemAuction(a.startedBy, price, true);
+      return;
+    }
+    a.phase = "respond";
     const ms = (this.itemAuctionTimer || 15) * 1000;
-    a.phase = "bidding";
-    a.deadline = now + ms;
-    const labels = this._itemAuctionLabels();
-    this._log(`🎁 ${labels[a.item]} is up for auction! Submit a silent bid!`);
-    // If everyone is auto-passed (all broke), resolve immediately.
-    const anyAvailable = Object.values(a.bids).some((b) => !b.submitted);
-    if (!anyAvailable) {
-      this._resolveItemAuction();
+    a.respondDeadline = Date.now() + ms;
+    a.respondStartTime = Date.now();
+    this._log(`🎁 Item priced at ${price}🍌 — accept or reject the mystery item!`);
+    if (this._itemAuctionTimer) clearTimeout(this._itemAuctionTimer);
+    this._itemAuctionTimer = setTimeout(() => {
+      this._itemAuctionTimer = null;
+      if (!this.itemAuction || this.itemAuction.phase !== "respond") return;
+      this._closeItemRespondPhase();
+      if (this.onUpdate) this.onUpdate();
+    }, ms);
+    if (this.onUpdate) this.onUpdate();
+  }
+
+  respondItemAuction(socketId, accept) {
+    const a = this.itemAuction;
+    if (!a || a.phase !== "respond") return false;
+    if (socketId === a.startedBy) return false;
+    const b = a.bids[socketId];
+    if (!b || b.responded) return false;
+    // Recorded privately — no log entry while the window is open.
+    b.accepted = !!accept;
+    b.responded = true;
+    this._checkItemPhaseComplete();
+    return true;
+  }
+
+  _checkItemPhaseComplete() {
+    const a = this.itemAuction;
+    if (!a) return;
+    if (a.phase === "respond") {
+      const all = (a.participantIds || []).every(
+        (id) => a.bids[id] && a.bids[id].responded,
+      );
+      if (all) this._closeItemRespondPhase();
+      return;
+    }
+    if (a.phase === "silentbid") {
+      const all = (a.acceptorIds || []).every(
+        (id) => a.bids[id] && a.bids[id].submittedTopup,
+      );
+      if (all) this._resolveItemSilentBid();
+      return;
+    }
+  }
+
+  _closeItemRespondPhase() {
+    const a = this.itemAuction;
+    if (!a) return;
+    if (this._itemAuctionTimer) {
+      clearTimeout(this._itemAuctionTimer);
+      this._itemAuctionTimer = null;
+    }
+    const price = a.listPrice || 0;
+    const acceptors = (a.participantIds || []).filter(
+      (id) => a.bids[id] && a.bids[id].accepted === true,
+    );
+    if (acceptors.length === 0) {
+      this._resolveItemAuction(a.startedBy, price, true);
+      return;
+    }
+    if (acceptors.length === 1) {
+      this._resolveItemAuction(acceptors[0], price, false);
+      return;
+    }
+    // 2+ acceptors — silent tie-breaker on top of the listed price.
+    a.phase = "silentbid";
+    a.acceptorIds = acceptors;
+    for (const id of acceptors) {
+      const p = this.players.find((pl) => pl.id === id);
+      const maxTopup = Math.max(0, (p ? p.money : 0) - price);
+      if (maxTopup <= 0) {
+        a.bids[id].topup = 0;
+        a.bids[id].submittedTopup = true;
+      } else {
+        a.bids[id].topup = null;
+        a.bids[id].submittedTopup = false;
+      }
+    }
+    const ms = (this.itemAuctionTimer || 15) * 1000;
+    a.silentDeadline = Date.now() + ms;
+    a.silentStartTime = Date.now();
+    this._log(`🤫 Multiple takers — silent tie-breaker! Bid extra on top of ${price}🍌.`);
+    if (a.acceptorIds.every((id) => a.bids[id].submittedTopup)) {
+      this._resolveItemSilentBid();
       return;
     }
     if (this._itemAuctionTimer) clearTimeout(this._itemAuctionTimer);
     this._itemAuctionTimer = setTimeout(() => {
       this._itemAuctionTimer = null;
-      this._resolveItemAuction();
+      if (!this.itemAuction || this.itemAuction.phase !== "silentbid") return;
+      this._resolveItemSilentBid();
+      if (this.onUpdate) this.onUpdate();
     }, ms);
     if (this.onUpdate) this.onUpdate();
   }
@@ -2449,109 +2722,88 @@ class MonopolyGame {
     return { ...SIMPLE_CARD_LABELS };
   }
 
+  // Silent top-up (amount on top of the list price). Only acceptors take part.
   submitItemBid(socketId, amount) {
     const a = this.itemAuction;
-    if (!a) return false;
-    if (a.phase !== "bidding") return false;
-    if (!a.bids[socketId]) return false;
-    if (a.bids[socketId].submitted) return false;
+    if (!a || a.phase !== "silentbid") return false;
+    if (!a.acceptorIds || !a.acceptorIds.includes(socketId)) return false;
+    const b = a.bids[socketId];
+    if (!b || b.submittedTopup) return false;
     const player = this.players.find((p) => p.id === socketId);
     if (!player || player.bankrupt) return false;
-    const n = Math.floor(Number(amount));
-    if (!Number.isFinite(n) || n < 0) return false;
-    const cap = Math.max(0, player.money || 0);
-    const final = Math.min(n, cap);
-    a.bids[socketId] = { submitted: true, autoPass: false, amount: final };
-    // Early resolution: every participant has submitted.
-    const allIn = Object.values(a.bids).every((b) => b.submitted);
-    if (allIn) {
-      if (this._itemAuctionTimer) {
-        clearTimeout(this._itemAuctionTimer);
-        this._itemAuctionTimer = null;
-      }
-      this._resolveItemAuction();
-    }
+    let n = Math.floor(Number(amount));
+    if (!Number.isFinite(n) || n < 0) n = 0;
+    const maxTopup = Math.max(0, (player.money || 0) - (a.listPrice || 0));
+    b.topup = Math.min(n, maxTopup);
+    b.submittedTopup = true;
+    this._checkItemPhaseComplete();
     return true;
   }
 
-  _resolveItemAuction() {
+  _resolveItemSilentBid() {
     const a = this.itemAuction;
     if (!a) return;
-    // Backfill any unsubmitted bids as 0.
-    for (const [id, b] of Object.entries(a.bids)) {
-      if (!b.submitted) {
-        a.bids[id] = { submitted: true, autoPass: true, amount: 0 };
+    if (this._itemAuctionTimer) {
+      clearTimeout(this._itemAuctionTimer);
+      this._itemAuctionTimer = null;
+    }
+    const acceptors = a.acceptorIds || [];
+    for (const id of acceptors) {
+      if (a.bids[id] && !a.bids[id].submittedTopup) {
+        a.bids[id].topup = 0;
+        a.bids[id].submittedTopup = true;
       }
     }
-    const entries = Object.entries(a.bids).map(([id, b]) => ({
-      id,
-      amount: b.amount || 0,
-    }));
-    // Find highest bid.
-    let highest = -1;
-    for (const e of entries) if (e.amount > highest) highest = e.amount;
-    const top = entries.filter((e) => e.amount === highest);
-    const labels = this._itemAuctionLabels();
-    let result;
+    let maxTopup = -1;
+    for (const id of acceptors) {
+      const t = (a.bids[id] && a.bids[id].topup) || 0;
+      if (t > maxTopup) maxTopup = t;
+    }
+    const top = acceptors.filter(
+      (id) => ((a.bids[id] && a.bids[id].topup) || 0) === maxTopup,
+    );
+    const price = a.listPrice || 0;
     if (top.length === 1) {
-      const winnerId = top[0].id;
-      const winner = this.players.find((p) => p.id === winnerId);
-      // Vickrey: pay 2nd-highest, otherwise pay own bid.
-      let pricePaid = highest;
-      if (this.itemAuctionVickrey) {
-        const sorted = entries
-          .map((e) => e.amount)
-          .sort((x, y) => y - x);
-        pricePaid = sorted[1] != null ? sorted[1] : 0;
+      this._resolveItemAuction(top[0], price + maxTopup, false);
+    } else {
+      // Tie at the top — the starter keeps the item at the listed price.
+      this._resolveItemAuction(a.startedBy, price, true);
+    }
+  }
+
+  // Award the item to the winner (`viaStarter` when the starter kept it on a
+  // tie / no-takers). Only the winner + price are revealed.
+  _resolveItemAuction(winnerId, pricePaid, viaStarter) {
+    const a = this.itemAuction;
+    if (!a) return;
+    const labels = this._itemAuctionLabels();
+    const winner = this.players.find((p) => p.id === winnerId);
+    let result;
+    if (winner) {
+      winner.money = Math.max(0, (winner.money || 0) - (pricePaid || 0));
+      if (!winner.cards) {
+        winner.cards = { rabbitDice: 0, cheetahDice: 0, magicDice: 0, teleport: 0 };
       }
-      if (winner) {
-        winner.money = Math.max(0, (winner.money || 0) - pricePaid);
-        if (!winner.cards) {
-          winner.cards = {
-            refreshDice: 0,
-            swapTiles: 0,
-            scout: 0,
-            teleport: 0,
-          };
-        }
-        winner.cards[a.item] = (winner.cards[a.item] || 0) + 1;
-        this._log(
-          `🏆 ${winner.name} won ${labels[a.item]} for ${pricePaid}🍌!`,
-        );
+      winner.cards[a.item] = (winner.cards[a.item] || 0) + 1;
+      if (viaStarter && winnerId === a.startedBy) {
+        this._log(`🏆 ${winner.name} kept ${labels[a.item]} for ${pricePaid}🍌!`);
+      } else {
+        this._log(`🏆 ${winner.name} won ${labels[a.item]} for ${pricePaid}🍌!`);
       }
       result = {
         winnerId,
-        winnerName: winner ? winner.name : "?",
-        pricePaid,
-        tied: false,
+        winnerName: winner.name,
+        pricePaid: pricePaid || 0,
+        viaStarter: !!viaStarter,
       };
     } else {
-      // Tie at the top (including any tie at 0) — nobody wins.
-      const names = top
-        .map((e) => this.players.find((p) => p.id === e.id)?.name || "?")
-        .join(" & ");
-      this._log(
-        `🤝 Tie at ${highest}🍌 between ${names} — nobody wins ${labels[a.item]}!`,
-      );
-      result = {
-        winnerId: null,
-        winnerName: null,
-        pricePaid: 0,
-        tied: true,
-        tiedAt: highest,
-        tiedNames: names,
-      };
+      this._log(`💨 The item auction ended with no winner.`);
+      result = { winnerId: null, winnerName: null, pricePaid: 0, viaStarter: false };
     }
-    // Reveal all bid amounts on result.
-    result.bids = Object.entries(a.bids).map(([id, b]) => ({
-      playerId: id,
-      name: this.players.find((p) => p.id === id)?.name || "?",
-      amount: b.amount || 0,
-      autoPass: !!b.autoPass,
-    }));
     a.phase = "result";
     a.result = result;
-    a.deadline = null;
+    a.respondDeadline = null;
+    a.silentDeadline = null;
     if (this._itemAuctionTimer) {
       clearTimeout(this._itemAuctionTimer);
       this._itemAuctionTimer = null;
@@ -2581,7 +2833,7 @@ class MonopolyGame {
     const cur = this.getCurrentPlayer();
     if (!cur || cur.id !== socketId || this.diceRolled || cur.bankrupt)
       return null;
-    const pos = Math.max(0, Math.min(Math.floor(targetPos), BOARD_SIZE - 1));
+    const pos = Math.max(0, Math.min(Math.floor(targetPos), this.boardSize - 1));
     this.dice = [0, 0];
     this.diceRolled = true;
     const oldPos = cur.position;
@@ -2606,7 +2858,7 @@ class MonopolyGame {
     }
     this._processLanding(cur);
     const debugSteps =
-      (((pos - oldPos) % BOARD_SIZE) + BOARD_SIZE) % BOARD_SIZE || 1;
+      (((pos - oldPos) % this.boardSize) + this.boardSize) % this.boardSize || 1;
     const debugWalkMs = 550 + debugSteps * 150 + 500;
     if (
       !this.auction &&
@@ -2622,6 +2874,8 @@ class MonopolyGame {
   _processLanding(player) {
     const space = this.board[player.position];
     if (!space) return;
+    // Landing here is a genuine discovery — drop any scouted-only veil on it.
+    if (player.scoutedTiles) player.scoutedTiles.delete(player.position);
 
     // GROW always fires first — even if an opponent is on the tile
     if (space.type === "grow" || space.type === "easygrow") {
@@ -2726,7 +2980,9 @@ class MonopolyGame {
     // Check if another monkey is on the same tile — start poker!
     // In team mode, teammates don't trigger poker against each other.
     // Simple mode: players who haven't taken their start pick are off-board.
-    const opponent = this.players.find(
+    // Monkey Poker is a duel: if 2+ opponents are already on this tile, the
+    // landing player joins a crowd — no poker fires.
+    const opponents = this.players.filter(
       (p) =>
         p.id !== player.id &&
         !p.bankrupt &&
@@ -2735,8 +2991,8 @@ class MonopolyGame {
         (this.gameMode !== "teams" ||
           this.getTeamOf(p.id) !== this.getTeamOf(player.id)),
     );
-    if (opponent && player.money > 0 && opponent.money > 0) {
-      this._startPoker(player.id, opponent.id);
+    if (opponents.length === 1 && player.money > 0 && opponents[0].money > 0) {
+      this._startPoker(player.id, opponents[0].id);
       return;
     }
 
@@ -2776,10 +3032,11 @@ class MonopolyGame {
       const wasHidden = !player.revealedTiles.has(player.position);
       // Reveal to all players
       for (const p of this.players) p.revealedTiles.add(player.position);
+      const fb = this._freeBananasAmount();
       if (wasHidden) {
         // Tile was hidden: reveal first, then award bananas after 1 second
         this._log(
-          `${player.name} landed on a hidden tile and revealed Free Bananas +500!`,
+          `${player.name} landed on a hidden tile and revealed Free Bananas +${fb}!`,
         );
         if (this.onUpdate) this.onUpdate();
         const pos = player.position;
@@ -2787,18 +3044,18 @@ class MonopolyGame {
           // Make sure the player is still in the game
           const p = this.players.find((pl) => pl.id === player.id);
           if (p) {
-            p.money += 500;
+            p.money += fb;
             this._log(
-              `${p.name} collected 500\ud83c\udf4c from Free Bananas +500! \ud83c\udf4c`,
+              `${p.name} collected ${fb}\ud83c\udf4c from Free Bananas +${fb}! \ud83c\udf4c`,
             );
             if (this.onUpdate) this.onUpdate();
           }
         }, 1000);
       } else {
         // Tile was already revealed: award immediately
-        player.money += 500;
+        player.money += fb;
         this._log(
-          `${player.name} landed on Free Bananas +500 and collected 500\ud83c\udf4c! \ud83c\udf4c`,
+          `${player.name} landed on Free Bananas +${fb} and collected ${fb}\ud83c\udf4c! \ud83c\udf4c`,
         );
       }
       return;
@@ -2870,7 +3127,7 @@ class MonopolyGame {
         for (const t of p.revealedTiles) globalRevealed.add(t);
       }
       const candidates = [];
-      for (let i = 0; i < BOARD_SIZE; i++) {
+      for (let i = 0; i < this.boardSize; i++) {
         if (i === mushroomPos) continue;
         if (globalRevealed.has(i)) continue;
         candidates.push(i);
@@ -2958,6 +3215,8 @@ class MonopolyGame {
   _processLandingPassive(player, magicUserId = null) {
     const space = this.board[player.position];
     if (!space) return;
+    // Landing here is a genuine discovery — drop any scouted-only veil on it.
+    if (player.scoutedTiles) player.scoutedTiles.delete(player.position);
 
     // GROW fires passively
     if (space.type === "grow" || space.type === "easygrow") {
@@ -3028,9 +3287,10 @@ class MonopolyGame {
     if (space.type === "freebananas") {
       // Reveal to all players (passive landing is still a landing)
       for (const p of this.players) p.revealedTiles.add(player.position);
-      player.money += 500;
+      const fb = this._freeBananasAmount();
+      player.money += fb;
       this._log(
-        `${player.name} was pushed onto Free Bananas +500 and collected 500\ud83c\udf4c! \ud83c\udf4c`,
+        `${player.name} was pushed onto Free Bananas +${fb} and collected ${fb}\ud83c\udf4c! \ud83c\udf4c`,
       );
       return;
     }
@@ -3067,6 +3327,18 @@ class MonopolyGame {
       if (swapLabel !== undefined) this.tileLabelNumbers.set(mushroomPos, swapLabel);
     }
 
+    // Simple-mode grow labels must follow their tiles too. The Super Banana can
+    // swap with a hidden GROW tile; if growTileLabels isn't moved, the relocated
+    // grow tile loses its "G N" label and falls back to its raw "GROW N" name.
+    if (this.growTileLabels) {
+      const mushGrow = this.growTileLabels.get(mushroomPos);
+      const swapGrow = this.growTileLabels.get(swapPos);
+      this.growTileLabels.delete(mushroomPos);
+      this.growTileLabels.delete(swapPos);
+      if (mushGrow !== undefined) this.growTileLabels.set(swapPos, mushGrow);
+      if (swapGrow !== undefined) this.growTileLabels.set(mushroomPos, swapGrow);
+    }
+
     // Swap properties entries (preserving owner/bananaPile state)
     const mushroomProp = this.properties.get(mushroomPos);
     const swapProp = this.properties.get(swapPos);
@@ -3099,7 +3371,7 @@ class MonopolyGame {
       for (const t of p.revealedTiles) postSwapRevealed.add(t);
     }
     let hiddenRemaining = 0;
-    for (let i = 0; i < BOARD_SIZE; i++) {
+    for (let i = 0; i < this.boardSize; i++) {
       if (i === swapPos) continue; // exclude the banana's new position
       if (!postSwapRevealed.has(i)) hiddenRemaining++;
     }
@@ -3225,15 +3497,27 @@ class MonopolyGame {
     const cur = this.getCurrentPlayer();
     if (!cur || cur.id !== socketId || this.auction) return false;
     if (!this.canAuction(socketId)) return false;
+    return this._createAuctionForLander(socketId);
+  }
 
-    const pos = cur.position;
+  // Create an auction for an arbitrary lander (not necessarily the current
+  // player). Used by the shuffle-on-leave flow when a tile shifts under a
+  // sitting player and must be put up for bid by them. Caller is responsible
+  // for guarding when this should fire \u2014 this method only checks that the
+  // lander exists, the tile is buyable + unowned, and no auction is already
+  // running.
+  _createAuctionForLander(landerId) {
+    if (this.auction) return false;
+    const lander = this.players.find((p) => p && p.id === landerId);
+    if (!lander || lander.bankrupt) return false;
+    const pos = lander.position;
     const prop = this.properties.get(pos);
-    if (!prop) return false;
+    if (!prop || prop.owner) return false;
 
     const bidders = [];
-    bidders.push(cur.id);
+    bidders.push(lander.id);
     for (const p of this.players) {
-      if (!p.bankrupt && p.id !== cur.id) bidders.push(p.id);
+      if (!p.bankrupt && p.id !== lander.id) bidders.push(p.id);
     }
 
     const bids = {};
@@ -3256,12 +3540,12 @@ class MonopolyGame {
     this._log(`\ud83c\udf4c Banana bid! Lander, name your price.`);
 
     // Auto-list at 0 if lander is broke
-    if (cur.money === 0) {
-      const lb = this.auction.bids[cur.id];
+    if (lander.money === 0) {
+      const lb = this.auction.bids[lander.id];
       lb.amount = 0;
       lb.placed = true;
       lb.bidTime = Date.now();
-      this._log(`${cur.name} has 0\ud83c\udf4c \u2014 auto-listed for free!`);
+      this._log(`${lander.name} has 0\ud83c\udf4c \u2014 auto-listed for free!`);
       this._checkPhaseComplete();
     }
 
@@ -3309,8 +3593,10 @@ class MonopolyGame {
 
       // Move to respond phase — start 10s timer
       for (const id of others) {
-        a.bids[id].placed = false;
-        a.bids[id].passed = false;
+        a.bids[id].accepted = null;
+        a.bids[id].responded = false;
+        a.bids[id].topup = null;
+        a.bids[id].submittedTopup = false;
       }
       a.phase = "respond";
       if (this.noAuctionTimer) {
@@ -3323,7 +3609,7 @@ class MonopolyGame {
         a.respondDeadline = Date.now() + 15000;
         a.respondStartTime = Date.now();
         this._log(
-          `Lander priced it at ${lb.amount}\ud83c\udf4c \u2014 15 seconds to accept!`,
+          `Lander priced it at ${lb.amount}\ud83c\udf4c \u2014 15 seconds to decide!`,
         );
       }
 
@@ -3334,65 +3620,143 @@ class MonopolyGame {
           this._auctionTimer = null;
           if (!this.auction || this.auction.phase !== "respond") return;
           // Timer expired — lander buys
-          this._log(`\u23f0 Time's up! Lander buys the farm!`);
-          this.auction.highBidder = this.auction.landingPlayer;
-          this.auction.highBid = this.auction.landerOpenBid;
-          this._resolveAuction();
+          this._log(`\u23f0 Time's up!`);
+          this._closeRespondPhase();
           if (this.onUpdate) this.onUpdate();
         }, 15000);
       }
       return;
     }
 
-    // -- Respond phase: first accept wins, all reject = lander buys --
+    // -- Respond phase: any number may accept; resolve only once everyone has
+    // responded (the deadline timer treats stragglers as rejects). --
     if (a.phase === "respond") {
       const others = a.bidders.filter((id) => id !== a.landingPlayer);
-
-      // Check if someone accepted — first accept wins (by bidTime)
-      const acceptors = others.filter((id) => a.bids[id].placed);
-      if (acceptors.length > 0) {
-        // First player to accept (earliest bidTime) wins
-        acceptors.sort((x, y) => (a.bids[x].bidTime || 0) - (a.bids[y].bidTime || 0));
-        const winnerId = acceptors[0];
-        a.highBidder = winnerId;
-        a.highBid = a.landerOpenBid;
-        const winner = this.players.find((p) => p.id === winnerId);
-        const reactionMs = a.respondStartTime ? (a.bids[winnerId].bidTime - a.respondStartTime) : 0;
-        const reactionSec = (reactionMs / 1000).toFixed(1);
-        a.acceptTime = reactionSec;
-        this._log(
-          `${winner?.name || "?"} accepted in ${reactionSec}s \u2014 they buy the farm!`,
-        );
-        // Clear the timer
-        if (this._auctionTimer) {
-          clearTimeout(this._auctionTimer);
-          this._auctionTimer = null;
-        }
-        this._resolveAuction();
-        return;
-      }
-
-      // Check if everyone rejected
-      const allDone = others.every(
-        (id) => a.bids[id].placed || a.bids[id].passed,
+      const allResponded = others.every(
+        (id) => a.bids[id] && a.bids[id].responded,
       );
-      if (allDone) {
-        // Everyone rejected — lander buys
-        a.highBidder = a.landingPlayer;
-        a.highBid = a.landerOpenBid;
-        this._log(`Everyone rejected \u2014 lander buys the farm!`);
-        if (this._auctionTimer) {
-          clearTimeout(this._auctionTimer);
-          this._auctionTimer = null;
-        }
-        this._resolveAuction();
-        return;
-      }
-
-      // Otherwise, still waiting for responses (timer still running)
+      if (allResponded) this._closeRespondPhase();
       return;
     }
 
+    // -- Silent-bid phase: resolve once every acceptor submitted a top-up. --
+    if (a.phase === "silentbid") {
+      const allIn = (a.acceptorIds || []).every(
+        (id) => a.bids[id] && a.bids[id].submittedTopup,
+      );
+      if (allIn) this._resolveSilentBid();
+      return;
+    }
+
+  }
+
+  // Close the accept/reject window and decide what happens next:
+  //   0 acceptors  -> lander keeps it at the listed price
+  //   1 acceptor   -> that player buys at the listed price
+  //   2+ acceptors -> silent top-up tie-breaker
+  _closeRespondPhase() {
+    const a = this.auction;
+    if (!a) return;
+    if (this._auctionTimer) {
+      clearTimeout(this._auctionTimer);
+      this._auctionTimer = null;
+    }
+    const others = a.bidders.filter((id) => id !== a.landingPlayer);
+    const acceptors = others.filter(
+      (id) => a.bids[id] && a.bids[id].accepted === true,
+    );
+
+    if (acceptors.length === 0) {
+      a.highBidder = a.landingPlayer;
+      a.highBid = a.landerOpenBid;
+      this._log(`No takers — lander keeps the farm for ${a.landerOpenBid}🍌!`);
+      this._resolveAuction();
+      return;
+    }
+    if (acceptors.length === 1) {
+      a.highBidder = acceptors[0];
+      a.highBid = a.landerOpenBid;
+      this._resolveAuction();
+      return;
+    }
+
+    // 2+ acceptors — silent tie-breaker on top of the listed price.
+    a.phase = "silentbid";
+    a.acceptorIds = acceptors;
+    for (const id of acceptors) {
+      const p = this.players.find((pl) => pl.id === id);
+      const maxTopup = Math.max(0, (p ? p.money : 0) - a.landerOpenBid);
+      if (maxTopup <= 0) {
+        a.bids[id].topup = 0;
+        a.bids[id].submittedTopup = true;
+      } else {
+        a.bids[id].topup = null;
+        a.bids[id].submittedTopup = false;
+      }
+    }
+    if (this.noAuctionTimer) {
+      a.silentDeadline = null;
+      a.silentStartTime = null;
+      this._log(
+        `Multiple takers — silent tie-breaker! Bid extra on top of ${a.landerOpenBid}🍌.`,
+      );
+    } else {
+      a.silentDeadline = Date.now() + 15000;
+      a.silentStartTime = Date.now();
+      this._log(
+        `Multiple takers — silent tie-breaker! 15s to bid on top of ${a.landerOpenBid}🍌.`,
+      );
+    }
+    // Everyone may already be auto-submitted (too poor to add anything).
+    if (a.acceptorIds.every((id) => a.bids[id].submittedTopup)) {
+      this._resolveSilentBid();
+      return;
+    }
+    if (this._auctionTimer) clearTimeout(this._auctionTimer);
+    if (!this.noAuctionTimer) {
+      this._auctionTimer = setTimeout(() => {
+        this._auctionTimer = null;
+        if (!this.auction || this.auction.phase !== "silentbid") return;
+        this._resolveSilentBid();
+        if (this.onUpdate) this.onUpdate();
+      }, 15000);
+    }
+  }
+
+  // Highest top-up wins (pays listed + top-up). A tie at the very top sends the
+  // property to the lander for the listed price.
+  _resolveSilentBid() {
+    const a = this.auction;
+    if (!a) return;
+    if (this._auctionTimer) {
+      clearTimeout(this._auctionTimer);
+      this._auctionTimer = null;
+    }
+    const acceptors = a.acceptorIds || [];
+    for (const id of acceptors) {
+      if (a.bids[id] && !a.bids[id].submittedTopup) {
+        a.bids[id].topup = 0;
+        a.bids[id].submittedTopup = true;
+      }
+    }
+    let maxTopup = -1;
+    for (const id of acceptors) {
+      const t = (a.bids[id] && a.bids[id].topup) || 0;
+      if (t > maxTopup) maxTopup = t;
+    }
+    const top = acceptors.filter(
+      (id) => ((a.bids[id] && a.bids[id].topup) || 0) === maxTopup,
+    );
+    if (top.length === 1) {
+      a.highBidder = top[0];
+      a.highBid = a.landerOpenBid + maxTopup;
+    } else {
+      // Tie at the top — lander gets it at the listed price.
+      a.highBidder = a.landingPlayer;
+      a.highBid = a.landerOpenBid;
+      a.silentTie = true;
+    }
+    this._resolveAuction();
   }
 
   _resolveAuction() {
@@ -3501,7 +3865,7 @@ class MonopolyGame {
     if (a.phase !== "respond") return false;
     if (socketId === a.landingPlayer) return false;
     const b = a.bids[socketId];
-    if (!b || b.placed || b.passed) return false;
+    if (!b || b.responded) return false;
 
     // In teams mode, the lander's teammate must wait 5 seconds before accepting
     if (accept && this.gameMode === "teams" && this.teams && a.respondStartTime) {
@@ -3515,17 +3879,29 @@ class MonopolyGame {
       }
     }
 
-    if (accept) {
-      b.placed = true;
-      b.bidTime = Date.now();
-      const player = this.players.find((p) => p.id === socketId);
-      this._log(`${player?.name || "?"} accepted the price!`);
-    } else {
-      b.passed = true;
-      const player = this.players.find((p) => p.id === socketId);
-      this._log(`${player?.name || "?"} declined.`);
-    }
+    // Accept/reject is recorded privately (no log entry) so nobody can infer
+    // who is in or out during the window.
+    b.accepted = !!accept;
+    b.responded = true;
+    this._checkPhaseComplete();
+    return true;
+  }
 
+  // Submit the silent top-up (amount on top of the listed price) during a
+  // tie-breaker. Only the players who accepted participate.
+  submitSilentBid(socketId, amount) {
+    const a = this.auction;
+    if (!a || a.phase !== "silentbid") return false;
+    if (!a.acceptorIds || !a.acceptorIds.includes(socketId)) return false;
+    const b = a.bids[socketId];
+    if (!b || b.submittedTopup) return false;
+    const player = this.players.find((p) => p.id === socketId);
+    if (!player) return false;
+    let n = Math.floor(Number(amount));
+    if (!Number.isFinite(n) || n < 0) n = 0;
+    const maxTopup = Math.max(0, (player.money || 0) - a.landerOpenBid);
+    b.topup = Math.min(n, maxTopup);
+    b.submittedTopup = true;
     this._checkPhaseComplete();
     return true;
   }
@@ -3534,7 +3910,7 @@ class MonopolyGame {
     if (!this.vineSwing || this.vineSwing !== socketId) return false;
     const player = this.players.find((p) => p.id === socketId);
     if (!player) return false;
-    if (position < 0 || position >= BOARD_SIZE) return false;
+    if (position < 0 || position >= this.boardSize) return false;
 
     // Can only swing to a property the player owns
     const prop = this.properties.get(position);
@@ -3545,6 +3921,7 @@ class MonopolyGame {
     // frontend doesn't re-trigger the steal animation on the vine landing.
     this.growSquatterSteals = null;
     this.lastGrowFired = null;
+    this.lastGrowActivated = null;
     player.position = position;
     player.revealedTiles.add(position);
     // Reveal the vine-swing destination to all players
@@ -3571,7 +3948,7 @@ class MonopolyGame {
     if (!cur.startPickPending) return false;
     if (this.auction || this.poker || this.vineSwing || this.mushroomPending)
       return false;
-    if (typeof position !== "number" || position < 0 || position >= BOARD_SIZE)
+    if (typeof position !== "number" || position < 0 || position >= this.boardSize)
       return false;
     // First-turn picks can't share a tile with a player who's already on the board.
     const occupied = this.players.some(
@@ -3603,14 +3980,14 @@ class MonopolyGame {
 
   // -- Simple-mode Grow Helpers -----------------------------------
 
-  // Assign random 0..7 labels to the 8 grow tiles and rewrite each tile's
+  // Assign random 1..6 labels to the 6 grow tiles and rewrite each tile's
   // display name to "GROW N". Called once at game start (after shuffle).
   _assignSimpleGrowLabels() {
     const growPositions = [];
     for (let i = 0; i < this.board.length; i++) {
       if (this.board[i].type === "grow") growPositions.push(i);
     }
-    const labels = growPositions.map((_, idx) => idx);
+    const labels = growPositions.map((_, idx) => idx + 1);
     for (let i = labels.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
       [labels[i], labels[j]] = [labels[j], labels[i]];
@@ -3632,6 +4009,46 @@ class MonopolyGame {
     return null;
   }
 
+  // A board position is "genuinely revealed" if at least one player has it in
+  // revealedTiles for a real reason (landing/movement) — NOT merely via the
+  // Scout ability. Scout reveals a tile to its user's fog of war but must not
+  // act as a genuine discovery for grow ranges, rolled-grow firing, or the
+  // Owned-Farms chart. Genuine grow reveals broadcast to every player, so this
+  // is effectively global.
+  _isGenuinelyRevealed(pos) {
+    for (const p of this.players) {
+      if (!p.revealedTiles || !p.revealedTiles.has(pos)) continue;
+      if (p.scoutedTiles && p.scoutedTiles.has(pos)) continue;
+      return true;
+    }
+    return false;
+  }
+
+  // The set of all board positions genuinely revealed by any player (i.e. each
+  // player's revealedTiles minus the tiles they only scouted). See above.
+  _globalGenuineRevealed() {
+    const set = new Set();
+    for (const p of this.players) {
+      if (!p.revealedTiles) continue;
+      for (const pos of p.revealedTiles) {
+        if (p.scoutedTiles && p.scoutedTiles.has(pos)) continue;
+        set.add(pos);
+      }
+    }
+    return set;
+  }
+
+  // Grow-tile positions that are genuinely revealed (not merely scouted) by any
+  // player. The Owned-Farms chart groups farms by the nearest such grow.
+  _genuineRevealedGrowPositions() {
+    const out = [];
+    if (!this.growTileLabels) return out;
+    for (const pos of this.growTileLabels.keys()) {
+      if (this._isGenuinelyRevealed(pos)) out.push(pos);
+    }
+    return out;
+  }
+
   // Returns the set of board positions strictly between `growPos` and the
   // next revealed grow tile clockwise (both endpoints excluded). If only the
   // anchor grow is revealed, the range wraps the whole board (51 positions).
@@ -3645,13 +4062,13 @@ class MonopolyGame {
     }
     const range = new Set();
     if (revealedGrows.size === 0) {
-      for (let off = 1; off < BOARD_SIZE; off++) {
-        range.add((growPos + off) % BOARD_SIZE);
+      for (let off = 1; off < this.boardSize; off++) {
+        range.add((growPos + off) % this.boardSize);
       }
       return range;
     }
-    for (let off = 1; off < BOARD_SIZE; off++) {
-      const p = (growPos + off) % BOARD_SIZE;
+    for (let off = 1; off < this.boardSize; off++) {
+      const p = (growPos + off) % this.boardSize;
       if (revealedGrows.has(p)) break;
       range.add(p);
     }
@@ -3664,38 +4081,33 @@ class MonopolyGame {
   // (`source: "roll" | "land"`) so messages read sensibly.
   _fireSimpleGrowAt(player, growPos, source) {
     if (this.gameMode !== "simple") return;
-    // Record the activated grow tile so the frontend can glow it (landed-on or
-    // rolled-match). Accumulates within an action so a roll + a walked landing
-    // can both glow this turn. Reset alongside growSquatterSteals.
-    this.lastGrowFired = (this.lastGrowFired || []).concat([growPos]);
-    // Make the grow tile visible to everyone for the run
-    for (const p of this.players) p.revealedTiles.add(growPos);
-
-    // Use the globally-revealed set as the boundary — any grow revealed by
-    // any player bounds the range. Prevents the "whole board grows" case
-    // when the activating player hasn't personally revealed grows that
-    // other players already have.
-    const globalRevealed = new Set();
-    for (const p of this.players) {
-      for (const t of p.revealedTiles) globalRevealed.add(t);
-    }
-    const range = this._simpleGrowRange(growPos, globalRevealed);
-    // TEMP DEBUG: remove once grow-blocking is confirmed correct
-    {
-      const revealedGrowsOther = [];
-      for (const pos of globalRevealed) {
-        if (pos === growPos) continue;
-        const sp = this.board[pos];
-        if (sp && sp.type === "grow") revealedGrowsOther.push(pos);
+    // The glow is recorded at the END of this method, and ONLY if the grow
+    // actually produced bananas — see lastGrowFired below. Firing on an empty
+    // range (no farms in range) grows nothing and must not glow.
+    // Landing on a grow genuinely reveals it to everyone for the run, clearing
+    // any prior scouted-only status. A roll never reveals a hidden grow: by the
+    // time a roll reaches here the tile is already genuinely revealed (see the
+    // dormant check in _processSimpleRolledGrow).
+    if (source === "land") {
+      for (const p of this.players) {
+        p.revealedTiles.add(growPos);
+        if (p.scoutedTiles) p.scoutedTiles.delete(growPos);
       }
-      const sortedRange = [...range].sort((a, b) => a - b);
-      console.log(
-        `[grow-debug] fire at pos=${growPos} (label=${this.growTileLabels && this.growTileLabels.get(growPos)}), ` +
-          `otherRevealedGrows=[${revealedGrowsOther.sort((a, b) => a - b).join(",")}], ` +
-          `rangeSize=${range.size}, range=[${sortedRange.join(",")}], ` +
-          `player=${player.name} ownedFarms=[${player.properties.slice().sort((a, b) => a - b).join(",")}]`,
-      );
     }
+
+    // Record EVERY fire (even one that grows nothing) so the frontend can play
+    // the grow-pulse animation for it — empty fires just pulse quickly. Tagged
+    // with the source so the frontend knows whether it fired pre-move (roll /
+    // magic dice → pulse before the walk) or on arrival (land).
+    this.lastGrowActivated = (this.lastGrowActivated || []).concat([
+      { pos: growPos, source },
+    ]);
+
+    // Use the globally GENUINELY-revealed set as the boundary — any grow truly
+    // discovered by any player bounds the range. A merely-scouted grow does NOT
+    // bound the range. Prevents the "whole board grows" case when the activating
+    // player hasn't personally revealed grows that others already have.
+    const range = this._simpleGrowRange(growPos, this._globalGenuineRevealed());
     const ownedInRange = [];
     for (const propId of player.properties) {
       if (!range.has(propId)) continue;
@@ -3710,66 +4122,115 @@ class MonopolyGame {
         : "?";
 
     let totalGrown = 0;
-    let totalStolen = 0;
-    const stolenBy = {};
-    const squatterSteals = [];
+    let totalEarlyPicked = 0;
+    let earlyPickupTile = null;
+    // Every owned farm that grew (or was stolen from) this fire, plus the fresh
+    // amount per non-stolen tile. These feed the dice-match animation pipeline
+    // (see below) so the frontend pops the piles in and collects them along the
+    // walk — exactly like classic mode's dice-match grows.
+    const grownTiles = [];
+    const grownAmounts = {};
     for (const propId of ownedInRange) {
       const prop = this.properties.get(propId);
       const amount = prop.price; // simple mode = 100%
       if (amount <= 0) continue;
-      const squatter = this.players.find(
-        (p) =>
-          !p.bankrupt &&
-          !p.startPickPending &&
-          p.position === propId &&
-          p.id !== player.id,
-      );
-      if (squatter) {
-        squatter.money += amount;
-        totalStolen += amount;
-        stolenBy[squatter.id] = (stolenBy[squatter.id] || 0) + amount;
-        squatterSteals.push({ tileId: propId, amount, squatterId: squatter.id });
-      } else {
-        prop.bananaPile += amount;
-        totalGrown += amount;
+      grownTiles.push(propId);
+
+      // Early pickup: if the owner is standing on their own farm when it
+      // grows, they pocket the bananas immediately instead of leaving a pile to
+      // loop back around for. Sweeps the whole tile — the fresh growth plus any
+      // pile already sitting there — and takes priority over any opponent
+      // squatting on the tile (mirrors classic mode's owner-on-tile rule).
+      if (player.position === propId && !player.startPickPending) {
+        const pickup = amount + (prop.bananaPile || 0);
+        prop.bananaPile = 0;
+        player.money += pickup;
+        totalEarlyPicked += pickup;
+        earlyPickupTile = propId;
+        grownAmounts[propId] = amount; // fresh growth (pre-existing handled by walk collection)
+        continue;
       }
+
+      // Squat / quick-steal rule (TODO line 56): grown bananas always land in
+      // the farm's pile — a squatter NO LONGER grabs them the instant they
+      // sprout. Whoever reaches the pile first collects it: the owner by
+      // crossing/landing on the farm (so they can reclaim a grow on the same
+      // turn it fired), or the squatter when they LEAVE the tile (handled by
+      // _collectBananasOnPath's leave-steal).
+      prop.bananaPile += amount;
+      totalGrown += amount;
+      grownAmounts[propId] = amount;
     }
-    if (squatterSteals.length > 0) {
-      // Append to any existing steals so a rolled grow + walked grow can both
-      // animate on the frontend in the same turn.
-      const prev = this.growSquatterSteals || [];
-      this.growSquatterSteals = prev.concat(squatterSteals);
+    // Drive the frontend grow animation through the shared dice-match fields:
+    // the grown piles pop in, then get collected (with a per-tile burst) as the
+    // token walks through them, and the tile the player stands on plays the
+    // "Early Pickup!" floater. Accumulates across fires (rolled + landed grow).
+    if (grownTiles.length > 0) {
+      this.diceMatchTiles = (this.diceMatchTiles || []).concat(grownTiles);
+      this.diceMatchGrownAmounts = Object.assign(
+        this.diceMatchGrownAmounts || {},
+        grownAmounts,
+      );
+    }
+    if (earlyPickupTile != null) {
+      this.diceMatchEarlyPickup = earlyPickupTile;
     }
 
     const verb =
       source === "roll" ? `rolled ${label} — GROW ${label} fired` : `landed on GROW ${label}`;
+    if (totalEarlyPicked > 0) {
+      this._log(
+        `${player.name} ${verb} — early-picked ${totalEarlyPicked}🍌 from the farm under them! 🌱🐒`,
+      );
+    }
     if (totalGrown > 0) {
       this._log(
         `${player.name} ${verb} — ${totalGrown}🍌 grew on their farms! 🌱`,
       );
     }
-    if (totalStolen > 0) {
-      const theftLines = Object.entries(stolenBy).map(([id, amt]) => {
-        const p = this.players.find((pl) => pl.id === id);
-        return `${p?.name || "?"} collected ${amt}🍌`;
-      });
-      this._log(
-        `${player.name} ${verb} but opponents on their farms grabbed the bananas! ${theftLines.join(", ")} 👲`,
-      );
-    }
-    if (totalGrown === 0 && totalStolen === 0) {
+    if (totalGrown === 0 && totalEarlyPicked === 0) {
       this._log(`${player.name} ${verb} — no farms in range! 🌱`);
     }
-    return { totalGrown, totalStolen };
+
+    // Glow the grow tile ONLY when it actually grew bananas — whether they
+    // landed in the owner's pile or were early-picked. A fire that grows
+    // nothing (no farms in range) does not glow. Accumulates across fires so a
+    // rolled grow + a walked landing both glow.
+    if (totalGrown > 0 || totalEarlyPicked > 0) {
+      this.lastGrowFired = (this.lastGrowFired || []).concat([growPos]);
+    }
+    return { totalGrown, totalEarlyPicked };
   }
 
-  // Simple mode: rolling a sum in 0..7 fires the matching GROW tile's effect.
-  // Sums 8+ are ignored. The player still walks normally afterwards.
-  _processSimpleRolledGrow(player, diceSum) {
+  // Simple mode: each die face fires its own labeled GROW tile. Doubles fire
+  // once (deduped). Movement still uses the dice sum (handled by the caller).
+  // This makes every die value 1..6 map to a grow, instead of the dice sum
+  // (which is 2..12 with two dice, so it could never hit labels 1 or 7..12).
+  _processSimpleRolledGrows(player, rolls) {
     if (this.gameMode !== "simple") return;
-    if (diceSum < 0 || diceSum > 7) return;
-    const growPos = this._findSimpleGrowByLabel(diceSum);
+    const fired = new Set();
+    for (const d of rolls) {
+      if (fired.has(d)) continue;
+      fired.add(d);
+      this._processSimpleRolledGrow(player, d);
+    }
+  }
+
+  // Simple mode: a die face in 1..6 fires the matching GROW tile's effect (grow
+  // tiles are labelled 1..6), but ONLY if that grow tile has already been
+  // genuinely revealed (landed on). A still-hidden or merely-scouted grow stays
+  // dormant. Values outside 1..6 (e.g. a Magic Dice step > 6) match no grow and
+  // are ignored; the player still walks normally afterwards.
+  _processSimpleRolledGrow(player, value) {
+    if (this.gameMode !== "simple") return;
+    if (value < 1 || value > 6) return;
+    const growPos = this._findSimpleGrowByLabel(value);
     if (growPos == null) return;
+    // Dormant until genuinely discovered: a hidden grow does nothing (no growth,
+    // no reveal) when its number is rolled — it must be revealed by landing
+    // first. A grow that has only been scouted stays dormant (scouting reveals
+    // the tile to its user but is not a genuine discovery).
+    if (!this._isGenuinelyRevealed(growPos)) return;
     this._fireSimpleGrowAt(player, growPos, "roll");
   }
 
@@ -3802,8 +4263,8 @@ class MonopolyGame {
         const cur = queue.shift();
         chain.push(cur);
         const neighbors = [
-          (cur - 1 + BOARD_SIZE) % BOARD_SIZE,
-          (cur + 1) % BOARD_SIZE,
+          (cur - 1 + this.boardSize) % this.boardSize,
+          (cur + 1) % this.boardSize,
         ];
         for (const n of neighbors) {
           if (visited.has(n) || !posGroup.has(n)) continue;
@@ -3965,15 +4426,35 @@ class MonopolyGame {
 
   _collectBananasOnPath(player, oldPos, newPos) {
     // Walk every tile from oldPos+1 to newPos (wrapping around the board)
-    const steps = (newPos - oldPos + BOARD_SIZE) % BOARD_SIZE;
+    const steps = (newPos - oldPos + this.boardSize) % this.boardSize;
     if (steps === 0) return [];
     let collected = 0;
     let stolen = 0;
     const stolenVictims = new Set();
     const crossedFreeBananas = [];
 
+    // Squat / quick-steal rule, simple mode: collect the pile on the tile
+    // you're LEAVING if you don't own it. While you squatted there grown
+    // bananas piled up (instead of being stolen the instant they grew), so
+    // you grab that pile as you depart — unless the owner already reclaimed
+    // it by crossing the farm first, in which case the pile is 0 and nothing
+    // moves.
+    if (this.gameMode === "simple") {
+      const leftProp = this.properties.get(oldPos);
+      if (
+        leftProp &&
+        leftProp.bananaPile > 0 &&
+        leftProp.owner &&
+        leftProp.owner !== player.id
+      ) {
+        stolen += leftProp.bananaPile;
+        stolenVictims.add(leftProp.owner);
+        leftProp.bananaPile = 0;
+      }
+    }
+
     for (let s = 1; s <= steps; s++) {
-      const pos = (oldPos + s) % BOARD_SIZE;
+      const pos = (oldPos + s) % this.boardSize;
 
       // Free Bananas +500: only award when crossing if tile is already revealed
       const space = this.board[pos];
@@ -3992,7 +4473,7 @@ class MonopolyGame {
       const isLanding = pos === newPos;
 
       if (prop.owner === player.id) {
-        // Collect own bananas on any tile crossed or landed on
+        // Own tile — collect on any crossed or landed-on tile.
         collected += prop.bananaPile;
         prop.bananaPile = 0;
       } else if (isLanding && !prop.owner) {
@@ -4000,17 +4481,25 @@ class MonopolyGame {
         collected += prop.bananaPile;
         prop.bananaPile = 0;
       } else if (isLanding && prop.owner && prop.owner !== player.id) {
-        // In team mode, collect teammate piles; steal from opponents
-        const isTeammate =
-          this.gameMode === "teams" &&
-          this.getTeamOf(prop.owner) === this.getTeamOf(player.id);
-        if (isTeammate) {
-          collected += prop.bananaPile;
+        if (this.gameMode === "simple") {
+          // Simple mode: landing on an opponent's banana pile does NOT collect
+          // it. You're now squatting on their farm — like a grow that happens
+          // while you squat, the pile is yours to steal only when you LEAVE the
+          // tile (the leave-steal above), and the owner can reclaim it first if
+          // they cross/land here. So leave the pile sitting on the farm.
         } else {
-          stolen += prop.bananaPile;
-          stolenVictims.add(prop.owner);
+          // Other modes: collect teammate piles; steal from opponents on landing.
+          const isTeammate =
+            this.gameMode === "teams" &&
+            this.getTeamOf(prop.owner) === this.getTeamOf(player.id);
+          if (isTeammate) {
+            collected += prop.bananaPile;
+          } else {
+            stolen += prop.bananaPile;
+            stolenVictims.add(prop.owner);
+          }
+          prop.bananaPile = 0;
         }
-        prop.bananaPile = 0;
       }
     }
 
@@ -4436,11 +4925,16 @@ class MonopolyGame {
 
   // -- Bomb mechanic -----------------------------------------------
 
+  // Free Bananas tile payout: +25 in simple mode, +500 elsewhere.
+  _freeBananasAmount() {
+    return this.gameMode === "simple" ? 25 : 500;
+  }
+
   buyBomb(socketId) {
     if (!this.bombMode || this.state !== "playing") return false;
     const player = this.players.find((p) => p.id === socketId);
     if (!player || player.bankrupt) return false;
-    const price = 5000;
+    const price = this.bombCost;
     if (player.money < price) return false;
     player.money -= price;
     player.bomb = (player.bomb || 0) + 1;
@@ -4455,7 +4949,7 @@ class MonopolyGame {
     const player = this.players.find((p) => p.id === socketId);
     if (!player || player.bankrupt || !player.bomb) return false;
     const idx = Math.floor(tileIndex);
-    if (idx < 0 || idx >= BOARD_SIZE) return false;
+    if (idx < 0 || idx >= this.boardSize) return false;
     // Can't place on a tile that already has a bomb
     if (this.bombs.some((b) => b.position === idx)) return false;
     const cur = this.getCurrentPlayer();
@@ -4486,6 +4980,27 @@ class MonopolyGame {
     this.lastExplosion.explosions.push(explosion);
   }
 
+  // The 12 tile positions on the same cornerless-board side as `pos`
+  // (bottom 0-11, left 12-23, top 24-35, right 36-47). Simple mode only.
+  _simpleSideTiles(pos) {
+    const side = Math.floor(pos / 12);
+    const start = side * 12;
+    const tiles = [];
+    for (let i = start; i < start + 12 && i < this.boardSize; i++) tiles.push(i);
+    return tiles;
+  }
+
+  // Tiles caught in a bomb blast. Simple mode blows the entire 12-tile side the
+  // bomb sits on; classic mode blows the bomb tile and its two neighbours.
+  _bombBlastTiles(position) {
+    if (this.gameMode === "simple") return this._simpleSideTiles(position);
+    return [
+      position,
+      (position - 1 + this.boardSize) % this.boardSize,
+      (position + 1) % this.boardSize,
+    ];
+  }
+
   _checkBombDetonation(player) {
     if (!this.bombMode || this.bombs.length === 0) return false;
     const bombIndex = this.bombs.findIndex(
@@ -4494,10 +5009,12 @@ class MonopolyGame {
     if (bombIndex === -1) return false;
     const bomb = this.bombs[bombIndex];
 
-    // Placer stepping on their own armed bomb: the bomb stays armed; the placer
-    // just takes 50% self-damage so they can't nuke adjacent opponents by
-    // triggering their own bomb.
-    if (bomb.placedBy === player.id) {
+    // Classic mode: placer stepping on their own armed bomb keeps it armed and
+    // just takes 50% self-damage, so they can't self-trigger to nuke neighbours.
+    // Simple mode: landing on your own bomb DOES detonate the whole side — the
+    // placer still only loses 50% (handled below in the victim loop), but
+    // opponents on that side are eliminated.
+    if (bomb.placedBy === player.id && this.gameMode !== "simple") {
       this._bombSelfDamage(player);
       this._checkBombWin();
       return true;
@@ -4505,15 +5022,17 @@ class MonopolyGame {
 
     const placer = this.players.find((p) => p.id === bomb.placedBy);
     this.bombs.splice(bombIndex, 1);
-    const blastTiles = [
-      bomb.position,
-      (bomb.position - 1 + BOARD_SIZE) % BOARD_SIZE,
-      (bomb.position + 1) % BOARD_SIZE,
-    ];
-    const explosion = { position: bomb.position, tiles: blastTiles, kills: [] };
+    const blastTiles = this._bombBlastTiles(bomb.position);
+    const explosion = {
+      position: bomb.position,
+      tiles: blastTiles,
+      placerId: bomb.placedBy,
+      triggerId: player.id,
+      kills: [],
+    };
     this._addExplosion(explosion);
     const victims = this.players.filter(
-      (p) => !p.bankrupt && blastTiles.includes(p.position),
+      (p) => !p.bankrupt && !p.startPickPending && blastTiles.includes(p.position),
     );
     if (victims.length === 0) return false;
     this._log(
@@ -4521,6 +5040,12 @@ class MonopolyGame {
     );
     for (const v of victims) {
       if (v.id === bomb.placedBy) {
+        if (this.gameMode === "simple") {
+          // Simple mode: bombing yourself is a no-op. The bomb still
+          // detonates (so enemies in the blast still go down), but the placer
+          // takes no damage and doesn't leave the game.
+          continue;
+        }
         this._bombSelfDamage(v);
       } else if (
         this.gameMode === "teams" &&
@@ -4529,6 +5054,9 @@ class MonopolyGame {
       ) {
         this._bombSelfDamage(v);
       } else {
+        // Enemy victim \u2014 eliminated normally. In simple mode the placer
+        // always survives their own blast, so enemy farms transfer to the
+        // placer per the standard kill rule.
         explosion.kills.push(this._bombEliminate(v, placer));
       }
     }
@@ -4543,15 +5071,17 @@ class MonopolyGame {
       if (!this.bombs[i].pending && this.bombs[i].turnsLeft <= 0) {
         const bomb = this.bombs[i];
         this.bombs.splice(i, 1);
-        const blastTiles = [
-          bomb.position,
-          (bomb.position - 1 + BOARD_SIZE) % BOARD_SIZE,
-          (bomb.position + 1) % BOARD_SIZE,
-        ];
-        const explosion = { position: bomb.position, tiles: blastTiles, kills: [] };
+        const blastTiles = this._bombBlastTiles(bomb.position);
+        const explosion = {
+          position: bomb.position,
+          tiles: blastTiles,
+          placerId: bomb.placedBy,
+          triggerId: null,
+          kills: [],
+        };
         this._addExplosion(explosion);
         const victims = this.players.filter(
-          (p) => !p.bankrupt && blastTiles.includes(p.position),
+          (p) => !p.bankrupt && !p.startPickPending && blastTiles.includes(p.position),
         );
         if (victims.length > 0) {
           this._log(
@@ -4560,6 +5090,12 @@ class MonopolyGame {
           const placer = this.players.find((p) => p.id === bomb.placedBy);
           for (const v of victims) {
             if (v.id === bomb.placedBy) {
+              if (this.gameMode === "simple") {
+                // Simple mode: bombing yourself is a no-op. The bomb still
+                // detonates (so enemies in the blast still go down), but the
+                // placer takes no damage.
+                continue;
+              }
               this._bombSelfDamage(v);
             } else if (
               this.gameMode === "teams" &&
@@ -4568,6 +5104,9 @@ class MonopolyGame {
             ) {
               this._bombSelfDamage(v);
             } else {
+              // Enemy victim — eliminated normally. In simple mode the placer
+              // is immune to their own blast so enemy farms transfer to the
+              // placer per the standard kill rule.
               explosion.kills.push(this._bombEliminate(v, placer));
             }
           }
@@ -4583,13 +5122,69 @@ class MonopolyGame {
     return anyExploded;
   }
 
+  // Swap the board entry, label numbers, grow label, and properties Map entry
+  // between two board positions. Player property lists are updated so each
+  // player still owns the same TILE at its new position. Caller handles any
+  // reveal/visibility bookkeeping.
+  _swapTilePositions(posA, posB) {
+    if (posA === posB) return;
+    if (posA < 0 || posA >= this.boardSize) return;
+    if (posB < 0 || posB >= this.boardSize) return;
+
+    // Swap board entries
+    const tmpBoard = this.board[posA];
+    this.board[posA] = this.board[posB];
+    this.board[posB] = tmpBoard;
+
+    // Swap tile label numbers (CV1, BJ2, etc.) so they follow their tile
+    if (this.tileLabelNumbers) {
+      const a = this.tileLabelNumbers.get(posA);
+      const b = this.tileLabelNumbers.get(posB);
+      this.tileLabelNumbers.delete(posA);
+      this.tileLabelNumbers.delete(posB);
+      if (a !== undefined) this.tileLabelNumbers.set(posB, a);
+      if (b !== undefined) this.tileLabelNumbers.set(posA, b);
+    }
+
+    // Swap simple-mode grow labels (G1..G6) so they follow their tile
+    if (this.growTileLabels) {
+      const a = this.growTileLabels.get(posA);
+      const b = this.growTileLabels.get(posB);
+      this.growTileLabels.delete(posA);
+      this.growTileLabels.delete(posB);
+      if (a !== undefined) this.growTileLabels.set(posB, a);
+      if (b !== undefined) this.growTileLabels.set(posA, b);
+    }
+
+    // Swap properties Map entries (preserves owner/bananaPile state)
+    const propA = this.properties.get(posA);
+    const propB = this.properties.get(posB);
+    this.properties.delete(posA);
+    this.properties.delete(posB);
+    if (propA) this.properties.set(posB, propA);
+    if (propB) this.properties.set(posA, propB);
+
+    // Update player property lists to follow the swap
+    for (const p of this.players) {
+      if (!p.properties) continue;
+      p.properties = p.properties.map((pos) => {
+        if (pos === posA) return posB;
+        if (pos === posB) return posA;
+        return pos;
+      });
+    }
+  }
+
   _bombEliminate(victim, placer) {
     const loot = victim.money;
     const transferredTiles = [...victim.properties];
+    const victimPosition = victim.position;
     victim.bankrupt = true;
     victim.money = 0;
     let kill = null;
-    // Transfer properties to placer
+    // Transfer path \u2014 classic kill: properties + loot move to the placer. In
+    // simple mode the placer is immune to their own bomb, so a successful
+    // enemy bomb still rewards the bomber the standard way.
     if (placer && !placer.bankrupt && placer.id !== victim.id) {
       placer.money += loot;
       for (const pos of transferredTiles) {
@@ -4605,6 +5200,7 @@ class MonopolyGame {
       kill = {
         victimId: victim.id,
         victimName: victim.name,
+        victimPosition,
         placerId: placer.id,
         placerName: placer.name,
         loot,
@@ -4617,6 +5213,7 @@ class MonopolyGame {
       kill = {
         victimId: victim.id,
         victimName: victim.name,
+        victimPosition,
         placerId: placer ? placer.id : null,
         placerName: placer ? placer.name : null,
         loot: 0,
@@ -4655,7 +5252,9 @@ class MonopolyGame {
 
   _revealAllTiles() {
     for (const p of this.players) {
-      for (let i = 0; i < BOARD_SIZE; i++) p.revealedTiles.add(i);
+      for (let i = 0; i < this.boardSize; i++) p.revealedTiles.add(i);
+      // Everything is now genuinely on display — nothing remains scouted-only.
+      if (p.scoutedTiles) p.scoutedTiles.clear();
     }
   }
 
@@ -4666,6 +5265,7 @@ class MonopolyGame {
     if (this.superBananaWin) return false;
     if (this.itemAuction) return false;
     this._cancelAutoEnd();
+    cur.armedAbility = null; // safety: drop any unconsumed armed item at turn end
     this.petCoinFlip = null;
     this.petUsedThisTurn = false;
     this.diceMatchTiles = null;
@@ -4673,6 +5273,7 @@ class MonopolyGame {
     this.diceMatchEarlyPickup = null;
     this.growSquatterSteals = null;
     this.lastGrowFired = null;
+    this.lastGrowActivated = null;
     this.lastPetUsed = null;
     this.lastStartPick = null;
     this.lastTeleport = null;
@@ -5151,6 +5752,11 @@ class MonopolyGame {
       return entry;
     });
 
+    // Simple mode: grow tiles genuinely revealed (by landing, not merely
+    // scouted) by ANY player. The Owned-Farms chart anchors each farm to the
+    // nearest such grow, so grouping matches how grows actually fire.
+    const genuineRevealedGrows = this._genuineRevealedGrowPositions();
+
     return {
       gameId: this.gameId,
       state: this.state,
@@ -5159,6 +5765,7 @@ class MonopolyGame {
       maxPlayers: this.maxPlayers,
       startingMoney: this.startingMoney,
       bombMode: this.bombMode,
+      bombCost: this.bombCost,
       noAuctionTimer: this.noAuctionTimer,
       monkeyPoker: this.monkeyPoker,
       turn: this.turn,
@@ -5169,35 +5776,59 @@ class MonopolyGame {
         return {
           ...p,
           revealedTiles: [...p.revealedTiles],
+          // Scouting is private ("visible only to you"), so only the viewer
+          // gets their scouted-only set — used to render a translucent veil.
+          scoutedTiles: isViewer ? [...(p.scoutedTiles || [])] : [],
           pet: hidePet ? "hidden" : p.pet,
           petCooldown: hidePet ? 0 : p.petCooldown,
           pendingPet: p.pendingPet ? p.pendingPet.type : null,
+          // Your armed item is private until it fires — only you see it.
+          armedAbility: isViewer ? p.armedAbility || null : null,
         };
       }),
       dice: this.dice,
       diceRolled: this.diceRolled,
       properties,
       boardLayout,
+      genuineRevealedGrows,
       auction: this.auction
-        ? {
-            position: this.auction.position,
-            propName: this.auction.propName,
-            propPrice: this.auction.propPrice,
-            propGroup: this.auction.propGroup,
-            phase: this.auction.phase,
-            landingPlayer: this.auction.landingPlayer,
-            magicUser: this.auction.magicUser || null,
-            landerOpenBid: this.auction.landerOpenBid ?? null,
-            respondDeadline: this.auction.respondDeadline || null,
-            respondStartTime: this.auction.respondStartTime || null,
-            acceptTime: this.auction.acceptTime || null,
-            bids: Object.fromEntries(
-              Object.entries(this.auction.bids).map(([id, b]) => [
-                id,
-                { placed: b.placed, passed: b.passed },
-              ]),
-            ),
-          }
+        ? (() => {
+            const a = this.auction;
+            const isAcceptor = !!(
+              a.acceptorIds && a.acceptorIds.includes(viewerId)
+            );
+            // Each viewer only ever sees their OWN accept/reject + top-up;
+            // everyone else's status is withheld during the live phases.
+            const bids = {};
+            for (const [id, b] of Object.entries(a.bids)) {
+              const entry = { isLander: id === a.landingPlayer };
+              if (id === viewerId) {
+                entry.placed = !!b.placed;
+                entry.responded = !!b.responded;
+                entry.accepted = b.accepted ?? null;
+                entry.submittedTopup = !!b.submittedTopup;
+                entry.topup = b.topup ?? null;
+                entry.isAcceptor = isAcceptor;
+              }
+              bids[id] = entry;
+            }
+            return {
+              position: a.position,
+              propName: a.propName,
+              propPrice: a.propPrice,
+              propGroup: a.propGroup,
+              phase: a.phase, // 'pitch' | 'respond' | 'silentbid'
+              landingPlayer: a.landingPlayer,
+              magicUser: a.magicUser || null,
+              landerOpenBid: a.landerOpenBid ?? null,
+              respondDeadline: a.respondDeadline || null,
+              respondStartTime: a.respondStartTime || null,
+              silentDeadline: a.silentDeadline || null,
+              silentStartTime: a.silentStartTime || null,
+              iAmAcceptor: isAcceptor,
+              bids,
+            };
+          })()
         : null,
       mushroomPending: this.mushroomPending
         ? { mushroomPos: this.mushroomPending.mushroomPos }
@@ -5233,16 +5864,25 @@ class MonopolyGame {
       diceMatchEarlyPickup: this.diceMatchEarlyPickup != null ? this.diceMatchEarlyPickup : null,
       growSquatterSteals: this.growSquatterSteals || null,
       lastGrowFired: this.lastGrowFired || null,
+      lastGrowActivated: this.lastGrowActivated || null,
       lastStartPick: this.lastStartPick || null,
       lastTeleport: this.lastTeleport || null,
       lastTileSwap: this.lastTileSwap || null,
+      pendingTileShuffles: Array.isArray(this.pendingTileShuffles)
+        ? this.pendingTileShuffles.map((p) => ({
+            color: p.color,
+            leavingName: p.leavingName,
+            positions: [...p.positions],
+            endsAt: p.endsAt,
+          }))
+        : null,
+      lastTileShuffle: this.lastTileShuffle || null,
       simpleCardUsedThisTurn: !!this.simpleCardUsedThisTurn,
       superBananaWin: this.superBananaWin || null,
       sellListings: this.sellListings.map((l) => ({ ...l })),
       lobbyReady: this._lobbyReady ? [...this._lobbyReady] : [],
       // Simple-mode item auction
       itemAuctionEnabled: !!this.itemAuctionEnabled,
-      itemAuctionVickrey: !!this.itemAuctionVickrey,
       itemAuctionTimer: this.itemAuctionTimer,
       itemAuctionStartValue: this.itemAuctionStartValue,
       itemAuctionCounter: this.itemAuctionCounter,
@@ -5253,26 +5893,37 @@ class MonopolyGame {
   _serializeItemAuction(viewerId) {
     const a = this.itemAuction;
     if (!a) return null;
-    const showAllAmounts = a.phase === "result";
-    const bids = {};
-    for (const [id, b] of Object.entries(a.bids || {})) {
-      bids[id] = {
-        submitted: !!b.submitted,
-        autoPass: !!b.autoPass,
-        amount:
-          showAllAmounts || id === viewerId ? (b.amount ?? null) : null,
-      };
-    }
+    // The spun item is secret until the result; only the starter sees it
+    // during wheel/pitch/respond/silentbid.
+    const revealItem = a.phase === "result" || viewerId === a.startedBy;
+    const isAcceptor = !!(a.acceptorIds && a.acceptorIds.includes(viewerId));
+    const myBid = a.bids && a.bids[viewerId] ? a.bids[viewerId] : null;
     return {
-      phase: a.phase, // 'wheel' | 'bidding' | 'result'
-      item: a.item || null,
+      phase: a.phase, // 'wheel' | 'pitch' | 'respond' | 'silentbid' | 'result'
+      item: revealItem ? a.item || null : null,
+      startedBy: a.startedBy || null,
       wheelStartedAt: a.wheelStartedAt || null,
       wheelEndsAt: a.wheelEndsAt || null,
-      deadline: a.deadline || null,
-      bids,
-      participantIds: a.participantIds || [],
-      result: a.result || null,
-      vickrey: !!this.itemAuctionVickrey,
+      listPrice: a.listPrice ?? null,
+      respondDeadline: a.respondDeadline || null,
+      respondStartTime: a.respondStartTime || null,
+      silentDeadline: a.silentDeadline || null,
+      silentStartTime: a.silentStartTime || null,
+      participantCount: (a.participantIds || []).length,
+      excludedIds: a.excludedIds || [],
+      iAmStarter: viewerId === a.startedBy,
+      iAmParticipant: !!(
+        a.participantIds && a.participantIds.includes(viewerId)
+      ),
+      iAmExcluded: !!(a.excludedIds && a.excludedIds.includes(viewerId)),
+      iAmAcceptor: isAcceptor,
+      // Viewer's own status only — never leak others' accept/reject or top-ups.
+      myResponded: myBid ? !!myBid.responded : false,
+      myAccepted: myBid ? (myBid.accepted ?? null) : null,
+      mySubmittedTopup: myBid ? !!myBid.submittedTopup : false,
+      myTopup: myBid ? (myBid.topup ?? null) : null,
+      itemAuctionTimer: this.itemAuctionTimer,
+      result: a.result || null, // winner + price only
     };
   }
 
