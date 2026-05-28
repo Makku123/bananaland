@@ -493,7 +493,10 @@ function initSocket() {
     myId = socket.id;
     // Simple mode re-skins the four player colours to Red/Green/Blue/Black
     // (scoped CSS overrides hang off this body class).
-    document.body.classList.toggle("mode-simple", state.gameMode === "simple");
+    document.body.classList.toggle(
+      "mode-simple",
+      state.gameMode === "simple" || state.gameMode === "simple_teams",
+    );
     // Sync no-timer toggle with server state
     const noTimerChk = document.getElementById("chk-no-timer");
     if (noTimerChk) noTimerChk.checked = !!gs.noAuctionTimer;
@@ -856,7 +859,9 @@ function showReveal() {
 
   const content = document.createElement("div");
   content.className = "reveal-content";
-  if (gs.gameMode === "simple") content.classList.add("reveal-content--simple");
+  const _isSimpleAny =
+    gs.gameMode === "simple" || gs.gameMode === "simple_teams";
+  if (_isSimpleAny) content.classList.add("reveal-content--simple");
 
   // Title
   const title = document.createElement("div");
@@ -866,16 +871,15 @@ function showReveal() {
 
   const subtitle = document.createElement("div");
   subtitle.className = "reveal-subtitle";
-  subtitle.textContent =
-    gs.gameMode === "simple"
-      ? "Here's every tile in this run \u2014 shuffled fresh."
-      : "Here are all the tiles this game...";
+  subtitle.textContent = _isSimpleAny
+    ? "Here's every tile in this run \u2014 shuffled fresh."
+    : "Here are all the tiles this game...";
   content.appendChild(subtitle);
 
   // Simple mode uses a dedicated grouping (Farms / Grow Tiles / Special Tiles)
   // because its tiles all share `group: "simple"` and would otherwise be
   // dropped by the classic colour-keyed renderer below.
-  if (gs.gameMode === "simple") {
+  if (_isSimpleAny) {
     _renderSimpleReveal(content);
     _attachRevealCountdown(content, overlay);
     return;
@@ -1276,14 +1280,18 @@ function showLobby() {
   const modeLabel =
     gs.gameMode === "teams"
       ? "2v2 Teams"
-      : gs.gameMode === "simple"
-        ? "Simple Mode"
-        : "Free for All";
+      : gs.gameMode === "simple_teams"
+        ? "2v2 Simple Teams"
+        : gs.gameMode === "simple"
+          ? "Simple Mode"
+          : "Free for All";
+  const _superBananaWinModes =
+    gs.gameMode === "teams" || gs.gameMode === "simple_teams";
   settingsEl.innerHTML = `
     <div class="lobby-setting">\ud83c\udf4c <span class="lobby-setting-val">${gs.startingMoney || 500}</span></div>
     <div class="lobby-setting">\ud83d\udc65 <span class="lobby-setting-val">${gs.maxPlayers || 4} max</span></div>
     <div class="lobby-setting">\ud83c\udfae <span class="lobby-setting-val">${modeLabel}</span></div>
-    ${gs.gameMode === "teams" ? `<div class="lobby-setting">\u2b50 <span class="lobby-setting-val">Win: Buy the Super Banana (7777\ud83c\udf4c)</span></div>` : ""}
+    ${_superBananaWinModes ? `<div class="lobby-setting">\u2b50 <span class="lobby-setting-val">Win: Buy the Super Banana (7777\ud83c\udf4c)</span></div>` : ""}
     ${gs.bombMode ? '<div class="lobby-setting">\ud83c\udf4d <span class="lobby-setting-val">Pineapple Bomb Mode</span></div>' : ""}
     ${gs.monkeyPoker ? '<div class="lobby-setting">\ud83d\udc35 <span class="lobby-setting-val">Monkey Poker</span></div>' : ""}
     ${!gs.monkeyPoker ? '<div class="lobby-setting">\ud83c\udccf <span class="lobby-setting-val">Real Poker</span></div>' : ""}
@@ -1306,7 +1314,7 @@ function showLobby() {
       document.getElementById("lobby-bananas-display").textContent =
         gs.startingMoney || 3333;
       lobbyMode.value = gs.gameMode || "ffa";
-      if (gs.gameMode === "teams") {
+      if (gs.gameMode === "teams" || gs.gameMode === "simple_teams") {
         lobbyMax.value = "4";
         lobbyMax.disabled = true;
       } else {
@@ -1359,18 +1367,20 @@ function showLobby() {
         ? '<span class="lobby-player-role">\ud83d\udc51 Host</span>'
         : "";
     const editHint = "";
-    const teamTag =
-      gs.gameMode === "teams"
-        ? `<span class="lobby-team-tag">${idx < 2 ? "Team A" : "Team B"}</span>`
+    const isTeamMode =
+      gs.gameMode === "teams" || gs.gameMode === "simple_teams";
+    const isSimpleAny =
+      gs.gameMode === "simple" || gs.gameMode === "simple_teams";
+    const teamTag = isTeamMode
+      ? `<span class="lobby-team-tag">${idx < 2 ? "Team A" : "Team B"}</span>`
+      : "";
+    const petBadge = isSimpleAny
+      ? ""
+      : p.pet
+        ? p.pet === "hidden"
+          ? `<span class="lobby-pet-badge">\u2713 Pet chosen</span>`
+          : `<span class="lobby-pet-badge">${PET_EMOJIS[p.pet] || "\ud83d\udc3e"} ${petDisplayName(p.pet)}</span>`
         : "";
-    const petBadge =
-      gs.gameMode === "simple"
-        ? ""
-        : p.pet
-          ? p.pet === "hidden"
-            ? `<span class="lobby-pet-badge">\u2713 Pet chosen</span>`
-            : `<span class="lobby-pet-badge">${PET_EMOJIS[p.pet] || "\ud83d\udc3e"} ${petDisplayName(p.pet)}</span>`
-          : "";
     const hostActions = (isHost && !isMe && gs.state === "waiting")
       ? `<div class="lobby-host-actions">
            <button class="lobby-btn-transfer" data-id="${p.id}" title="Transfer host">👑</button>
@@ -1395,7 +1405,7 @@ function showLobby() {
     const slot = document.createElement("div");
     slot.className = "lobby-slot-empty";
     const teamTag =
-      gs.gameMode === "teams"
+      gs.gameMode === "teams" || gs.gameMode === "simple_teams"
         ? `<span class="lobby-team-tag">${i < 2 ? "Team A" : "Team B"}</span>`
         : "";
     slot.innerHTML =
@@ -1435,7 +1445,7 @@ function showLobby() {
     waitingEl.style.display = "flex";
     waitingTextEl.textContent =
       `Waiting for players to return (${readyCount}/${totalCount})`;
-  } else if (gs.gameMode === "teams") {
+  } else if (gs.gameMode === "teams" || gs.gameMode === "simple_teams") {
     waitingEl.style.display = gs.players.length < 4 ? "flex" : "none";
     waitingTextEl.textContent = "Waiting for players";
   } else {
@@ -1447,7 +1457,7 @@ function showLobby() {
   const allHavePets = gs.players.every((p) => p.pet);
   if (waitingForLobby) {
     btn.disabled = true;
-  } else if (gs.gameMode === "teams") {
+  } else if (gs.gameMode === "teams" || gs.gameMode === "simple_teams") {
     btn.disabled = !(
       myId === gs.admin &&
       gs.players.length === 4 &&
@@ -1522,7 +1532,13 @@ const PET_NAMES = {
 
 // Simple mode renames the strong pet to "Magic Dice" everywhere it shows up.
 function petDisplayName(petType) {
-  if (gs && gs.gameMode === "simple" && petType === "strong") return "Magic Dice";
+  if (
+    gs &&
+    (gs.gameMode === "simple" || gs.gameMode === "simple_teams") &&
+    petType === "strong"
+  ) {
+    return "Magic Dice";
+  }
   return PET_NAMES[petType] || "Pet";
 }
 
@@ -1599,7 +1615,12 @@ const SIMPLE_PLAYER_COLOR_HEX = {
 // match, fires pre-walk; "land" = a grow you landed on, fires after arrival),
 // de-duplicated.
 function _computeGrowPulseBySource(gs, source) {
-  if (!gs || gs.gameMode !== "simple") return [];
+  if (
+    !gs ||
+    (gs.gameMode !== "simple" && gs.gameMode !== "simple_teams")
+  ) {
+    return [];
+  }
   const act = gs.lastGrowActivated;
   if (!Array.isArray(act) || act.length === 0) return [];
   const seen = new Set();
@@ -1845,8 +1866,8 @@ function updateMagicDiceBox(me, isMyTurn) {
 function updateLobbyPets() {
   const petSection = document.getElementById("lobby-pet-section");
   if (!petSection || !gs) return;
-  // Simple mode auto-assigns Magic Dice — hide the picker entirely.
-  if (gs.gameMode === "simple") {
+  // Simple modes auto-assign Magic Dice — hide the picker entirely.
+  if (gs.gameMode === "simple" || gs.gameMode === "simple_teams") {
     petSection.style.display = "none";
     return;
   }
@@ -1866,7 +1887,7 @@ function updatePetAbilityBox(me, isMyTurn) {
   const box = document.getElementById("pet-ability-box");
   // Simple mode has no pet/cooldown UI here — Magic Dice is a won item shown in
   // the "Your Special Items" box (see updateSpecialItems). Hide both panels.
-  if (gs && gs.gameMode === "simple") {
+  if (gs && (gs.gameMode === "simple" || gs.gameMode === "simple_teams")) {
     if (box) box.style.display = "none";
     const magicBox = document.getElementById("magic-dice-box");
     if (magicBox) magicBox.style.display = "none";
@@ -2005,7 +2026,14 @@ function updatePetAbilityBox(me, isMyTurn) {
 }
 
 // ── Money Deduction Popup ──────────────────────────────────────────
+// CONTRACT: call ONLY when the player's banana score has just decreased.
+// The general money-delta detector in the game_update handler is the
+// authoritative caller; other call sites must already know money went down
+// (e.g. deferred deductions from that same detector). The amount guard below
+// silently no-ops on 0/negative amounts so a stray call can't draw stray
+// flying bananas. Pair with bananaBurst() for the inverse (score went up).
 function _showMoneyDeduction(playerId, amount) {
+  if (!amount || amount <= 0) return;
   // Show flying bananas from the player's token (up to 5, no text)
   const player = gs && gs.players && gs.players.find((p) => p.id === playerId);
   if (player != null) {
@@ -2058,6 +2086,17 @@ function _showMoneyDeduction(playerId, amount) {
 function _animateMoneyEl(el, targetVal, suffix) {
   if (!el) return;
   suffix = suffix || "\ud83c\udf4c";
+  // Simple modes get a per-digit slot-machine wheel (each reel spins upward
+  // on a gain, downward on a loss). Classic / ffa keep the existing smooth
+  // counter so they look unchanged for players used to that mode.
+  if (
+    typeof gs !== "undefined" &&
+    gs &&
+    (gs.gameMode === "simple" || gs.gameMode === "simple_teams")
+  ) {
+    _animateMoneyWheel(el, targetVal, suffix);
+    return;
+  }
   // Skip if already displaying or animating toward this target
   if (el._moneyAnimTarget === targetVal) return;
   el._moneyAnimTarget = targetVal;
@@ -2114,6 +2153,181 @@ function _animateMoneyEl(el, targetVal, suffix) {
     }
   }
   el._moneyAnimFrame = requestAnimationFrame(tick);
+}
+
+// ── Slot-machine money wheel (simple modes) ───────────────────────
+//
+// Each digit position is its own reel: a vertical strip of digits that
+// slides through the visible 1-em-tall window. Gains spin the reels
+// UPWARD (digits scroll up out of view, new digits rise in from below);
+// losses spin DOWNWARD. After the animation settles the element's text
+// content is reset to the plain `${target}${suffix}` string so anything
+// that reads textContent (the parser at the top of _animateMoneyEl, for
+// example) sees a normal number again.
+function _animateMoneyWheel(el, targetVal, suffix) {
+  if (!el) return;
+  suffix = suffix || "🍌";
+  if (typeof targetVal !== "number" || !Number.isFinite(targetVal)) return;
+  targetVal = Math.round(targetVal);
+
+  // Treat a re-call with the same target as a no-op so frequent renders
+  // don't restart the spin from scratch.
+  if (el._wheelTarget === targetVal) return;
+
+  // Resolve current value: prefer the cached "last target" (accurate even
+  // mid-spin) over parsing textContent (which during a spin contains every
+  // digit on every reel concatenated).
+  let currentVal = el._wheelTarget;
+  if (currentVal == null) {
+    const raw = (el.textContent || "").replace(/[^\d-]/g, "");
+    currentVal = parseInt(raw, 10);
+  }
+  if (!Number.isFinite(currentVal)) currentVal = targetVal;
+
+  el._wheelTarget = targetVal;
+
+  if (currentVal === targetVal) {
+    if (el._wheelTimer) {
+      clearTimeout(el._wheelTimer);
+      el._wheelTimer = null;
+    }
+    el.textContent = `${targetVal}${suffix}`;
+    return;
+  }
+
+  // Cancel any settle timer from a prior spin so we don't snap text away
+  // while the new spin is running.
+  if (el._wheelTimer) {
+    clearTimeout(el._wheelTimer);
+    el._wheelTimer = null;
+  }
+
+  const direction = targetVal > currentVal ? "up" : "down";
+  const currentAbs = Math.abs(currentVal);
+  const targetAbs = Math.abs(targetVal);
+  const currentStr = String(currentAbs);
+  const targetStr = String(targetAbs);
+  const maxLen = Math.max(currentStr.length, targetStr.length);
+  const padCurrent = currentStr.padStart(maxLen, "0");
+  const padTarget = targetStr.padStart(maxLen, "0");
+
+  // Per-step duration (~70 ms feels like a real slot reel), with a min and
+  // max so tiny changes don't feel instant and huge ones don't drag.
+  const absDiff = Math.abs(targetVal - currentVal);
+  const baseMs = Math.min(950, Math.max(450, 350 + Math.log10(absDiff + 1) * 220));
+
+  // Rebuild the element: optional sign, N reels, suffix.
+  el.innerHTML = "";
+  if (targetVal < 0) {
+    const sign = document.createElement("span");
+    sign.className = "money-sign";
+    sign.textContent = "-";
+    el.appendChild(sign);
+  }
+
+  const reelAnimators = [];
+  for (let i = 0; i < maxLen; i++) {
+    const fromDigit = parseInt(padCurrent[i], 10);
+    const toDigit = parseInt(padTarget[i], 10);
+    const built = _buildMoneyReel(fromDigit, toDigit, direction);
+    el.appendChild(built.reel);
+    reelAnimators.push(built.animate);
+  }
+
+  const sfx = document.createElement("span");
+  sfx.className = "money-suffix";
+  sfx.textContent = suffix;
+  el.appendChild(sfx);
+
+  if (direction === "up") {
+    el.classList.add("money-anim-up");
+    el.classList.remove("money-anim-down");
+  } else {
+    el.classList.add("money-anim-down");
+    el.classList.remove("money-anim-up");
+  }
+
+  // Kick off the CSS transitions on the next frame so the initial transform
+  // is committed first (otherwise the browser would collapse start+end into
+  // a single repaint and skip the animation).
+  requestAnimationFrame(() => {
+    for (const fn of reelAnimators) fn(baseMs);
+  });
+
+  // After the spin settles, flatten back to plain text so future reads
+  // (or callers that snapshot textContent) see a clean number.
+  el._wheelTimer = setTimeout(() => {
+    el._wheelTimer = null;
+    // Guard against a newer spin having claimed the element already.
+    if (el._wheelTarget !== targetVal) return;
+    el.textContent = `${targetVal}${suffix}`;
+    setTimeout(() => {
+      if (el._wheelTarget !== targetVal) return;
+      el.classList.remove("money-anim-up", "money-anim-down");
+    }, 380);
+  }, baseMs + 120);
+}
+
+function _buildMoneyReel(fromDigit, toDigit, direction) {
+  const reel = document.createElement("span");
+  reel.className = "money-digit-reel";
+
+  if (fromDigit === toDigit) {
+    const digit = document.createElement("span");
+    digit.className = "money-digit";
+    digit.textContent = String(toDigit);
+    reel.appendChild(digit);
+    return { reel, animate: () => {} };
+  }
+
+  // Walk the digits from `fromDigit` toward `toDigit` in the chosen
+  // direction (wrapping 0..9). Sequence always starts with fromDigit and
+  // ends with toDigit; for a 1-step change that's two entries.
+  const sequence = [fromDigit];
+  let cur = fromDigit;
+  const advance =
+    direction === "up"
+      ? (d) => (d + 1) % 10
+      : (d) => (d - 1 + 10) % 10;
+  while (cur !== toDigit) {
+    cur = advance(cur);
+    sequence.push(cur);
+  }
+
+  // UP: strip in natural order, scroll up (translateY 0 → -(N-1)em) so the
+  //     visible digit climbs through higher values.
+  // DOWN: strip reversed, scroll down (translateY -(N-1)em → 0) so visible
+  //       digits appear to fall toward smaller values.
+  const stripItems = direction === "up" ? sequence : [...sequence].reverse();
+  const totalSteps = sequence.length - 1;
+
+  const strip = document.createElement("span");
+  strip.className = "money-digit-strip";
+  for (const d of stripItems) {
+    const digit = document.createElement("span");
+    digit.className = "money-digit";
+    digit.textContent = String(d);
+    strip.appendChild(digit);
+  }
+  reel.appendChild(strip);
+
+  // Set the initial transform so the strip starts with fromDigit in view.
+  const startTransform =
+    direction === "up" ? "translateY(0)" : `translateY(-${totalSteps}em)`;
+  const endTransform =
+    direction === "up" ? `translateY(-${totalSteps}em)` : "translateY(0)";
+  strip.style.transform = startTransform;
+
+  return {
+    reel,
+    animate: (durationMs) => {
+      // Force layout so the start transform is committed before we set the
+      // end transform — otherwise the browser short-circuits the transition.
+      void strip.offsetHeight;
+      strip.style.transition = `transform ${durationMs}ms cubic-bezier(0.34, 0.04, 0.18, 1)`;
+      strip.style.transform = endTransform;
+    },
+  };
 }
 
 // ── Property Card Flip Animation ───────────────────────────────────
@@ -2206,7 +2420,9 @@ function showGame() {
   {
     const isMyTurnLabel = cur && cur.id === myId;
     const startPickLabel =
-      cur && cur.startPickPending && gs.gameMode === "simple";
+      cur &&
+      cur.startPickPending &&
+      (gs.gameMode === "simple" || gs.gameMode === "simple_teams");
     document.getElementById("turn-name").textContent = cur
       ? isMyTurnLabel
         ? startPickLabel
@@ -2253,7 +2469,7 @@ function showGame() {
   }
   const rollDelayDone = window._rollReady || gs.diceRolled;
   const needsStartPick =
-    gs.gameMode === "simple" &&
+    (gs.gameMode === "simple" || gs.gameMode === "simple_teams") &&
     gs.currentPlayer &&
     !!gs.currentPlayer.startPickPending;
   const canRoll =
@@ -2272,7 +2488,8 @@ function showGame() {
   // mode the Rabbit/Cheetah dice are won items, armed from the "Your Special
   // Items" box (updateSpecialItems), so these two buttons are hidden.
   const myMoney = me ? me.money : 0;
-  const simpleMode = gs.gameMode === "simple";
+  const simpleMode =
+    gs.gameMode === "simple" || gs.gameMode === "simple_teams";
   const roll1Btn = document.getElementById("btn-roll-1");
   const roll3Btn = document.getElementById("btn-roll-3");
   const armedDice = window._armedDiceOverride || null;
@@ -2318,7 +2535,7 @@ function showGame() {
   const rollBtn = document.getElementById("btn-roll");
   const myArmed = me && me.armedAbility;
   if (rollBtn) {
-    if (canRoll && gs.gameMode === "simple" && myArmed) {
+    if (canRoll && (gs.gameMode === "simple" || gs.gameMode === "simple_teams") && myArmed) {
       rollBtn.textContent = _ARMED_ROLL_LABEL[myArmed] || "Roll Dice";
     } else if (canRoll && armedDice) {
       rollBtn.textContent = `\uD83C\uDFB2 Roll (${armedDice} ${armedDice === 1 ? "die" : "dice"})`;
@@ -2374,7 +2591,7 @@ function showGame() {
   // normal roll. It sets petUsedThisTurn, so the regular gate would skip it —
   // detect it explicitly: a single chosen value > 0 that actually moves.
   const isMagicDiceWalk =
-    gs.gameMode === "simple" &&
+    (gs.gameMode === "simple" || gs.gameMode === "simple_teams") &&
     gs.petUsedThisTurn &&
     gs.lastPetUsed &&
     gs.lastPetUsed.petType === "strong" &&
@@ -2428,7 +2645,8 @@ function showGame() {
       // backend just stole on their behalf (cur doesn't own it; pile now 0).
       // The banana burst + money update still fire at walk-end via path #2.
       if (
-        gs && gs.gameMode === "simple" &&
+        gs &&
+        (gs.gameMode === "simple" || gs.gameMode === "simple_teams") &&
         window._prevPlayerPositions &&
         window._prevBananaPileState
       ) {
@@ -2489,7 +2707,8 @@ function showGame() {
           const landGrows = _computeLandGrowPulse(gs);
           const usePulse = pulseGrows.length > 0;
           const anyGrowPulse =
-            gs.gameMode === "simple" && (pulseGrows.length > 0 || landGrows.length > 0);
+            (gs.gameMode === "simple" || gs.gameMode === "simple_teams") &&
+            (pulseGrows.length > 0 || landGrows.length > 0);
           // Show dice-match pile grows immediately when dice settle
           const hasDiceMatch = gs.diceMatchTiles && gs.diceMatchTiles.length > 0;
           if (anyGrowPulse) window._pulseRevealedTiles = new Set();
@@ -2596,7 +2815,7 @@ function showGame() {
                 const _wasHidden = window._diceRollingRevealed && !window._diceRollingRevealed.has(cur.position);
                 const _isMe = cur.id === myId;
                 if (_isMe) {
-                  setTimeout(() => showPopupAtBananaBox((gs && gs.gameMode === "simple" ? "+25" : "+500") + "\uD83C\uDF4C", "free-bananas-popup-player"), _wasHidden ? 1100 : 100);
+                  setTimeout(() => showPopupAtBananaBox((gs && (gs.gameMode === "simple" || gs.gameMode === "simple_teams") ? "+25" : "+500") + "\uD83C\uDF4C", "free-bananas-popup-player"), _wasHidden ? 1100 : 100);
                 } else {
                   setTimeout(() => {
                     const pstat = document.querySelector(`.pstat[data-player-id="${cur.id}"]`);
@@ -2605,7 +2824,7 @@ function showGame() {
                       const rect = anchor.getBoundingClientRect();
                       const floater = document.createElement("div");
                       floater.className = "free-bananas-popup-player";
-                      floater.textContent = (gs && gs.gameMode === "simple" ? "+25" : "+500") + "\uD83C\uDF4C";
+                      floater.textContent = (gs && (gs.gameMode === "simple" || gs.gameMode === "simple_teams") ? "+25" : "+500") + "\uD83C\uDF4C";
                       floater.style.position = "fixed";
                       floater.style.left = rect.left + rect.width / 2 + "px";
                       floater.style.top = rect.top + "px";
@@ -3362,10 +3581,12 @@ function showGame() {
     }
   }
 
-  // Send Bananas button (teams only)
+  // Send Bananas button (any team mode)
   const sendBananasBtn = document.getElementById("btn-send-bananas");
   if (sendBananasBtn) {
-    sendBananasBtn.style.display = gs.gameMode === "teams" ? "" : "none";
+    const isTeamsMode =
+      gs.gameMode === "teams" || gs.gameMode === "simple_teams";
+    sendBananasBtn.style.display = isTeamsMode ? "" : "none";
   }
 
   // Bomb buttons
@@ -3463,7 +3684,7 @@ function showGame() {
   plist.innerHTML = "";
   const isAnimating = !!(window._diceRollingPositions || window._tokenWalking);
   const frozenPlayerMoney = isAnimating ? window._prevPlayerMoney : window._pokerMoneyFrozen || null;
-  if (gs.gameMode === "teams" && gs.teams) {
+  if ((gs.gameMode === "teams" || gs.gameMode === "simple_teams") && gs.teams) {
     // Section off by team
     for (const teamKey of ["A", "B"]) {
       const teamDiv = document.createElement("div");
@@ -3480,7 +3701,11 @@ function showGame() {
         const isMe = p.id === myId;
         div.className = "pstat" + (isMe ? " pstat-me" : "");
         div.setAttribute("data-player-id", p.id);
-        const petTag = p.pet
+        // Simple modes don't surface the pet badge (Magic Dice is a consumable,
+        // shown separately under Special Items).
+        const isSimpleAny =
+          gs.gameMode === "simple" || gs.gameMode === "simple_teams";
+        const petTag = p.pet && !isSimpleAny
           ? `<span class="pstat-pet">${PET_EMOJIS[p.pet] || ""}${p.petCooldown > 0 ? p.petCooldown : "✓"}</span>`
           : "";
         const pileTag = playerPiles[p.id]
@@ -3558,7 +3783,8 @@ function showGame() {
   // Property chart
   updatePropertyChart();
 
-  // Log (floating panel)
+  // Log (floating panel). Entries are strings, or { text, color } when the
+  // backend wants to theme a line (e.g. friendly steals render green).
   const logEl = document.getElementById("board-log-messages");
   if (logEl) {
     logEl.innerHTML = "";
@@ -3567,7 +3793,12 @@ function showGame() {
       .reverse()
       .forEach((msg) => {
         const d = document.createElement("div");
-        d.textContent = msg;
+        if (msg && typeof msg === "object") {
+          d.textContent = msg.text || "";
+          if (msg.color) d.classList.add("log-color-" + msg.color);
+        } else {
+          d.textContent = msg;
+        }
         logEl.appendChild(d);
       });
     logEl.scrollTop = 0;
@@ -3602,7 +3833,8 @@ function updateOwnerPanel() {
   const el = document.getElementById("owner-list");
   if (!el) return;
   el.innerHTML = "";
-  const isSimpleMode = gs && gs.gameMode === "simple";
+  const isSimpleMode =
+    gs && (gs.gameMode === "simple" || gs.gameMode === "simple_teams");
   const GROUP_NAMES = isSimpleMode
     ? { simple: "Farms" }
     : {
@@ -3838,7 +4070,9 @@ function updatePropertyChart() {
   if (!gs || !gs.boardLayout) return;
 
   const chartGroups =
-    gs.gameMode === "simple" ? CHART_GROUPS_SIMPLE : CHART_GROUPS;
+    gs.gameMode === "simple" || gs.gameMode === "simple_teams"
+      ? CHART_GROUPS_SIMPLE
+      : CHART_GROUPS;
 
   // Build map: group -> [{name, price, owner, ownerColor}]
   const grouped = {};
@@ -3913,7 +4147,7 @@ function updateGrowChart() {
   // that point; before then tiles still read "GROW 100%".
   if (
     !gs ||
-    gs.gameMode !== "simple" ||
+    (gs.gameMode !== "simple" && gs.gameMode !== "simple_teams") ||
     gs.state !== "playing" ||
     !gs.boardLayout
   ) {
@@ -3990,7 +4224,8 @@ function updateTileLegend() {
     if (counts[tile.type] !== undefined) counts[tile.type]++;
   }
 
-  const isSimple = gs && gs.gameMode === "simple";
+  const isSimple =
+    gs && (gs.gameMode === "simple" || gs.gameMode === "simple_teams");
   const entries = [
     { icon: "🌿", name: "Vine Swing", count: counts.bus },
     {
@@ -4117,9 +4352,11 @@ function _handlePublicLobbies(lobbies) {
     const modeLabel =
       l.gameMode === "teams"
         ? "Teams"
-        : l.gameMode === "simple"
-          ? "Simple"
-          : "FFA";
+        : l.gameMode === "simple_teams"
+          ? "2v2 Simple"
+          : l.gameMode === "simple"
+            ? "Simple"
+            : "FFA";
     return `<button class="public-lobby-item" onclick="joinPublicLobby('${l.gameId}')">
       <div class="public-lobby-host">${l.hostName}'s game</div>
       <div class="public-lobby-details">
@@ -4148,7 +4385,11 @@ function rollDice(diceCount) {
   const armed = (meNow && meNow.armedAbility) || null;
   // Simple mode: a manual Roll with Roll One / Vine Swing armed triggers that
   // item instead of a normal roll. (Legacy key magicDice = Roll One.)
-  if (diceCount === undefined && gs && gs.gameMode === "simple") {
+  if (
+    diceCount === undefined &&
+    gs &&
+    (gs.gameMode === "simple" || gs.gameMode === "simple_teams")
+  ) {
     if (armed === "magicDice") {
       useMagicDice(1); // Roll One — guaranteed move of 1
       return;
@@ -4165,7 +4406,7 @@ function rollDice(diceCount) {
   if (
     override === undefined &&
     gs &&
-    gs.gameMode === "simple" &&
+    (gs.gameMode === "simple" || gs.gameMode === "simple_teams") &&
     (armed === "rabbitDice" || armed === "cheetahDice")
   ) {
     override = armed === "rabbitDice" ? 1 : 3;
@@ -4538,15 +4779,21 @@ function updateAuctionPanel() {
   if (titleEl) titleEl.textContent = "🏷️ PRICE IT 🏷️";
   box.style.display = "block";
 
-  // Only the lander sees the farm name/yield; everyone else bids blind.
+  // In classic mode only the lander sees the farm; in 2v2 simple the
+  // teammate also sees it (the backend sets propName=null for opponents).
+  // Anyone who can see propName here is allowed to — the backend already
+  // gated visibility per viewer.
   const propEl = document.getElementById("auction-prop");
-  if (iAmLander && a.propName) {
+  if (a.propName) {
     propEl.textContent = `${a.propName} — ${a.propPrice}🍌 yield`;
     propEl.className = a.propGroup
       ? "auction-prop g-" + a.propGroup
       : "auction-prop";
-  } else {
+  } else if (a.position != null) {
     propEl.textContent = `Farm #${a.position} (hidden)`;
+    propEl.className = "auction-prop";
+  } else {
+    propEl.textContent = "Mystery farm (hidden)";
     propEl.className = "auction-prop";
   }
 
@@ -4583,7 +4830,7 @@ function updateAuctionPanel() {
       highEl.textContent = "Choice locked in — waiting for the others (nobody can see it).";
     } else {
       const isTeammate =
-        gs.gameMode === "teams" &&
+        (gs.gameMode === "teams" || gs.gameMode === "simple_teams") &&
         gs.teams &&
         a.respondStartTime &&
         _getMyTeamKey() === _getLanderTeamKey(a);
@@ -4984,12 +5231,10 @@ function updatePokerTable() {
       bubble.addEventListener("animationend", () => bubble.remove());
     });
 
-    // 6) Banana burst from both tokens after a beat
-    setTimeout(() => {
-      [pk.bbPlayer, pk.sbPlayer].forEach((pid) => {
-        bananaBurst(3, pid);
-      });
-    }, 800);
+    // (Decorative banana burst removed: both poker players' money just went
+    // DOWN paying the blinds, so a rain animation here would point the wrong
+    // way. The deferred _showMoneyDeduction calls below — fired when the
+    // announcement settles — are the correct visual for the blind payment.)
 
     // 7) Dismiss announcement and open poker table
     setTimeout(() => {
@@ -5471,7 +5716,9 @@ function toggleModeSettings() {
   const teamSettings = document.getElementById("team-settings");
   const maxSelect = document.getElementById("create-max");
   const simpleSettings = document.getElementById("simple-settings");
-  if (mode === "teams") {
+  const isTeams = mode === "teams" || mode === "simple_teams";
+  const isSimple = mode === "simple" || mode === "simple_teams";
+  if (isTeams) {
     teamSettings.style.display = "";
     maxSelect.value = "4";
     maxSelect.disabled = true;
@@ -5480,16 +5727,21 @@ function toggleModeSettings() {
     maxSelect.disabled = false;
   }
   if (simpleSettings) {
-    simpleSettings.style.display = mode === "simple" ? "" : "none";
+    simpleSettings.style.display = isSimple ? "" : "none";
   }
-  // Default starting bananas per mode: 333 in simple, 2222 elsewhere.
+  // Default starting bananas per mode: 333 in simple modes, 2222 elsewhere.
   const bananasEl = document.getElementById("create-bananas");
   const bananasDisp = document.getElementById("bananas-display");
   if (bananasEl) {
-    bananasEl.value = mode === "simple" ? 333 : 2222;
+    bananasEl.value = isSimple ? 333 : 2222;
     if (bananasDisp) bananasDisp.textContent = bananasEl.value;
   }
-  if (mode === "simple") toggleItemAuctionFields();
+  // 2v2 simple bumps bomb cost to 1000 by default (classic/ffa/simple stay 666).
+  const bombCostEl = document.getElementById("create-bomb-cost");
+  if (bombCostEl) {
+    bombCostEl.value = mode === "simple_teams" ? 1000 : 666;
+  }
+  if (isSimple) toggleItemAuctionFields();
 }
 
 function endTurn() {
@@ -5575,7 +5827,7 @@ function cancelAbilityTargeting() {
     socket &&
     gameId &&
     gs &&
-    gs.gameMode === "simple" &&
+    (gs.gameMode === "simple" || gs.gameMode === "simple_teams") &&
     me &&
     me.armedAbility &&
     wasCard === "teleport"
@@ -5665,7 +5917,14 @@ function _dismissAbilitiesPopoverKey(e) {
 // it is NOT your turn; it fires when your turn starts. One armed at a time —
 // arming another swaps it; clicking the armed one disarms.
 function armSpecialAbility(type) {
-  if (!socket || !gameId || !gs || gs.gameMode !== "simple") return;
+  if (
+    !socket ||
+    !gameId ||
+    !gs ||
+    (gs.gameMode !== "simple" && gs.gameMode !== "simple_teams")
+  ) {
+    return;
+  }
   const me = _gsPlayerMap[myId];
   if (!me) return;
   const isMyTurn = !!(gs.currentPlayer && gs.currentPlayer.id === myId);
@@ -5687,7 +5946,7 @@ function updateSpecialItems(me, isMyTurn) {
     me && me.cards && Object.keys(me.cards).some((k) => (me.cards[k] || 0) > 0);
   if (
     !gs ||
-    gs.gameMode !== "simple" ||
+    (gs.gameMode !== "simple" && gs.gameMode !== "simple_teams") ||
     gs.state !== "playing" ||
     !me ||
     me.startPickPending ||
@@ -5745,7 +6004,12 @@ function updateSpecialItems(me, isMyTurn) {
 // auto-roll; Magic Dice / Vine Swing open tile targeting (you pick on your
 // turn). Fires once per turn; clears the armed choice.
 function _maybeFireArmedAbility() {
-  if (!gs || gs.gameMode !== "simple") return;
+  if (
+    !gs ||
+    (gs.gameMode !== "simple" && gs.gameMode !== "simple_teams")
+  ) {
+    return;
+  }
   const me = _gsPlayerMap[myId];
   const armed = me && me.armedAbility;
   if (!armed) return;
@@ -6623,7 +6887,15 @@ function updateSellListingsNotification() {
 function updateSendBananaAmount(val) {
   val = Math.max(0, Math.round(Number(val) || 0));
   const me = gs && _gsPlayerMap[myId];
-  const maxSend = Math.max(1, (me ? me.money : 0) - 150);
+  // 2v2 simple uses a 50-banana fee and caps the amount sent at half the
+  // sender's bananas. Classic teams uses a 150-banana fee, no cap.
+  const isSimpleTeams = gs && gs.gameMode === "simple_teams";
+  const fee = isSimpleTeams ? 50 : 150;
+  const myMoney = me ? me.money : 0;
+  let maxSend = Math.max(1, myMoney - fee);
+  if (isSimpleTeams) {
+    maxSend = Math.min(maxSend, Math.floor(myMoney / 2));
+  }
   val = Math.min(val, maxSend);
   const display = document.getElementById("send-banana-display");
   const hidden = document.getElementById("send-banana-input");
@@ -6633,7 +6905,7 @@ function updateSendBananaAmount(val) {
   if (hidden) hidden.value = val;
   const total = document.getElementById("send-banana-total");
   if (total)
-    total.textContent = `Total cost: ${(val + 150).toLocaleString()}🍌`;
+    total.textContent = `Total cost: ${(val + fee).toLocaleString()}🍌 (fee ${fee})`;
 }
 
 function onSendCalcInput(rawVal) {
@@ -6676,7 +6948,10 @@ function sendTrade() {
     parseInt(document.getElementById("send-banana-input").value) || 0;
   if (amount <= 0) return;
   socket.emit("trade_bananas", { gameId, recipientId: mateId, amount });
-  bananaBurst(amount, myId);
+  // Don't fire bananaBurst here — the sender LOSES bananas (amount + fee),
+  // so the rain animation would lie. The post-trade game_update will fire
+  // _showMoneyDeduction on the sender and bananaBurst on the recipient via
+  // the general money-delta detector.
   closeSendBananas();
 }
 
@@ -6689,6 +6964,14 @@ function toggleSendBananas() {
   }
   // Close sell panel if open
   if (isSellMode()) closeSellPanel();
+  // Tune fee/cap copy for the active mode.
+  const isSimpleTeams = gs.gameMode === "simple_teams";
+  const feeNotice = document.getElementById("send-banana-fee-notice");
+  if (feeNotice) {
+    feeNotice.textContent = isSimpleTeams
+      ? "Transfer fee: 50🍌 · Max send: half your bananas"
+      : "Transfer fee: 150🍌";
+  }
   // Reset calculator
   updateSendBananaAmount(0);
   const sendNumpad = document.getElementById("send-banana-numpad");
@@ -6810,7 +7093,15 @@ function initFloaters() {
   }
 }
 
+// CONTRACT: call ONLY when the player's banana score has just increased.
+// The general money-delta detector in the game_update handler is the
+// authoritative caller; explicit callers during walk animations (pile
+// collection, early pickup, post-walk reconciliation) are intentional and
+// each already correspond to a real gain. The amount guard below silently
+// no-ops on 0/negative amounts so a stray call can't draw stray banana rain.
+// Pair with _showMoneyDeduction() for the inverse (score went down).
 function bananaBurst(amount, playerId, anchorEl) {
+  if (!amount || amount <= 0) return;
   playBananaWhoosh();
   // Caller-supplied anchor takes priority — used for leave-steal so the
   // banana rain falls on the SQUATTED TILE the player is departing, not on

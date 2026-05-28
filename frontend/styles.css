@@ -3031,6 +3031,18 @@ body {
 .board-log-messages div:last-child {
   border-bottom: none;
 }
+.board-log-messages div.log-color-green {
+  color: #4ade80;
+}
+.board-log-messages div.log-color-green:first-child {
+  color: #6ee7a3;
+}
+.board-log-messages div.log-color-red {
+  color: #f87171;
+}
+.board-log-messages div.log-color-red:first-child {
+  color: #fca5a5;
+}
 
 .board-chat-messages {
   flex: 1;
@@ -6553,6 +6565,38 @@ body.mode-simple .space.ability-target:hover {
 }
 #info-money.money-anim-down {
   color: #ff6b6b !important;
+}
+
+/* Per-digit slot-machine wheel used in simple modes. Each .money-digit-reel
+   is a 1-em-tall window; its inner .money-digit-strip is a column of digits
+   that slides through that window. Direction-flip and target digit are
+   computed in _animateMoneyWheel (game.js). Children inherit the parent
+   font weight/colour so the spinning digits read exactly like the static
+   counter rest-state. */
+.money-digit-reel {
+  display: inline-block;
+  height: 1em;
+  line-height: 1em;
+  overflow: hidden;
+  vertical-align: text-bottom;
+  /* Tabular alignment so the visible digit doesn't jitter between widths. */
+  font-variant-numeric: tabular-nums;
+}
+.money-digit-strip {
+  display: flex;
+  flex-direction: column;
+  will-change: transform;
+}
+.money-digit {
+  display: block;
+  height: 1em;
+  line-height: 1em;
+  text-align: center;
+}
+.money-sign,
+.money-suffix {
+  display: inline-block;
+  vertical-align: text-bottom;
 }
 
 .action-box {

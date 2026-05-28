@@ -674,7 +674,11 @@ class MonopolyGame {
     this.gameId = gameId;
     this.isPublic = !!isPublic;
     this.gameMode =
-      gameMode === "teams" || gameMode === "simple" ? gameMode : "ffa";
+      gameMode === "teams" ||
+      gameMode === "simple" ||
+      gameMode === "simple_teams"
+        ? gameMode
+        : "ffa";
     // Simple-mode item auction settings
     const ia = itemAuctionOpts || {};
     this.itemAuctionEnabled = ia.enabled !== false; // default ON
@@ -697,7 +701,7 @@ class MonopolyGame {
     this.lastTileSwap = null; // { a, b, turn } — swap anim hint
     this.pendingTileShuffles = null; // [{ color, leavingName, positions, endsAt }]
     this.lastTileShuffle = null; // { positions, ts } — sound-effect trigger
-    if (this.gameMode === "teams") {
+    if (this._isTeams()) {
       this.maxPlayers = 4;
     } else {
       this.maxPlayers = Math.min(Math.max(maxPlayers || 4, 2), 4);
@@ -707,8 +711,13 @@ class MonopolyGame {
       99999,
     );
     this.bombMode = bombMode !== false; // on by default
-    // Cost to buy a pineapple bomb. Adjustable (create page / lobby); default 666.
-    this.bombCost = Math.min(Math.max(Math.floor(bombCost) || 666, 0), 99999);
+    // Cost to buy a pineapple bomb. Adjustable (create page / lobby); default
+    // 666 (classic/ffa/simple), 1000 in 2v2 simple teams.
+    const defaultBombCost = this.gameMode === "simple_teams" ? 1000 : 666;
+    this.bombCost = Math.min(
+      Math.max(Math.floor(bombCost) || defaultBombCost, 0),
+      99999,
+    );
     this.monkeyPoker = monkeyPoker !== false; // on by default
     this.noAuctionTimer = false;
     this.state = "waiting"; // waiting | playing | finished
@@ -720,8 +729,7 @@ class MonopolyGame {
     this.diceRolled = false;
     this.log = []; // recent action log
     this.properties = new Map();
-    this.board =
-      this.gameMode === "simple" ? [...BOARD_SIMPLE] : [...BOARD]; // will be shuffled on start
+    this.board = this._isSimple() ? [...BOARD_SIMPLE] : [...BOARD]; // will be shuffled on start
     // Number of tiles in this game's loop: 52 (classic) or 48 (simple,
     // cornerless). All movement/wrap math uses this instead of BOARD_SIZE.
     this.boardSize = this.board.length;
@@ -739,10 +747,25 @@ class MonopolyGame {
     this._sellListingId = 0;
     // Team mode: teams = { A: [id1, id2], B: [id3, id4] }
     this.teams = null;
+    // Banana-total team-victory target. Only used in classic 2v2 teams; 2v2
+    // simple wins via the Super Banana like single-player simple mode does.
     this.teamTarget =
       this.gameMode === "teams"
         ? Math.min(Math.max(Math.floor(teamTarget) || 5000, 2000), 20000)
         : null;
+  }
+
+  // True for the cornerless 48-tile board with farms F1..F40 etc. Covers both
+  // 2-4p simple and 2v2 simple_teams — both share the simple board, items, and
+  // strong-pet defaults.
+  _isSimple() {
+    return this.gameMode === "simple" || this.gameMode === "simple_teams";
+  }
+
+  // True for any mode that splits players into teams A/B. Covers classic 2v2
+  // "teams" and 2v2 simple_teams.
+  _isTeams() {
+    return this.gameMode === "teams" || this.gameMode === "simple_teams";
   }
 
   _initProperties() {
@@ -788,14 +811,14 @@ class MonopolyGame {
       scoutedTiles: new Set(),
       // Simple mode auto-selects the strong pet internally; the Magic Dice it
       // backs is now a won consumable, not an always-on cooldown ability.
-      pet: this.gameMode === "simple" ? "strong" : null,
+      pet: this._isSimple() ? "strong" : null,
       petCooldown: 0,
       pendingPet: null,
       bomb: 0,
       hasRolled: false,
       startPickPending: false,
       // Magic Dice picker offers all six numbers 1..6 (no "stay put" / 0 step).
-      magicDiceMaxSteps: this.gameMode === "simple" ? 6 : 0,
+      magicDiceMaxSteps: this._isSimple() ? 6 : 0,
       // Simple mode special-item inventory. Won via the item auction only,
       // stockpiled, spent one per use. Players start empty.
       cards: {
@@ -827,17 +850,17 @@ class MonopolyGame {
     if (
       settings.gameMode === "teams" ||
       settings.gameMode === "ffa" ||
-      settings.gameMode === "simple"
+      settings.gameMode === "simple" ||
+      settings.gameMode === "simple_teams"
     ) {
       if (this.gameMode !== settings.gameMode) {
         this.gameMode = settings.gameMode;
-        this.board =
-          this.gameMode === "simple" ? [...BOARD_SIMPLE] : [...BOARD];
+        this.board = this._isSimple() ? [...BOARD_SIMPLE] : [...BOARD];
         this.boardSize = this.board.length;
         this._initProperties();
         // Simple mode auto-assigns the strong pet ("Magic Dice"); leaving
-        // other modes wipes pets so players can re-pick from the full set.
-        if (this.gameMode === "simple") {
+        // simple modes wipes pets so players can re-pick from the full set.
+        if (this._isSimple()) {
           for (const p of this.players) {
             p.pet = "strong";
             p.magicDiceMaxSteps = 6; // fixed at 6 (no upgrades)
@@ -849,9 +872,9 @@ class MonopolyGame {
           }
         }
       }
-      if (this.gameMode === "teams") this.maxPlayers = 4;
+      if (this._isTeams()) this.maxPlayers = 4;
     }
-    if (settings.maxPlayers != null && this.gameMode !== "teams") {
+    if (settings.maxPlayers != null && !this._isTeams()) {
       const mp = Math.min(Math.max(Math.floor(settings.maxPlayers) || 2, 2), 4);
       this.maxPlayers = Math.max(mp, this.players.length);
     }
@@ -935,7 +958,7 @@ class MonopolyGame {
     if (this.state !== "waiting") return false;
     if (!PET_TYPES[petType]) return false;
     // Simple mode forces the strong pet ("Magic Dice") — ignore other choices.
-    if (this.gameMode === "simple" && petType !== "strong") return false;
+    if (this._isSimple() && petType !== "strong") return false;
     const player = this.players.find((p) => p.id === socketId);
     if (!player) return false;
     player.pet = petType;
@@ -972,7 +995,7 @@ class MonopolyGame {
     if (petType === "strong") {
       // Simple mode handles "Magic Dice" via useMagicDice() (on-turn activation,
       // pick a step count). The off-turn +1 flow is FFA/Teams only.
-      if (this.gameMode === "simple") return false;
+      if (this._isSimple()) return false;
       const cur = this.getCurrentPlayer();
       // Strong pet can only be activated when it's NOT your turn
       if (cur && cur.id === socketId) return false;
@@ -1535,7 +1558,7 @@ class MonopolyGame {
     // OTHER MODES: the legacy behaviour — owner cleared, pile wiped, tile
     // auctionable again at its original position.
     const _shuffleInSimple =
-      this.gameMode === "simple" && this.state === "playing";
+      this._isSimple() && this.state === "playing";
     const _leaverColor = this.players[idx].color;
     const _leaverTilePositions = Array.isArray(this.players[idx].properties)
       ? [...this.players[idx].properties]
@@ -1712,8 +1735,7 @@ class MonopolyGame {
     this.diceRolled = false;
     this.log = [];
     this.properties = new Map();
-    this.board =
-      this.gameMode === "simple" ? [...BOARD_SIMPLE] : [...BOARD];
+    this.board = this._isSimple() ? [...BOARD_SIMPLE] : [...BOARD];
     this.boardSize = this.board.length;
     if (this._auctionTimer) clearTimeout(this._auctionTimer);
     this.auction = null;
@@ -1779,14 +1801,14 @@ class MonopolyGame {
       // restore it here — otherwise every player returns to the lobby pet-less and
       // startGame's "all players must have a pet" check blocks the host from ever
       // starting again. FFA/teams keep null so players re-pick in the lobby.
-      p.pet = this.gameMode === "simple" ? "strong" : null;
+      p.pet = this._isSimple() ? "strong" : null;
       p.petCooldown = 0;
       p.pendingPet = null;
       p.bomb = 0;
       p.hasRolled = false;
       p.startPickPending = false;
       // Simple mode: Magic Dice fixed at 6 (no upgrades); other modes don't use it.
-      p.magicDiceMaxSteps = this.gameMode === "simple" ? 6 : 0;
+      p.magicDiceMaxSteps = this._isSimple() ? 6 : 0;
       p.cards = {
         rabbitDice: 0,
         cheetahDice: 0,
@@ -1800,11 +1822,11 @@ class MonopolyGame {
 
   startGame(socketId) {
     if (socketId !== this.admin || this.players.length < 2) return false;
-    if (this.gameMode === "teams" && this.players.length !== 4) return false;
+    if (this._isTeams() && this.players.length !== 4) return false;
     // All players must have selected a pet
     if (this.players.some((p) => !p.pet)) return false;
     // Assign teams in team mode (players 0,1 = Team A, players 2,3 = Team B)
-    if (this.gameMode === "teams") {
+    if (this._isTeams()) {
       this.teams = {
         A: [this.players[0].id, this.players[1].id],
         B: [this.players[2].id, this.players[3].id],
@@ -1859,7 +1881,7 @@ class MonopolyGame {
       this._itemAuctionTimer = null;
     }
     // Simple mode: monkeys start off-board. Each player picks their first tile.
-    if (this.gameMode === "simple") {
+    if (this._isSimple()) {
       this._assignSimpleGrowLabels();
       for (const p of this.players) {
         p.startPickPending = true;
@@ -1878,7 +1900,7 @@ class MonopolyGame {
   _initTileLabelNumbers() {
     this.tileLabelNumbers = new Map();
     // Simple mode doesn't use group-letter labels (each tile shows its own yield)
-    if (this.gameMode === "simple") return;
+    if (this._isSimple()) return;
     // Collect board positions per group
     const groupPositions = {};
     for (let i = 0; i < this.board.length; i++) {
@@ -1971,7 +1993,7 @@ class MonopolyGame {
   //   Dice / 3 dice.) With no matching item, you roll the default 2 dice.
   //   Other modes: 2 dice default; pay 300 to drop to 1 or bump to 3.
   _resolveDiceCount(player, diceCount) {
-    if (this.gameMode === "simple") {
+    if (this._isSimple()) {
       if (!player.cards) {
         player.cards = { rabbitDice: 0, cheetahDice: 0, magicDice: 0, teleport: 0 };
       }
@@ -2168,7 +2190,7 @@ class MonopolyGame {
   // exactly 1 space — walks one tile and fires GROW 1 (sum 1) just like rolling
   // a 1. Spends one item. The `steps` argument is ignored (always 1).
   useMagicDice(socketId, steps) {
-    if (this.gameMode !== "simple") return null;
+    if (!this._isSimple()) return null;
     if (this.state !== "playing") return null;
     const cur = this.getCurrentPlayer();
     if (!cur || cur.id !== socketId || cur.bankrupt) return null;
@@ -2322,7 +2344,7 @@ class MonopolyGame {
   // (non-null) item is only allowed when it's NOT your turn and you own it;
   // passing null disarms (allowed anytime — e.g. cancelling on your turn).
   armAbility(socketId, ability) {
-    if (this.gameMode !== "simple") return false;
+    if (!this._isSimple()) return false;
     if (this.state !== "playing") return false;
     const player = this.players.find((p) => p.id === socketId);
     if (!player || player.bankrupt) return false;
@@ -2365,7 +2387,7 @@ class MonopolyGame {
   //   teleport → { pos }
   // The dice items (rabbit/cheetah/magic) are used through the roll path.
   useCard(socketId, cardType, data) {
-    if (this.gameMode !== "simple") return null;
+    if (!this._isSimple()) return null;
     if (this.state !== "playing") return null;
     if (cardType !== "teleport") return null;
     const player = this.players.find((p) => p.id === socketId);
@@ -2480,7 +2502,7 @@ class MonopolyGame {
   }
 
   _subtractItemAuctionCounter(amount) {
-    if (this.gameMode !== "simple") return;
+    if (!this._isSimple()) return;
     if (!this.itemAuctionEnabled) return;
     if (!Number.isFinite(amount) || amount <= 0) return;
     if (this.itemAuctionCounter <= 0) return; // already pending
@@ -2498,7 +2520,7 @@ class MonopolyGame {
     if (!this._itemAuctionQueued) return;
     if (this._itemAuctionActive()) return;
     if (this.state !== "playing") return;
-    if (this.gameMode !== "simple") return;
+    if (!this._isSimple()) return;
     if (!this.itemAuctionEnabled) return;
     // Need at least 2 non-bankrupt players to bother holding an auction
     const alive = this.players.filter((p) => !p.bankrupt);
@@ -2880,7 +2902,7 @@ class MonopolyGame {
     // GROW always fires first — even if an opponent is on the tile
     if (space.type === "grow" || space.type === "easygrow") {
       // Simple mode uses the labeled-grow range-limited path.
-      if (this.gameMode === "simple" && space.type === "grow") {
+      if (this._isSimple() && space.type === "grow") {
         this._fireSimpleGrowAt(player, player.position, "land");
         // Fall through so the poker check below still runs.
       } else {
@@ -2895,7 +2917,7 @@ class MonopolyGame {
 
       // 1) Collect all farm properties owned by this player (and teammates in team mode)
       const teamIds = new Set([player.id]);
-      if (this.gameMode === "teams" && this.teams) {
+      if (this._isTeams() && this.teams) {
         const teamKey = this.getTeamOf(player.id);
         if (teamKey && this.teams[teamKey]) {
           for (const id of this.teams[teamKey]) teamIds.add(id);
@@ -2988,7 +3010,7 @@ class MonopolyGame {
         !p.bankrupt &&
         !p.startPickPending &&
         p.position === player.position &&
-        (this.gameMode !== "teams" ||
+        (!this._isTeams() ||
           this.getTeamOf(p.id) !== this.getTeamOf(player.id)),
     );
     if (opponents.length === 1 && player.money > 0 && opponents[0].money > 0) {
@@ -3092,7 +3114,7 @@ class MonopolyGame {
           // Phase 3: Game over
           this.superBananaWin = null;
           this.state = "finished";
-          if (this.gameMode === "teams" && this.teams) {
+          if (this._isTeams() && this.teams) {
             const teamKey = this.getTeamOf(player.id);
             const teamMembers = teamKey && this.teams[teamKey];
             const names = teamMembers
@@ -3220,7 +3242,7 @@ class MonopolyGame {
 
     // GROW fires passively
     if (space.type === "grow" || space.type === "easygrow") {
-      if (this.gameMode === "simple" && space.type === "grow") {
+      if (this._isSimple() && space.type === "grow") {
         this._fireSimpleGrowAt(player, player.position, "land");
         return;
       }
@@ -3233,7 +3255,7 @@ class MonopolyGame {
       const pctLabel = Math.round(pct * 100);
       const easyGrowBase = space.type === "easygrow" ? 25 : 0;
       const teamIds = new Set([player.id]);
-      if (this.gameMode === "teams" && this.teams) {
+      if (this._isTeams() && this.teams) {
         const teamKey = this.getTeamOf(player.id);
         if (teamKey && this.teams[teamKey]) {
           for (const id of this.teams[teamKey]) teamIds.add(id);
@@ -3779,7 +3801,7 @@ class MonopolyGame {
         // Super Banana win condition
         if (prop.group === "mushroom") {
           this.state = "finished";
-          if (this.gameMode === "teams" && this.teams) {
+          if (this._isTeams() && this.teams) {
             const teamKey = this.getTeamOf(winner.id);
             const teamMembers = teamKey && this.teams[teamKey];
             const names = teamMembers
@@ -3868,7 +3890,7 @@ class MonopolyGame {
     if (!b || b.responded) return false;
 
     // In teams mode, the lander's teammate must wait 5 seconds before accepting
-    if (accept && this.gameMode === "teams" && this.teams && a.respondStartTime) {
+    if (accept && this._isTeams() && this.teams && a.respondStartTime) {
       const landerTeam = this.getTeamOf(a.landingPlayer);
       const responderTeam = this.getTeamOf(socketId);
       if (landerTeam && landerTeam === responderTeam) {
@@ -4049,28 +4071,16 @@ class MonopolyGame {
     return out;
   }
 
-  // Returns the set of board positions strictly between `growPos` and the
-  // next revealed grow tile clockwise (both endpoints excluded). If only the
-  // anchor grow is revealed, the range wraps the whole board (51 positions).
-  // If the next revealed grow is adjacent, the range is empty.
-  _simpleGrowRange(growPos, revealedTiles) {
-    const revealedGrows = new Set();
-    for (const pos of revealedTiles) {
-      if (pos === growPos) continue;
-      const space = this.board[pos];
-      if (space && space.type === "grow") revealedGrows.add(pos);
-    }
+  // Set of board positions that a grow at `growPos` can fertilise — every tile
+  // except the grow itself. The earlier "stop at the next revealed grow" rule
+  // cut firing players short: as soon as ANY player landed on a second grow,
+  // the range shrank to a short arc, leaving most owned farms ungrown. The
+  // user-facing rule is now uniform: a grow firing fertilises every owned farm
+  // on the board, regardless of how many other grows have been discovered.
+  _simpleGrowRange(growPos /*, revealedTiles */) {
     const range = new Set();
-    if (revealedGrows.size === 0) {
-      for (let off = 1; off < this.boardSize; off++) {
-        range.add((growPos + off) % this.boardSize);
-      }
-      return range;
-    }
     for (let off = 1; off < this.boardSize; off++) {
-      const p = (growPos + off) % this.boardSize;
-      if (revealedGrows.has(p)) break;
-      range.add(p);
+      range.add((growPos + off) % this.boardSize);
     }
     return range;
   }
@@ -4080,7 +4090,7 @@ class MonopolyGame {
   // sends bananas to opponent squatters, logs results. Logs are tagged
   // (`source: "roll" | "land"`) so messages read sensibly.
   _fireSimpleGrowAt(player, growPos, source) {
-    if (this.gameMode !== "simple") return;
+    if (!this._isSimple()) return;
     // The glow is recorded at the END of this method, and ONLY if the grow
     // actually produced bananas — see lastGrowFired below. Firing on an empty
     // range (no farms in range) grows nothing and must not glow.
@@ -4103,11 +4113,12 @@ class MonopolyGame {
       { pos: growPos, source },
     ]);
 
-    // Use the globally GENUINELY-revealed set as the boundary — any grow truly
-    // discovered by any player bounds the range. A merely-scouted grow does NOT
-    // bound the range. Prevents the "whole board grows" case when the activating
-    // player hasn't personally revealed grows that others already have.
-    const range = this._simpleGrowRange(growPos, this._globalGenuineRevealed());
+    // Whole-board fertilise: every owned farm grows on every grow fire. The
+    // earlier "next revealed grow bounds the range" rule made the firing
+    // player's range collapse as soon as anyone discovered a second grow,
+    // which the user reported as grows "cutting short". The range is now
+    // always the entire board minus the grow tile itself.
+    const range = this._simpleGrowRange(growPos);
     const ownedInRange = [];
     for (const propId of player.properties) {
       if (!range.has(propId)) continue;
@@ -4207,7 +4218,7 @@ class MonopolyGame {
   // This makes every die value 1..6 map to a grow, instead of the dice sum
   // (which is 2..12 with two dice, so it could never hit labels 1 or 7..12).
   _processSimpleRolledGrows(player, rolls) {
-    if (this.gameMode !== "simple") return;
+    if (!this._isSimple()) return;
     const fired = new Set();
     for (const d of rolls) {
       if (fired.has(d)) continue;
@@ -4222,7 +4233,7 @@ class MonopolyGame {
   // dormant. Values outside 1..6 (e.g. a Magic Dice step > 6) match no grow and
   // are ignored; the player still walks normally afterwards.
   _processSimpleRolledGrow(player, value) {
-    if (this.gameMode !== "simple") return;
+    if (!this._isSimple()) return;
     if (value < 1 || value > 6) return;
     const growPos = this._findSimpleGrowByLabel(value);
     if (growPos == null) return;
@@ -4240,7 +4251,7 @@ class MonopolyGame {
   // Adjacent same-group owned farms form chains; each farm's multiplier = chain length.
   _computeChainMultipliers(teamIds) {
     // Simple mode has no chain bonuses — every farm yields its own price.
-    if (this.gameMode === "simple") return {};
+    if (this._isSimple()) return {};
     // Build map: boardPos -> group (using map keys, not prop.id which is the pre-shuffle buyable id)
     const posGroup = new Map();
     for (const p of this.players) {
@@ -4285,7 +4296,7 @@ class MonopolyGame {
 
   _processDiceMatchGrow(player, diceSum) {
     // Simple mode has no dice-roll/tile-number matching mechanic.
-    if (this.gameMode === "simple") return;
+    if (this._isSimple()) return;
     const labelNumbers = this._getTileLabelNumbers();
     const teamIds = new Set([player.id]);
     if (this.gameMode === "teams" && this.teams) {
@@ -4439,7 +4450,7 @@ class MonopolyGame {
     // you grab that pile as you depart — unless the owner already reclaimed
     // it by crossing the farm first, in which case the pile is 0 and nothing
     // moves.
-    if (this.gameMode === "simple") {
+    if (this._isSimple()) {
       const leftProp = this.properties.get(oldPos);
       if (
         leftProp &&
@@ -4481,7 +4492,7 @@ class MonopolyGame {
         collected += prop.bananaPile;
         prop.bananaPile = 0;
       } else if (isLanding && prop.owner && prop.owner !== player.id) {
-        if (this.gameMode === "simple") {
+        if (this._isSimple()) {
           // Simple mode: landing on an opponent's banana pile does NOT collect
           // it. You're now squatting on their farm — like a grow that happens
           // while you squat, the pile is yours to steal only when you LEAVE the
@@ -4490,7 +4501,7 @@ class MonopolyGame {
         } else {
           // Other modes: collect teammate piles; steal from opponents on landing.
           const isTeammate =
-            this.gameMode === "teams" &&
+            this._isTeams() &&
             this.getTeamOf(prop.owner) === this.getTeamOf(player.id);
           if (isTeammate) {
             collected += prop.bananaPile;
@@ -4514,9 +4525,25 @@ class MonopolyGame {
       const names = [...stolenVictims]
         .map((id) => this.players.find((p) => p.id === id)?.name || "?")
         .join(" & ");
-      this._log(
-        `${player.name} stole ${stolen}\ud83c\udf4c from ${names}'s banana pile! \ud83d\udc12`,
-      );
+      // 2v2 simple teams: every victim is on the player's team => "friendly"
+      // steal, render green. Mixed steals (rare: cross-team-mate split tile)
+      // fall back to the normal red theft message.
+      const allFriendly =
+        this._isTeams() &&
+        this.teams &&
+        [...stolenVictims].every(
+          (id) => this.getTeamOf(id) === this.getTeamOf(player.id),
+        );
+      if (allFriendly) {
+        this._log(
+          `${player.name} stole ${stolen}\ud83c\udf4c from teammate ${names}'s banana pile! \ud83e\udd1d`,
+          { color: "green" },
+        );
+      } else {
+        this._log(
+          `${player.name} stole ${stolen}\ud83c\udf4c from ${names}'s banana pile! \ud83d\udc12`,
+        );
+      }
     }
     return crossedFreeBananas;
   }
@@ -4540,7 +4567,7 @@ class MonopolyGame {
       prop.bananaPile = 0;
     } else if (prop.owner && prop.owner !== player.id) {
       const isTeammate =
-        this.gameMode === "teams" &&
+        this._isTeams() &&
         this.getTeamOf(prop.owner) === this.getTeamOf(player.id);
       if (isTeammate) {
         player.money += prop.bananaPile;
@@ -4927,7 +4954,7 @@ class MonopolyGame {
 
   // Free Bananas tile payout: +25 in simple mode, +500 elsewhere.
   _freeBananasAmount() {
-    return this.gameMode === "simple" ? 25 : 500;
+    return this._isSimple() ? 25 : 500;
   }
 
   buyBomb(socketId) {
@@ -4993,7 +5020,7 @@ class MonopolyGame {
   // Tiles caught in a bomb blast. Simple mode blows the entire 12-tile side the
   // bomb sits on; classic mode blows the bomb tile and its two neighbours.
   _bombBlastTiles(position) {
-    if (this.gameMode === "simple") return this._simpleSideTiles(position);
+    if (this._isSimple()) return this._simpleSideTiles(position);
     return [
       position,
       (position - 1 + this.boardSize) % this.boardSize,
@@ -5009,14 +5036,38 @@ class MonopolyGame {
     if (bombIndex === -1) return false;
     const bomb = this.bombs[bombIndex];
 
-    // Classic mode: placer stepping on their own armed bomb keeps it armed and
-    // just takes 50% self-damage, so they can't self-trigger to nuke neighbours.
-    // Simple mode: landing on your own bomb DOES detonate the whole side — the
-    // placer still only loses 50% (handled below in the victim loop), but
-    // opponents on that side are eliminated.
-    if (bomb.placedBy === player.id && this.gameMode !== "simple") {
+    // Classic mode: placer stepping on their own armed bomb keeps it armed
+    // and just takes 50% self-damage, so they can't self-trigger to nuke
+    // neighbours.
+    // Simple mode: placer stepping on their own bomb DEFUSES it — the bomb
+    // is removed from the board, nobody takes damage, nobody dies. Gives the
+    // placer a clean out if they walked back onto their own trap.
+    // 2v2 simple: same defuse also applies when a teammate of the placer
+    // lands on it, so allies can clear each other's traps without going down.
+    if (bomb.placedBy === player.id) {
+      if (this._isSimple()) {
+        this.bombs.splice(bombIndex, 1);
+        this._log(
+          `\u{1F6E0}️ ${player.name} walked back over their own pineapple bomb and defused it! \u{1F4A4}\u{1F34D}`,
+        );
+        return true;
+      }
       this._bombSelfDamage(player);
       this._checkBombWin();
+      return true;
+    }
+    if (
+      this.gameMode === "simple_teams" &&
+      this.teams &&
+      this.getTeamOf(bomb.placedBy) &&
+      this.getTeamOf(bomb.placedBy) === this.getTeamOf(player.id)
+    ) {
+      this.bombs.splice(bombIndex, 1);
+      const placerName =
+        (this.players.find((p) => p.id === bomb.placedBy) || {}).name || "their teammate";
+      this._log(
+        `\u{1F6E0}️ ${player.name} found ${placerName}'s pineapple bomb and defused it! \u{1F4A4}\u{1F34D}`,
+      );
       return true;
     }
 
@@ -5040,7 +5091,7 @@ class MonopolyGame {
     );
     for (const v of victims) {
       if (v.id === bomb.placedBy) {
-        if (this.gameMode === "simple") {
+        if (this._isSimple()) {
           // Simple mode: bombing yourself is a no-op. The bomb still
           // detonates (so enemies in the blast still go down), but the placer
           // takes no damage and doesn't leave the game.
@@ -5048,7 +5099,7 @@ class MonopolyGame {
         }
         this._bombSelfDamage(v);
       } else if (
-        this.gameMode === "teams" &&
+        this._isTeams() &&
         this.teams &&
         this.getTeamOf(v.id) === this.getTeamOf(bomb.placedBy)
       ) {
@@ -5090,7 +5141,7 @@ class MonopolyGame {
           const placer = this.players.find((p) => p.id === bomb.placedBy);
           for (const v of victims) {
             if (v.id === bomb.placedBy) {
-              if (this.gameMode === "simple") {
+              if (this._isSimple()) {
                 // Simple mode: bombing yourself is a no-op. The bomb still
                 // detonates (so enemies in the blast still go down), but the
                 // placer takes no damage.
@@ -5098,7 +5149,7 @@ class MonopolyGame {
               }
               this._bombSelfDamage(v);
             } else if (
-              this.gameMode === "teams" &&
+              this._isTeams() &&
               this.teams &&
               this.getTeamOf(v.id) === this.getTeamOf(bomb.placedBy)
             ) {
@@ -5324,7 +5375,7 @@ class MonopolyGame {
     }
 
     // Win check — only Super Banana purchase wins
-    if (this.gameMode === "teams" && this.teams) {
+    if (this._isTeams() && this.teams) {
       // Team mode: check if any player bought the Super Banana
       for (const teamKey of ["A", "B"]) {
         const teamWon = this.teams[teamKey].some((id) => {
@@ -5408,8 +5459,8 @@ class MonopolyGame {
 
   tradeBananas(senderId, recipientId, amount) {
     if (this.state !== "playing") return false;
-    // Trading only allowed in team mode
-    if (this.gameMode !== "teams") return false;
+    // Trading only allowed in team modes
+    if (!this._isTeams()) return false;
     const sender = this.players.find((p) => p.id === senderId);
     const recipient = this.players.find((p) => p.id === recipientId);
     if (!sender || !recipient) return false;
@@ -5418,9 +5469,17 @@ class MonopolyGame {
     // Only teammates can trade
     if (this.getTeamOf(senderId) !== this.getTeamOf(recipientId)) return false;
 
-    const TRADE_FEE = 150;
+    // Simple teams uses a smaller fee (50) plus a cap of half the sender's
+    // bananas, so trades can't trivially funnel everything to one player.
+    // Classic teams keeps the original flat 150 fee with no cap.
+    const isSimpleTeams = this.gameMode === "simple_teams";
+    const TRADE_FEE = isSimpleTeams ? 50 : 150;
     amount = Math.floor(amount);
     if (amount <= 0) return false;
+    if (isSimpleTeams) {
+      const cap = Math.floor(sender.money / 2);
+      if (amount > cap) return false;
+    }
     const totalCost = amount + TRADE_FEE;
     if (sender.money < totalCost) return false;
 
@@ -5684,8 +5743,16 @@ class MonopolyGame {
 
   // -- Action log -------------------------------------------------
 
-  _log(msg) {
-    this.log.push(msg);
+  // Log entries are usually plain strings, but some carry a color tag so the
+  // frontend can theme the line (e.g. friendly steals in 2v2 simple render
+  // green instead of red). Pass { color: "green" | "red" | ... } as the second
+  // arg to flag a line.
+  _log(msg, opts) {
+    if (opts && opts.color) {
+      this.log.push({ text: msg, color: opts.color });
+    } else {
+      this.log.push(msg);
+    }
     if (this.log.length > 30) this.log.shift();
   }
 
@@ -5812,11 +5879,33 @@ class MonopolyGame {
               }
               bids[id] = entry;
             }
+            // Farm visibility:
+            //   - Lander always sees the farm.
+            //   - 2v2 simple: lander's teammate also sees the farm.
+            //   - Everyone else (opponents in any mode, or any non-lander in
+            //     ffa/classic-teams) bids blind during pitch/respond. Silent
+            //     tie-break still hides it; the resolved auction broadcasts
+            //     the position so the log/animation reads correctly.
+            let hideFarm = false;
+            if (
+              (a.phase === "pitch" ||
+                a.phase === "respond" ||
+                a.phase === "silentbid") &&
+              viewerId !== a.landingPlayer
+            ) {
+              const isSimpleTeamMate =
+                this.gameMode === "simple_teams" &&
+                this.teams &&
+                this.getTeamOf(a.landingPlayer) &&
+                this.getTeamOf(a.landingPlayer) === this.getTeamOf(viewerId);
+              if (!isSimpleTeamMate) hideFarm = true;
+            }
             return {
-              position: a.position,
-              propName: a.propName,
-              propPrice: a.propPrice,
-              propGroup: a.propGroup,
+              position: hideFarm ? null : a.position,
+              propName: hideFarm ? null : a.propName,
+              propPrice: hideFarm ? null : a.propPrice,
+              propGroup: hideFarm ? null : a.propGroup,
+              hideFarm,
               phase: a.phase, // 'pitch' | 'respond' | 'silentbid'
               landingPlayer: a.landingPlayer,
               magicUser: a.magicUser || null,

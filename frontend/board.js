@@ -164,7 +164,7 @@ let _prevBananaPiles = {}; // { tileIndex: amount }
 // the raw banana count, so the board stays readable. Other modes keep the exact
 // amount. The Owned-Farms chart renders separately and still shows exact totals.
 function _pileChipLabel(tileIndex, amount) {
-  if (gs && gs.gameMode === "simple") {
+  if (gs && (gs.gameMode === "simple" || gs.gameMode === "simple_teams")) {
     const layout = gs.boardLayout && gs.boardLayout[tileIndex];
     const yieldVal = layout && layout.price ? layout.price : 0;
     if (yieldVal > 0) {
@@ -216,7 +216,7 @@ function _showStealFloaterAt(tileIndex) {
 function _positionPileChip(pileEl, r) {
   const cx = r.l + r.w / 2;
   const cy = r.t + r.h / 2;
-  const outside = !!(gs && gs.gameMode === "simple");
+  const outside = !!(gs && (gs.gameMode === "simple" || gs.gameMode === "simple_teams"));
   const above = () => {
     pileEl.style.top = r.t - 0.3 + "%";
     pileEl.style.setProperty("--pile-transform", "translate(-50%, -100%)");
@@ -324,7 +324,7 @@ function _setupBoardDelegation() {
     if (!gs) return;
     // Simple mode: pick starting tile on first turn
     if (
-      gs.gameMode === "simple" &&
+      (gs.gameMode === "simple" || gs.gameMode === "simple_teams") &&
       gs.currentPlayer &&
       gs.currentPlayer.id === myId &&
       gs.currentPlayer.startPickPending &&
@@ -392,7 +392,7 @@ function _syncFarmChartPile(tileId, amount) {
 // Call this instead of renderBoard() for intermediate walk steps.
 function walkStepUpdate(gs) {
   window._gs = gs;
-  _simpleBoardActive = !!(gs && gs.gameMode === "simple");
+  _simpleBoardActive = !!(gs && (gs.gameMode === "simple" || gs.gameMode === "simple_teams"));
   const _boardLen =
     (gs && gs.boardLayout && gs.boardLayout.length) ||
     (_simpleBoardActive ? SIMPLE_BOARD_SIZE : BOARD_SIZE);
@@ -441,7 +441,7 @@ function walkStepUpdate(gs) {
           // visible on arrival instead of clearing it and snapping it back
           // at walk-end.
           const simpleDeferLanding =
-            gs && gs.gameMode === "simple" && isLanding &&
+            gs && (gs.gameMode === "simple" || gs.gameMode === "simple_teams") && isLanding &&
             prop && prop.owner && prop.owner !== window._walkingPlayerId;
           if ((isOwn || isLanding) && !simpleDeferLanding) {
             pileAmount = 0;
@@ -624,7 +624,7 @@ function walkStepUpdate(gs) {
         }
         const isMe = typeof myId !== "undefined" && playerId === myId;
         if (isMe) {
-          showPopupAtBananaBox((gs && gs.gameMode === "simple" ? "+25" : "+500") + "\uD83C\uDF4C", "free-bananas-popup-player");
+          showPopupAtBananaBox((gs && (gs.gameMode === "simple" || gs.gameMode === "simple_teams") ? "+25" : "+500") + "\uD83C\uDF4C", "free-bananas-popup-player");
         } else {
           const pstat = document.querySelector(`.pstat[data-player-id="${playerId}"]`);
           const anchor = pstat && pstat.querySelector(".pstat-money");
@@ -632,7 +632,7 @@ function walkStepUpdate(gs) {
             const rect = anchor.getBoundingClientRect();
             const floater = document.createElement("div");
             floater.className = "free-bananas-popup-player";
-            floater.textContent = (gs && gs.gameMode === "simple" ? "+25" : "+500") + "\uD83C\uDF4C";
+            floater.textContent = (gs && (gs.gameMode === "simple" || gs.gameMode === "simple_teams") ? "+25" : "+500") + "\uD83C\uDF4C";
             floater.style.position = "fixed";
             floater.style.left = rect.left + rect.width / 2 + "px";
             floater.style.top = rect.top + "px";
@@ -756,7 +756,7 @@ function _animateAuctionCounter(from, to) {
 
 function renderBoard(gs) {
   window._gs = gs;
-  _simpleBoardActive = !!(gs && gs.gameMode === "simple");
+  _simpleBoardActive = !!(gs && (gs.gameMode === "simple" || gs.gameMode === "simple_teams"));
   const _boardLen =
     (gs && gs.boardLayout && gs.boardLayout.length) ||
     (_simpleBoardActive ? SIMPLE_BOARD_SIZE : BOARD_SIZE);
@@ -874,7 +874,7 @@ function renderBoard(gs) {
   // Compute chain multipliers (cached — only recompute when ownership changes)
   // Build a key from owned tile positions to detect changes
   let _chainMultipliers;
-  const _isSimpleMode = gs && gs.gameMode === "simple";
+  const _isSimpleMode = gs && (gs.gameMode === "simple" || gs.gameMode === "simple_teams");
   if (gs && gs.properties && !_isSimpleMode) {
     let chainKey = "";
     for (const prop of gs.properties) {
@@ -966,6 +966,7 @@ function renderBoard(gs) {
     // moment (when its chain fires / when you land on it), so don't auto-glow
     // it here — that made a grow you're about to land on glow during the walk.
     gs.gameMode !== "simple" &&
+    gs.gameMode !== "simple_teams" &&
     Array.isArray(gs.lastGrowFired) &&
     gs.lastGrowFired.length > 0 &&
     (window._diceMatchUnfrozen || !window._tokenWalking)
@@ -1002,7 +1003,7 @@ function renderBoard(gs) {
     // Simple mode start-pick: current player can click ANY tile to land there.
     const startPickActive =
       gs &&
-      gs.gameMode === "simple" &&
+      (gs.gameMode === "simple" || gs.gameMode === "simple_teams") &&
       gs.currentPlayer &&
       gs.currentPlayer.id === myId &&
       gs.currentPlayer.startPickPending &&
@@ -1066,7 +1067,7 @@ function renderBoard(gs) {
       if (isCorner) {
         el.classList.add("corner");
         // Simple mode: grow tiles show only their number (0-7), not "GROW N".
-        if (gs && gs.gameMode === "simple" && tile.growLabel != null) {
+        if (gs && (gs.gameMode === "simple" || gs.gameMode === "simple_teams") && tile.growLabel != null) {
           el.innerHTML = `<span class="grow-yield">G${tile.growLabel}</span>`;
         } else {
           el.textContent = tile.name;
@@ -1211,7 +1212,7 @@ function renderBoard(gs) {
           // visible on arrival instead of clearing it and snapping it back
           // at walk-end.
           const simpleDeferLanding =
-            gs && gs.gameMode === "simple" && isLanding &&
+            gs && (gs.gameMode === "simple" || gs.gameMode === "simple_teams") && isLanding &&
             prop && prop.owner && prop.owner !== window._walkingPlayerId;
           if ((isOwn || isLanding) && !simpleDeferLanding) {
             pileAmount = 0;
@@ -1281,7 +1282,7 @@ function renderBoard(gs) {
   window._growUnfreezeRender = false;
   const isDiceMatchSteal = !!window._diceMatchStealRender;
   window._diceMatchStealRender = false;
-  const simpleGrowScoped = isGrowUnfreeze && gs && gs.gameMode === "simple";
+  const simpleGrowScoped = isGrowUnfreeze && gs && (gs.gameMode === "simple" || gs.gameMode === "simple_teams");
   const grownAmtFor = (idx) =>
     (gs && gs.diceMatchGrownAmounts && gs.diceMatchGrownAmounts[idx]) || 0;
   const grewTiles = new Map(); // tileIndex -> delta
@@ -1540,7 +1541,7 @@ function renderBoard(gs) {
           _freeBananasShown.add(pos);
           const isMe = typeof myId !== "undefined" && playerId === myId;
           if (isMe) {
-            showPopupAtBananaBox((gs && gs.gameMode === "simple" ? "+25" : "+500") + "\uD83C\uDF4C", "free-bananas-popup-player");
+            showPopupAtBananaBox((gs && (gs.gameMode === "simple" || gs.gameMode === "simple_teams") ? "+25" : "+500") + "\uD83C\uDF4C", "free-bananas-popup-player");
           } else {
             const pstat = document.querySelector(`.pstat[data-player-id="${playerId}"]`);
             const anchor = pstat && pstat.querySelector(".pstat-money");
@@ -1548,7 +1549,7 @@ function renderBoard(gs) {
               const rect = anchor.getBoundingClientRect();
               const floater = document.createElement("div");
               floater.className = "free-bananas-popup-player";
-              floater.textContent = (gs && gs.gameMode === "simple" ? "+25" : "+500") + "\uD83C\uDF4C";
+              floater.textContent = (gs && (gs.gameMode === "simple" || gs.gameMode === "simple_teams") ? "+25" : "+500") + "\uD83C\uDF4C";
               floater.style.position = "fixed";
               floater.style.left = rect.left + rect.width / 2 + "px";
               floater.style.top = rect.top + "px";
@@ -1572,7 +1573,7 @@ function renderBoard(gs) {
           if (currentPlayer) {
             const isMe = typeof myId !== "undefined" && currentPlayer.id === myId;
             if (isMe) {
-              showPopupAtBananaBox((gs && gs.gameMode === "simple" ? "+25" : "+500") + "\uD83C\uDF4C", "free-bananas-popup-player");
+              showPopupAtBananaBox((gs && (gs.gameMode === "simple" || gs.gameMode === "simple_teams") ? "+25" : "+500") + "\uD83C\uDF4C", "free-bananas-popup-player");
             } else {
               const pstat = document.querySelector(`.pstat[data-player-id="${currentPlayer.id}"]`);
               const anchor = pstat && pstat.querySelector(".pstat-money");
@@ -1580,7 +1581,7 @@ function renderBoard(gs) {
                 const rect = anchor.getBoundingClientRect();
                 const floater = document.createElement("div");
                 floater.className = "free-bananas-popup-player";
-                floater.textContent = (gs && gs.gameMode === "simple" ? "+25" : "+500") + "\uD83C\uDF4C";
+                floater.textContent = (gs && (gs.gameMode === "simple" || gs.gameMode === "simple_teams") ? "+25" : "+500") + "\uD83C\uDF4C";
                 floater.style.position = "fixed";
                 floater.style.left = rect.left + rect.width / 2 + "px";
                 floater.style.top = rect.top + "px";
@@ -1613,7 +1614,7 @@ function renderBoard(gs) {
   centerTitle.className = "board-center-title";
   const showAuctionCounter =
     gs &&
-    gs.gameMode === "simple" &&
+    (gs.gameMode === "simple" || gs.gameMode === "simple_teams") &&
     gs.itemAuctionEnabled &&
     (gs.state === "playing" || gs.state === "revealing");
   if (showAuctionCounter) {

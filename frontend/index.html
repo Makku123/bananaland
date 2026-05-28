@@ -562,6 +562,7 @@
                 >Mode
                 <select id="create-mode" onchange="toggleModeSettings()">
                   <option value="simple" selected>Simple Mode (2-4 players)</option>
+                  <option value="simple_teams">2v2 Simple Teams (4 players)</option>
                   <option value="ffa">Free for All (2-4 players)</option>
                   <option value="teams">2v2 Teams (4 players)</option>
                 </select>
@@ -2104,7 +2105,7 @@
                   </button>
                 </div>
                 <div class="trade-section">
-                  <div class="trade-fee-notice">Transfer fee: 150🍌</div>
+                  <div class="trade-fee-notice" id="send-banana-fee-notice">Transfer fee: 150🍌</div>
                   <div class="sell-price-header">Amount to Send</div>
                   <div class="sell-price-display" id="send-banana-display">
                     0🍌
