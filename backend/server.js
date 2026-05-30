@@ -225,7 +225,6 @@ io.on("connection", (socket) => {
       data.maxPlayers,
       data.startingMoney,
       data.gameMode,
-      data.teamTarget,
       data.bombMode,
       data.monkeyPoker,
       data.isPublic,
@@ -238,6 +237,28 @@ io.on("connection", (socket) => {
     );
     games.set(code, game);
     game.onUpdate = () => emitGameUpdate(code, game);
+
+    // Lobby-adjustable knobs that aren't part of the constructor signature.
+    // Stamp them onto the fresh game so they survive the first emit and any
+    // _initProperties run before the admin opens the lobby settings panel.
+    if (data.superBananaPrice != null) {
+      game.superBananaPrice = Math.min(
+        Math.max(Math.floor(data.superBananaPrice) || 777, 100),
+        99999,
+      );
+    }
+    if (data.freeBananasAmount != null) {
+      game.freeBananasAmount = Math.min(
+        Math.max(Math.floor(data.freeBananasAmount) || 25, 1),
+        9999,
+      );
+    }
+    if (data.farmAuctionTimer != null) {
+      game.farmAuctionTimer = Math.min(
+        Math.max(Math.floor(data.farmAuctionTimer) || 15, 5),
+        60,
+      );
+    }
 
     const player = game.addPlayer(socket.id, data.playerName);
     if (!player || player.error)
@@ -323,6 +344,15 @@ io.on("connection", (socket) => {
       io.to(data.targetId).emit("kicked", { message: `You were removed from the lobby by the host.` });
       const targetSocket = io.sockets.sockets.get(data.targetId);
       if (targetSocket) targetSocket.leave(data.gameId);
+      emitGameUpdate(data.gameId, game);
+    }
+  });
+
+  // ── 2v2 lobby team switch ─────────────────────────────────────
+  socket.on("switch_team", (data) => {
+    const game = games.get(data.gameId);
+    if (!game) return;
+    if (game.switchTeam(socket.id)) {
       emitGameUpdate(data.gameId, game);
     }
   });
@@ -661,6 +691,21 @@ io.on("connection", (socket) => {
     }
   });
 
+  // ── Animations-complete signal from the lander ────────────────
+  // Emitted by the active player's client once every visible animation for
+  // the turn has settled (walk, dice spin, pre-walk grow chain pulse, post-
+  // walk grow chain pulse, landing FX). The server ends the turn the moment
+  // this arrives — there is no End Turn button and no auto-end countdown.
+  socket.on("turn_anims_complete", (data) => {
+    if (!data) return;
+    const game = games.get(data.gameId);
+    if (!game) return;
+    const turn = typeof data.turn === "number" ? data.turn : null;
+    if (game.notifyAnimsComplete(socket.id, turn)) {
+      emitGameUpdate(data.gameId, game);
+    }
+  });
+
   // ── Poker action ──────────────────────────────────────────────
   socket.on("poker_action", (data) => {
     const game = games.get(data.gameId);
@@ -710,6 +755,8 @@ io.on("connection", (socket) => {
   socket.on("sell_property", (data) => {
     const game = games.get(data.gameId);
     if (!game) return;
+    // Sell feature is disabled in classic 2-4 mode — drop bypass attempts.
+    if (game.gameMode === "classic") return;
     if (game.sellProperty(socket.id, data.propPos, data.price)) {
       emitGameUpdate(data.gameId, game);
     }
@@ -734,24 +781,6 @@ io.on("connection", (socket) => {
     const game = games.get(data.gameId);
     if (!game) return;
     if (game.cancelSale(socket.id, data.saleId)) {
-      emitGameUpdate(data.gameId, game);
-    }
-  });
-
-  // ── Swap farm ──────────────────────────────────────────────
-  socket.on("swap_farm", (data) => {
-    const game = games.get(data.gameId);
-    if (!game) return;
-    if (game.swapFarm(socket.id, data.myFarmPos, data.mateFarmPos)) {
-      emitGameUpdate(data.gameId, game);
-    }
-  });
-
-  // ── Give farm to teammate ─────────────────────────────────
-  socket.on("give_farm", (data) => {
-    const game = games.get(data.gameId);
-    if (!game) return;
-    if (game.giveFarm(socket.id, data.propPos)) {
       emitGameUpdate(data.gameId, game);
     }
   });
@@ -827,6 +856,7 @@ io.on("connection", (socket) => {
       game.removePlayer(socket.id);
       socket.leave(data.gameId);
       if (game.players.length === 0) {
+        if (typeof game.cleanup === "function") game.cleanup();
         games.delete(data.gameId);
       } else {
         emitGameUpdate(data.gameId, game);
@@ -843,6 +873,7 @@ io.on("connection", (socket) => {
       if (game.state !== "waiting") trackPlayerStats(game, socket.id);
       game.removePlayer(socket.id);
       if (game.players.length === 0) {
+        if (typeof game.cleanup === "function") game.cleanup();
         games.delete(currentGameId);
       } else {
         emitGameUpdate(currentGameId, game);
@@ -882,6 +913,7 @@ setInterval(() => {
     const idle = !game.lastActivity || game.lastActivity < cutoff;
     if (idle) {
       console.log(`[cleanup] Removing stale game ${gameId} (${game.players.length} players, state=${game.state})`);
+      if (typeof game.cleanup === "function") game.cleanup();
       games.delete(gameId);
     }
   }

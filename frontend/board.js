@@ -1,129 +1,17 @@
-﻿// ——— Board Data & Rendering (MEGA EDITION — 52 spaces) ————————————
+// ——— Board Data & Rendering (48-tile cornerless square) ————————————
 
-const BOARD_SIZE = 52;
-// Simple mode uses a full square loop: 11 tiles per side + 4 corners = 48.
-const SIMPLE_BOARD_SIZE = 48;
-// Set true at the top of each render pass when the active board is the simple
-// 48-tile board, so spaceRect() returns the simple-mode square geometry.
-let _simpleBoardActive = false;
+const BOARD_SIZE = 48;
 
-const SPACE_DATA = {
-  // Cavendish (12)
-  1: { name: "Mediterranean", group: "yellow", price: 40 },
-  3: { name: "Baltic Ave", group: "yellow", price: 40 },
-  4: { name: "Vine Street", group: "yellow", price: 40 },
-  5: { name: "CV12", group: "yellow", price: 40 },
-  15: { name: "Lady Finger Ln", group: "yellow", price: 40 },
-  35: { name: "Banana Bend", group: "yellow", price: 40 },
-  47: { name: "Monkey Trail", group: "yellow", price: 40 },
-  // Blue Java (7)
-  6: { name: "Reading Ave", group: "lightblue", price: 80 },
-  7: { name: "Oriental Ave", group: "lightblue", price: 80 },
-  9: { name: "Vermont Ave", group: "lightblue", price: 80 },
-  10: { name: "Connecticut", group: "lightblue", price: 80 },
-  11: { name: "Belmont Ave", group: "lightblue", price: 80 },
-  19: { name: "Penn. Ave", group: "lightblue", price: 80 },
-  32: { name: "B&O Ave", group: "lightblue", price: 80 },
-  // Red Dacca (5)
-  14: { name: "St. Charles", group: "red", price: 160 },
-  16: { name: "States Ave", group: "red", price: 160 },
-  17: { name: "Virginia Ave", group: "red", price: 160 },
-  18: { name: "Festival Ave", group: "red", price: 160 },
-  // Lady Finger (5)
-  20: { name: "St. James", group: "pink", price: 160 },
-  22: { name: "Tennessee", group: "pink", price: 160 },
-  23: { name: "New York Ave", group: "pink", price: 160 },
-  24: { name: "Riverside Dr", group: "pink", price: 160 },
-  27: { name: "Kentucky Ave", group: "yellow", price: 40 },
-  29: { name: "Indiana Ave", group: "yellow", price: 40 },
-  30: { name: "Illinois Ave", group: "yellow", price: 40 },
-  31: { name: "Sunset Strip", group: "yellow", price: 40 },
-  // Gros Michel (4)
-  33: { name: "Atlantic Ave", group: "darkblue", price: 320 },
-  34: { name: "Ventnor Ave", group: "darkblue", price: 320 },
-  36: { name: "Marvin Gdns", group: "darkblue", price: 320 },
-  37: { name: "Lakeshore Dr", group: "darkblue", price: 320 },
-  // Red Dacca (5th)
-  40: { name: "Red Dacca Ln", group: "red", price: 160 },
-  // Lady Finger (5th)
-  41: { name: "Cavendish Dr", group: "pink", price: 160 },
-  // Goldfinger (3)
-  48: { name: "Park Place", group: "orange", price: 480 },
-  49: { name: "Fifth Avenue", group: "orange", price: 480 },
-  51: { name: "Boardwalk", group: "orange", price: 480 },
-};
-
-const SPECIAL_SPACES = {
-  // Corners
-  0: { name: "GROW\n25%", type: "corner" },
-  13: { name: "GROW\n50%", type: "corner" },
-  26: { name: "GROW\n75%", type: "corner" },
-  39: { name: "GROW\n100%", type: "corner" },
-  // Community Chest
-  2: { name: "\ud83c\udf4c\n-10%", type: "tax10" },
-  21: { name: "\u2b50", type: "special" },
-  42: { name: "+500", type: "freebananas" },
-  // Desert
-  8: { name: "\ud83c\udf35", type: "desert" },
-  28: { name: "\ud83c\udf35", type: "desert" },
-  46: { name: "\ud83c\udf35", type: "desert" },
-  // Mega specials
-  12: { name: "\ud83c\udf35", type: "desert" },
-  25: { name: "Vine", fullName: "Vine Swing", type: "bus" },
-  38: { name: "\ud83c\udf35", type: "desert" },
-  43: { name: "\ud83c\udf35", type: "desert" },
-  44: { name: "\ud83c\udf35", type: "desert" },
-  45: { name: "\ud83c\udf35", type: "desert" },
-  50: { name: "\ud83c\udf35", type: "desert" },
-};
-
-// ——— Layout calculation (52 spaces, 14×14 grid) ———————————————————
-
+// ——— Layout: 48-tile full square loop ————————————————————————————————
+// A 13×13 grid whose entire perimeter is filled (4·13 − 4 = 48): 4 real
+// corner tiles + 11 tiles per side, all the same size. Numbered
+// counter-clockwise from the bottom-right corner: 0 = BR corner,
+// 1–11 bottom (R→L), 12 = BL corner, 13–23 left (B→T), 24 = TL corner,
+// 25–35 top (L→R), 36 = TR corner, 37–47 right (T→B).
 function spaceRect(i) {
-  if (_simpleBoardActive) return spaceRectSimple(i);
-  const C = 100 / 14; // all tiles same size (square)
-  const S = C; // side tiles same as corner
-
-  // Corners: 0=bottom-right, 13=bottom-left, 26=top-left, 39=top-right
-  if (i === 0) return { l: 100 - C, t: 100 - C, w: C, h: C };
-  if (i === 13) return { l: 0, t: 100 - C, w: C, h: C };
-  if (i === 26) return { l: 0, t: 0, w: C, h: C };
-  if (i === 39) return { l: 100 - C, t: 0, w: C, h: C };
-
-  // Bottom row (1–12): right to left
-  if (i >= 1 && i <= 12) {
-    const idx = 11 - (i - 1);
-    return { l: C + idx * S, t: 100 - C, w: S, h: C, side: "bottom" };
-  }
-  // Left column (14–25): bottom to top
-  if (i >= 14 && i <= 25) {
-    const idx = 11 - (i - 14);
-    return { l: 0, t: C + idx * S, w: C, h: S, side: "left" };
-  }
-  // Top row (27–38): left to right
-  if (i >= 27 && i <= 38) {
-    const idx = i - 27;
-    return { l: C + idx * S, t: 0, w: S, h: C, side: "top" };
-  }
-  // Right column (40–51): top to bottom
-  if (i >= 40 && i <= 51) {
-    const idx = i - 40;
-    return { l: 100 - C, t: C + idx * S, w: C, h: S, side: "right" };
-  }
-  return { l: 0, t: 0, w: 0, h: 0 };
-}
-
-// ——— Simple-mode layout: 48-tile full square loop ————————————————————
-// A 13×13 grid whose entire perimeter is filled (4·13 − 4 = 48): 4 real corner
-// tiles + 11 tiles per side, all the same size — same geometry as the Classic
-// board, just one cell smaller per side. Numbered counter-clockwise from the
-// bottom-right corner, mirroring Classic: 0 = BR corner, 1–11 bottom (R→L),
-// 12 = BL corner, 13–23 left (B→T), 24 = TL corner, 25–35 top (L→R),
-// 36 = TR corner, 37–47 right (T→B).
-function spaceRectSimple(i) {
   const C = 100 / 13; // all tiles same size (square), corners included
   const S = C;
-  // Corners (no `side` — like Classic's corner slots)
+  // Corners (no `side`)
   if (i === 0) return { l: 100 - C, t: 100 - C, w: C, h: C }; // bottom-right
   if (i === 12) return { l: 0, t: 100 - C, w: C, h: C }; // bottom-left
   if (i === 24) return { l: 0, t: 0, w: C, h: C }; // top-left
@@ -159,12 +47,12 @@ window._freeBananasShown = _freeBananasShown;
 // ——— Banana pile tracking for collection animation ————————————————
 let _prevBananaPiles = {}; // { tileIndex: amount }
 
-// On-board pile chip label. Simple mode shows a compact grow multiplier
-// (×N = pile ÷ farm yield = how many un-collected grows are stacked) instead of
-// the raw banana count, so the board stays readable. Other modes keep the exact
-// amount. The Owned-Farms chart renders separately and still shows exact totals.
+// On-board pile chip label. Shows a compact grow multiplier (×N = pile ÷
+// farm yield = how many un-collected grows are stacked) instead of the raw
+// banana count, so the board stays readable. Hover reveals the breakdown
+// via a styled tooltip (see .banana-pile[data-tooltip] in styles.css).
 function _pileChipLabel(tileIndex, amount) {
-  if (gs && (gs.gameMode === "simple" || gs.gameMode === "simple_teams")) {
+  if (gs && (gs.gameMode === "classic" || gs.gameMode === "2v2")) {
     const layout = gs.boardLayout && gs.boardLayout[tileIndex];
     const yieldVal = layout && layout.price ? layout.price : 0;
     if (yieldVal > 0) {
@@ -172,8 +60,8 @@ function _pileChipLabel(tileIndex, amount) {
       return {
         text: "×" + count,
         mult: true,
-        // Hover reveals the real total behind the multiplier: yield × count.
-        title: yieldVal + " × " + count + " = " + amount + "🍌",
+        // Single-line tooltip — yield × count = total.
+        title: `${yieldVal}🍌 × ${count} = ${amount}🍌`,
       };
     }
   }
@@ -207,16 +95,17 @@ function _showStealFloaterAt(tileIndex) {
   stealFloater.style.zIndex = "9999";
   document.body.appendChild(stealFloater);
   setTimeout(() => stealFloater.remove(), 2200);
+  if (typeof _touchLandingFx === "function") _touchLandingFx(1400);
 }
 
-// Place a banana-pile chip relative to its tile. In simple mode every pile sits
+// Place a banana-pile chip relative to its tile. In every pile sits
 // OUTSIDE the board ring (away from centre), matching the corner tiles, so it
 // never sits on top of the tile's yield / ×N text. Other modes keep the original
 // interior placement. Corner tiles always push straight out (top→up, bottom→down).
 function _positionPileChip(pileEl, r) {
   const cx = r.l + r.w / 2;
   const cy = r.t + r.h / 2;
-  const outside = !!(gs && (gs.gameMode === "simple" || gs.gameMode === "simple_teams"));
+  const outside = !!(gs && (gs.gameMode === "classic" || gs.gameMode === "2v2"));
   const above = () => {
     pileEl.style.top = r.t - 0.3 + "%";
     pileEl.style.setProperty("--pile-transform", "translate(-50%, -100%)");
@@ -270,6 +159,10 @@ function resetBoardAnimationState() {
   _freeBananasShown = new Set();
   _chainCache = null;
   window._lastGrowFiredKey = null;
+  // sale_completed sets _pendingSaleFlash and the next renderBoard consumes
+  // it; if the player bounces to the lobby before that render, the flag would
+  // survive into the next game and flash a wrong tile on the first render.
+  window._pendingSaleFlash = null;
 }
 
 // Reset the per-walk dedup sets at the start of a new walk. Called by game.js
@@ -286,23 +179,6 @@ function resetWalkDedup() {
   window._freeBananasShown = _freeBananasShown;
   window._walkStartStealTiles = new Set();
   _wasTokenWalking = true;
-}
-
-// ——— Shared helper: show a floating popup at the "Your Bananas" box ——
-function showPopupAtBananaBox(text, cssClass) {
-  const moneyEl = document.getElementById("info-money");
-  if (!moneyEl) return;
-  const rect = moneyEl.getBoundingClientRect();
-  const floater = document.createElement("div");
-  floater.className = cssClass;
-  floater.textContent = text;
-  floater.style.position = "fixed";
-  floater.style.left = rect.left + rect.width / 2 + "px";
-  floater.style.top = rect.top + "px";
-  floater.style.pointerEvents = "none";
-  floater.style.zIndex = "1000";
-  document.body.appendChild(floater);
-  floater.addEventListener("animationend", () => floater.remove());
 }
 
 // ——— Persistent token elements for smooth animation ———————————————
@@ -324,7 +200,7 @@ function _setupBoardDelegation() {
     if (!gs) return;
     // Simple mode: pick starting tile on first turn
     if (
-      (gs.gameMode === "simple" || gs.gameMode === "simple_teams") &&
+      (gs.gameMode === "classic" || gs.gameMode === "2v2") &&
       gs.currentPlayer &&
       gs.currentPlayer.id === myId &&
       gs.currentPlayer.startPickPending &&
@@ -361,7 +237,7 @@ function _setupBoardDelegation() {
       }
       return;
     }
-    // Simple-mode ability target selection (Vine Swing / Magic Dice)
+    // ability target selection (Vine Swing / Magic Dice)
     if (window._abilityTargetMode && !window._tokenWalking) {
       if (typeof handleAbilityTileClick === "function") {
         handleAbilityTileClick(i);
@@ -379,7 +255,7 @@ function _setupBoardDelegation() {
 // Mirror a tile's live banana pile into the owned-farms chart chip so it counts
 // down in sync with the walk animation. The chart panel isn't rebuilt mid-walk,
 // so we update the chip (matched by data-tile) directly. No-op if the tile has
-// no chip (unowned, or classic mode where the chart has none).
+// no chip (unowned).
 function _syncFarmChartPile(tileId, amount) {
   const chip = document.querySelector(`.owner-farm-pile[data-tile="${tileId}"]`);
   if (!chip) return;
@@ -392,10 +268,8 @@ function _syncFarmChartPile(tileId, amount) {
 // Call this instead of renderBoard() for intermediate walk steps.
 function walkStepUpdate(gs) {
   window._gs = gs;
-  _simpleBoardActive = !!(gs && (gs.gameMode === "simple" || gs.gameMode === "simple_teams"));
   const _boardLen =
-    (gs && gs.boardLayout && gs.boardLayout.length) ||
-    (_simpleBoardActive ? SIMPLE_BOARD_SIZE : BOARD_SIZE);
+    (gs && gs.boardLayout && gs.boardLayout.length) || BOARD_SIZE;
   // Capture flag before pile detection clears it — used for steal suppression
   const vineSwingLanding = !!window._vineSwingJustLanded;
   const board = document.getElementById("board");
@@ -422,7 +296,7 @@ function walkStepUpdate(gs) {
           window._diceMatchUnfrozen &&
           gs.diceMatchTiles &&
           gs.diceMatchTiles.includes(i) &&
-          // Simple-mode grow pulse: a grown pile only appears once the pulse has
+          // grow pulse: a grown pile only appears once the pulse has
           // swept over its tile. Null set = no pulse gating (show immediately).
           (!window._pulseRevealedTiles || window._pulseRevealedTiles.has(i));
         // Leave-steal: the player departed this tile and stole the pile. Clear
@@ -441,7 +315,7 @@ function walkStepUpdate(gs) {
           // visible on arrival instead of clearing it and snapping it back
           // at walk-end.
           const simpleDeferLanding =
-            gs && (gs.gameMode === "simple" || gs.gameMode === "simple_teams") && isLanding &&
+            gs && (gs.gameMode === "classic" || gs.gameMode === "2v2") && isLanding &&
             prop && prop.owner && prop.owner !== window._walkingPlayerId;
           if ((isOwn || isLanding) && !simpleDeferLanding) {
             pileAmount = 0;
@@ -497,7 +371,7 @@ function walkStepUpdate(gs) {
     const _chip = _pileChipLabel(pile.tileIndex, pile.amount);
     pileEl.textContent = _chip.text;
     if (_chip.mult) pileEl.classList.add("pile-mult");
-    if (_chip.title) pileEl.title = _chip.title;
+    if (_chip.title) pileEl.setAttribute("data-tooltip", _chip.title);
     _positionPileChip(pileEl, r);
     board.appendChild(pileEl);
   }
@@ -536,28 +410,9 @@ function walkStepUpdate(gs) {
         ? document.getElementById("space-" + Number(idx))
         : null;
       const fireBurst = () => {
+        // bananaBurst now handles the canonical gain bundle (banana rain on
+        // the piece + green "+N\uD83C\uDF4C" floater near the player's score).
         bananaBurst(collected, collectorId, stealAnchorEl);
-        // Show floater near the collector's account score
-        const _isMe = typeof myId !== "undefined" && collectorId === myId;
-        if (_isMe) {
-          showPopupAtBananaBox("+" + collected + "\uD83C\uDF4C", "free-bananas-popup-player");
-        } else if (collectorId) {
-          const _pstat = document.querySelector(`.pstat[data-player-id="${collectorId}"]`);
-          const _anchor = _pstat && _pstat.querySelector(".pstat-money");
-          if (_anchor) {
-            const _aRect = _anchor.getBoundingClientRect();
-            const _floater = document.createElement("div");
-            _floater.className = "free-bananas-popup-player";
-            _floater.textContent = "+" + collected + "\uD83C\uDF4C";
-            _floater.style.position = "fixed";
-            _floater.style.left = _aRect.left + _aRect.width / 2 + "px";
-            _floater.style.top = _aRect.top + "px";
-            _floater.style.pointerEvents = "none";
-            _floater.style.zIndex = "1000";
-            document.body.appendChild(_floater);
-            _floater.addEventListener("animationend", () => _floater.remove());
-          }
-        }
         if (isSteal) {
           const stealFloater = document.createElement("div");
           stealFloater.className = "steal-floater";
@@ -622,24 +477,17 @@ function walkStepUpdate(gs) {
             { once: true },
           );
         }
-        const isMe = typeof myId !== "undefined" && playerId === myId;
-        if (isMe) {
-          showPopupAtBananaBox((gs && (gs.gameMode === "simple" || gs.gameMode === "simple_teams") ? "+25" : "+500") + "\uD83C\uDF4C", "free-bananas-popup-player");
-        } else {
-          const pstat = document.querySelector(`.pstat[data-player-id="${playerId}"]`);
-          const anchor = pstat && pstat.querySelector(".pstat-money");
-          if (anchor) {
-            const rect = anchor.getBoundingClientRect();
-            const floater = document.createElement("div");
-            floater.className = "free-bananas-popup-player";
-            floater.textContent = (gs && (gs.gameMode === "simple" || gs.gameMode === "simple_teams") ? "+25" : "+500") + "\uD83C\uDF4C";
-            floater.style.position = "fixed";
-            floater.style.left = rect.left + rect.width / 2 + "px";
-            floater.style.top = rect.top + "px";
-            floater.style.pointerEvents = "none";
-            floater.style.zIndex = "1000";
-            document.body.appendChild(floater);
-            floater.addEventListener("animationend", () => floater.remove());
+        // Rain bananas on the tile (anchored to the source) so the payout
+        // reads visually at the tile. bananaBurst also fires the green
+        // "+25\uD83C\uDF4C" floater near the player's score, which is the canonical
+        // gain text. Tracked in a window counter so the post-walk
+        // reconciliation in game.js doesn't double-burst the same amount on
+        // the walker's token.
+        const _fbAmount = 25;
+        if (typeof bananaBurst === "function" && _fbTile) {
+          bananaBurst(_fbAmount, playerId, _fbTile);
+          if (window._tokenWalking) {
+            window._walkFreeBananasBursted = (window._walkFreeBananasBursted || 0) + _fbAmount;
           }
         }
       }
@@ -756,10 +604,8 @@ function _animateAuctionCounter(from, to) {
 
 function renderBoard(gs) {
   window._gs = gs;
-  _simpleBoardActive = !!(gs && (gs.gameMode === "simple" || gs.gameMode === "simple_teams"));
   const _boardLen =
-    (gs && gs.boardLayout && gs.boardLayout.length) ||
-    (_simpleBoardActive ? SIMPLE_BOARD_SIZE : BOARD_SIZE);
+    (gs && gs.boardLayout && gs.boardLayout.length) || BOARD_SIZE;
   // Capture vine-swing-just-landed flag before pile detection clears it —
   // needed later for token no-transition (teleport) and steal suppression.
   const vineSwingLanding = !!window._vineSwingJustLanded;
@@ -771,9 +617,7 @@ function renderBoard(gs) {
   const _bombWasPendingThisFrame =
     !!(gs && gs.lastExplosion && !window._explosionShown);
   const board = document.getElementById("board");
-  // Mark the live board with a mode class so CSS can scope simple-mode-only
-  // tile colours (hidden cover, farm/grow text) without leaking into classic.
-  if (board) board.classList.toggle("board-mode-simple", _simpleBoardActive);
+  if (board) board.classList.add("board-mode-simple");
   _setupBoardDelegation();
   // Preserve overlays across re-renders
   const chat = document.getElementById("board-chat");
@@ -810,7 +654,7 @@ function renderBoard(gs) {
   // Floaters (steal, collect) are NOT preserved across re-renders — re-appending
   // restarts CSS animations causing visible flashing. Instead, dedup sets
   // (_collectShown, _stealShown) prevent re-creation, and popups on document.body
-  // (pile-collect-popup-player) naturally survive re-renders.
+  // (money-gain-float / money-deduction-float) naturally survive re-renders.
   board.innerHTML = "";
   // Create token layer if first render
   if (!tokenLayer) {
@@ -874,7 +718,7 @@ function renderBoard(gs) {
   // Compute chain multipliers (cached — only recompute when ownership changes)
   // Build a key from owned tile positions to detect changes
   let _chainMultipliers;
-  const _isSimpleMode = gs && (gs.gameMode === "simple" || gs.gameMode === "simple_teams");
+  const _isSimpleMode = gs && (gs.gameMode === "classic" || gs.gameMode === "2v2");
   if (gs && gs.properties && !_isSimpleMode) {
     let chainKey = "";
     for (const prop of gs.properties) {
@@ -922,7 +766,7 @@ function renderBoard(gs) {
     _chainMultipliers = {};
   }
 
-  // Simple-mode start pick: tiles already occupied by another player can't be picked.
+  // start pick: tiles already occupied by another player can't be picked.
   const _occupiedPositions = new Set();
   if (gs && gs.players) {
     for (const p of gs.players) {
@@ -965,8 +809,8 @@ function renderBoard(gs) {
     // Simple mode: the grow PULSE lights the grow tile itself, at the right
     // moment (when its chain fires / when you land on it), so don't auto-glow
     // it here — that made a grow you're about to land on glow during the walk.
-    gs.gameMode !== "simple" &&
-    gs.gameMode !== "simple_teams" &&
+    gs.gameMode !== "classic" &&
+    gs.gameMode !== "2v2" &&
     Array.isArray(gs.lastGrowFired) &&
     gs.lastGrowFired.length > 0 &&
     (window._diceMatchUnfrozen || !window._tokenWalking)
@@ -1003,7 +847,7 @@ function renderBoard(gs) {
     // Simple mode start-pick: current player can click ANY tile to land there.
     const startPickActive =
       gs &&
-      (gs.gameMode === "simple" || gs.gameMode === "simple_teams") &&
+      (gs.gameMode === "classic" || gs.gameMode === "2v2") &&
       gs.currentPlayer &&
       gs.currentPlayer.id === myId &&
       gs.currentPlayer.startPickPending &&
@@ -1067,7 +911,7 @@ function renderBoard(gs) {
       if (isCorner) {
         el.classList.add("corner");
         // Simple mode: grow tiles show only their number (0-7), not "GROW N".
-        if (gs && (gs.gameMode === "simple" || gs.gameMode === "simple_teams") && tile.growLabel != null) {
+        if (gs && (gs.gameMode === "classic" || gs.gameMode === "2v2") && tile.growLabel != null) {
           el.innerHTML = `<span class="grow-yield">G${tile.growLabel}</span>`;
         } else {
           el.textContent = tile.name;
@@ -1084,7 +928,7 @@ function renderBoard(gs) {
       } else if (tile.tileName) {
         // Buyable tile (property, railroad, utility)
         const label = tile.tileLabel || tile.tileName;
-        if (tile.group === "simple") {
+        if (tile.group === "farm") {
           // Simple mode: each farm tile shows its own yield in large white text.
           el.classList.add("g-simple");
           el.innerHTML = `<span class="simple-yield">F${tile.price}</span>`;
@@ -1137,24 +981,6 @@ function renderBoard(gs) {
         el.innerHTML = `<span class="sname">${displayName}</span>`;
         if (displayName !== rawName) el.title = rawName;
       }
-    } else {
-      // Fallback: use static SPACE_DATA / SPECIAL_SPACES (pre-game)
-      const special = SPECIAL_SPACES[i];
-      const prop = SPACE_DATA[i];
-
-      if (special && special.type === "corner") {
-        el.classList.add("corner");
-        el.textContent = special.name;
-      } else if (prop) {
-        el.classList.add("g-" + prop.group);
-        el.innerHTML =
-          `<span class="sname">${prop.name}</span>` +
-          `<span class="sprice">$${prop.price}</span>`;
-      } else if (special) {
-        el.classList.add("type-" + special.type);
-        el.innerHTML = `<span class="sname">${special.name}</span>`;
-        if (special.fullName) el.title = special.fullName;
-      }
     }
 
     // Vine Swing: make revealed owned tiles clickable
@@ -1170,7 +996,7 @@ function renderBoard(gs) {
       el.classList.add("space-pickable", "bomb-target");
     }
 
-    // Simple-mode ability target selection (Vine Swing / Magic Dice)
+    // ability target selection (Vine Swing / Magic Dice)
     if (window._abilityTargetMode) {
       const mode = window._abilityTargetMode;
       if (_isAbilityTileSelectable(mode, i, gs)) {
@@ -1192,7 +1018,7 @@ function renderBoard(gs) {
           window._diceMatchUnfrozen &&
           gs.diceMatchTiles &&
           gs.diceMatchTiles.includes(i) &&
-          // Simple-mode grow pulse: a grown pile only appears once the pulse has
+          // grow pulse: a grown pile only appears once the pulse has
           // swept over its tile. Null set = no pulse gating (show immediately).
           (!window._pulseRevealedTiles || window._pulseRevealedTiles.has(i));
         // Leave-steal: the player departed this tile and stole the pile. Drop
@@ -1212,7 +1038,7 @@ function renderBoard(gs) {
           // visible on arrival instead of clearing it and snapping it back
           // at walk-end.
           const simpleDeferLanding =
-            gs && (gs.gameMode === "simple" || gs.gameMode === "simple_teams") && isLanding &&
+            gs && (gs.gameMode === "classic" || gs.gameMode === "2v2") && isLanding &&
             prop && prop.owner && prop.owner !== window._walkingPlayerId;
           if ((isOwn || isLanding) && !simpleDeferLanding) {
             pileAmount = 0;
@@ -1261,7 +1087,7 @@ function renderBoard(gs) {
       }
     }
 
-    // Simple-mode start pick: visually mark revealed tiles as pickable too
+    // start pick: visually mark revealed tiles as pickable too
     // (but skip tiles a player has already chosen).
     if (startPickActive && !_occupiedPositions.has(i)) {
       el.classList.add("space-pickable", "start-pick-target");
@@ -1273,28 +1099,21 @@ function renderBoard(gs) {
   const diceMatchSet = new Set(gs && gs.diceMatchTiles ? gs.diceMatchTiles : []);
 
   // Detect which piles grew since last render.
-  // _growUnfreezeRender: set when landing on a GROW tile unfreezes the piles.
-  // Classic mode treats every current pile as new (prev=0) so they all bounce.
-  // Simple mode instead bounces ONLY the piles that genuinely grew this turn
-  // (per diceMatchGrownAmounts), so landing on a GROW tile no longer makes every
-  // unrelated pile box bounce.
+  // Bounce ONLY the piles that genuinely grew this turn (per
+  // diceMatchGrownAmounts), so landing on a GROW tile doesn't bounce every
+  // unrelated pile box.
   const isGrowUnfreeze = !!window._growUnfreezeRender;
   window._growUnfreezeRender = false;
   const isDiceMatchSteal = !!window._diceMatchStealRender;
   window._diceMatchStealRender = false;
-  const simpleGrowScoped = isGrowUnfreeze && gs && (gs.gameMode === "simple" || gs.gameMode === "simple_teams");
   const grownAmtFor = (idx) =>
     (gs && gs.diceMatchGrownAmounts && gs.diceMatchGrownAmounts[idx]) || 0;
   const grewTiles = new Map(); // tileIndex -> delta
   for (const pile of _bananaPiles) {
     let prev;
-    if (simpleGrowScoped) {
-      // Only tiles that actually grew this turn get a positive delta (bounce);
-      // every other remaining pile keeps its amount, so it stays still.
+    if (isGrowUnfreeze) {
       const g = grownAmtFor(pile.tileIndex);
       prev = g > 0 ? pile.amount - g : pile.amount;
-    } else if (isGrowUnfreeze) {
-      prev = 0; // classic GROW-corner unfreeze: unchanged behavior
     } else {
       prev = _prevBananaPiles[pile.tileIndex] || 0;
     }
@@ -1322,7 +1141,7 @@ function renderBoard(gs) {
     const _chip = _pileChipLabel(pile.tileIndex, pile.amount);
     pileEl.textContent = _chip.text;
     if (_chip.mult) pileEl.classList.add("pile-mult");
-    if (_chip.title) pileEl.title = _chip.title;
+    if (_chip.title) pileEl.setAttribute("data-tooltip", _chip.title);
 
     // Place the chip relative to its tile (outside the board ring in simple mode).
     _positionPileChip(pileEl, r);
@@ -1448,28 +1267,9 @@ function renderBoard(gs) {
         ? document.getElementById("space-" + Number(idx))
         : null;
       const fireBurst = () => {
+        // bananaBurst now handles the canonical gain bundle (banana rain on
+        // the piece + green "+N\uD83C\uDF4C" floater near the player's score).
         bananaBurst(collected, collectorId, stealAnchorEl);
-        // Show floater near the collector's account score
-        const _isMe = typeof myId !== "undefined" && collectorId === myId;
-        if (_isMe) {
-          showPopupAtBananaBox("+" + collected + "\uD83C\uDF4C", "free-bananas-popup-player");
-        } else if (collectorId) {
-          const _pstat = document.querySelector(`.pstat[data-player-id="${collectorId}"]`);
-          const _anchor = _pstat && _pstat.querySelector(".pstat-money");
-          if (_anchor) {
-            const _aRect = _anchor.getBoundingClientRect();
-            const _floater = document.createElement("div");
-            _floater.className = "free-bananas-popup-player";
-            _floater.textContent = "+" + collected + "\uD83C\uDF4C";
-            _floater.style.position = "fixed";
-            _floater.style.left = _aRect.left + _aRect.width / 2 + "px";
-            _floater.style.top = _aRect.top + "px";
-            _floater.style.pointerEvents = "none";
-            _floater.style.zIndex = "1000";
-            document.body.appendChild(_floater);
-            _floater.addEventListener("animationend", () => _floater.remove());
-          }
-        }
         if (isSteal) {
           const stealFloater = document.createElement("div");
           stealFloater.className = "steal-floater";
@@ -1539,24 +1339,26 @@ function renderBoard(gs) {
         const tileRevealed = !myRevealed || myRevealed.has(pos);
         if (currentFB.has(pos) && !_freeBananasShown.has(pos) && tileRevealed) {
           _freeBananasShown.add(pos);
-          const isMe = typeof myId !== "undefined" && playerId === myId;
-          if (isMe) {
-            showPopupAtBananaBox((gs && (gs.gameMode === "simple" || gs.gameMode === "simple_teams") ? "+25" : "+500") + "\uD83C\uDF4C", "free-bananas-popup-player");
-          } else {
-            const pstat = document.querySelector(`.pstat[data-player-id="${playerId}"]`);
-            const anchor = pstat && pstat.querySelector(".pstat-money");
-            if (anchor) {
-              const rect = anchor.getBoundingClientRect();
-              const floater = document.createElement("div");
-              floater.className = "free-bananas-popup-player";
-              floater.textContent = (gs && (gs.gameMode === "simple" || gs.gameMode === "simple_teams") ? "+25" : "+500") + "\uD83C\uDF4C";
-              floater.style.position = "fixed";
-              floater.style.left = rect.left + rect.width / 2 + "px";
-              floater.style.top = rect.top + "px";
-              floater.style.pointerEvents = "none";
-              floater.style.zIndex = "1000";
-              document.body.appendChild(floater);
-              floater.addEventListener("animationend", () => floater.remove());
+          // Tile bounce + banana rain \u2014 mirrors the walkStepUpdate path so the
+          // visual feedback is the same regardless of which detector wins.
+          const _fbTile = document.getElementById("space-" + pos);
+          if (_fbTile) {
+            _fbTile.classList.remove("freebananas-triggered");
+            void _fbTile.offsetWidth;
+            _fbTile.classList.add("freebananas-triggered");
+            _fbTile.addEventListener(
+              "animationend",
+              () => _fbTile.classList.remove("freebananas-triggered"),
+              { once: true },
+            );
+          }
+          const _fbAmount = 25;
+          if (typeof bananaBurst === "function" && _fbTile) {
+            // bananaBurst handles the green "+25\uD83C\uDF4C" floater near the
+            // player's score as part of the canonical gain bundle.
+            bananaBurst(_fbAmount, playerId, _fbTile);
+            if (window._tokenWalking) {
+              window._walkFreeBananasBursted = (window._walkFreeBananasBursted || 0) + _fbAmount;
             }
           }
         }
@@ -1571,25 +1373,25 @@ function renderBoard(gs) {
           // For passive reveal, show at the player who is on the tile
           const currentPlayer = gs.players.find((p) => p.position === pos);
           if (currentPlayer) {
-            const isMe = typeof myId !== "undefined" && currentPlayer.id === myId;
-            if (isMe) {
-              showPopupAtBananaBox((gs && (gs.gameMode === "simple" || gs.gameMode === "simple_teams") ? "+25" : "+500") + "\uD83C\uDF4C", "free-bananas-popup-player");
-            } else {
-              const pstat = document.querySelector(`.pstat[data-player-id="${currentPlayer.id}"]`);
-              const anchor = pstat && pstat.querySelector(".pstat-money");
-              if (anchor) {
-                const rect = anchor.getBoundingClientRect();
-                const floater = document.createElement("div");
-                floater.className = "free-bananas-popup-player";
-                floater.textContent = (gs && (gs.gameMode === "simple" || gs.gameMode === "simple_teams") ? "+25" : "+500") + "\uD83C\uDF4C";
-                floater.style.position = "fixed";
-                floater.style.left = rect.left + rect.width / 2 + "px";
-                floater.style.top = rect.top + "px";
-                floater.style.pointerEvents = "none";
-                floater.style.zIndex = "1000";
-                document.body.appendChild(floater);
-                floater.addEventListener("animationend", () => floater.remove());
-              }
+            // Tile bounce + banana rain on the source tile. No walk in progress,
+            // so no reconciliation tracking is needed — money landed via passive
+            // push and won't be reconciled by the post-walk burst.
+            const _fbTile = document.getElementById("space-" + pos);
+            if (_fbTile) {
+              _fbTile.classList.remove("freebananas-triggered");
+              void _fbTile.offsetWidth;
+              _fbTile.classList.add("freebananas-triggered");
+              _fbTile.addEventListener(
+                "animationend",
+                () => _fbTile.classList.remove("freebananas-triggered"),
+                { once: true },
+              );
+            }
+            const _fbAmount = 25;
+            if (typeof bananaBurst === "function" && _fbTile) {
+              // bananaBurst handles the green "+25\uD83C\uDF4C" floater near the
+              // player's score as part of the canonical gain bundle.
+              bananaBurst(_fbAmount, currentPlayer.id, _fbTile);
             }
           }
         }
@@ -1614,7 +1416,7 @@ function renderBoard(gs) {
   centerTitle.className = "board-center-title";
   const showAuctionCounter =
     gs &&
-    (gs.gameMode === "simple" || gs.gameMode === "simple_teams") &&
+    (gs.gameMode === "classic" || gs.gameMode === "2v2") &&
     gs.itemAuctionEnabled &&
     (gs.state === "playing" || gs.state === "revealing");
   if (showAuctionCounter) {
@@ -1715,6 +1517,66 @@ function renderBoard(gs) {
     }
   }
 
+  // Defuse: keep the bomb visible at its position until the defuser visually
+  // walks onto it, then play the defuse poof + sound. The backend has already
+  // removed the bomb from gs.bombs, so without this phantom render the bomb
+  // would vanish mid-walk and the player would land on an empty tile.
+  if (
+    gs &&
+    gs.lastDefuse &&
+    typeof gs.lastDefuse.position === "number" &&
+    !window._defuseShown
+  ) {
+    const dr = spaceRect(gs.lastDefuse.position);
+    const phantomBomb = document.createElement("div");
+    phantomBomb.className = "bomb-indicator";
+    phantomBomb.textContent = "\uD83C\uDF4D";
+    phantomBomb.style.left = dr.l + dr.w - 2 + "%";
+    phantomBomb.style.top = dr.t + dr.h - 2 + "%";
+    const timerBadge = document.createElement("span");
+    timerBadge.className = "bomb-timer";
+    timerBadge.textContent = "0";
+    phantomBomb.appendChild(timerBadge);
+    board.appendChild(phantomBomb);
+  }
+
+  // Defuse animation (wait for the walking token to arrive on the bomb tile).
+  if (
+    gs &&
+    gs.lastDefuse &&
+    typeof gs.lastDefuse.position === "number" &&
+    !window._defuseShown &&
+    !window._tokenWalking &&
+    !window._diceRollingPositions
+  ) {
+    window._defuseShown = true;
+    if (typeof playDefuseSound === "function") playDefuseSound();
+    const dr = spaceRect(gs.lastDefuse.position);
+    const cx = dr.l + dr.w / 2;
+    const cy = dr.t + dr.h / 2;
+    // Three puffs of smoke staggered slightly.
+    const puffs = ["\uD83D\uDCA8", "\uD83D\uDCA8", "\uD83D\uDCA8"];
+    puffs.forEach((emoji, i) => {
+      const puff = document.createElement("div");
+      puff.className = "bomb-defuse-puff";
+      puff.textContent = emoji;
+      puff.style.left = cx + (i - 1) * 1.4 + "%";
+      puff.style.top = cy + "%";
+      puff.style.animationDelay = i * 0.08 + "s";
+      board.appendChild(puff);
+      puff.addEventListener("animationend", () => puff.remove());
+    });
+    const floater = document.createElement("div");
+    floater.className = "bomb-defuse-floater";
+    floater.textContent = "\uD83D\uDEE0\uFE0F Defused!";
+    floater.style.left = cx + "%";
+    floater.style.top = cy + "%";
+    board.appendChild(floater);
+    floater.addEventListener("animationend", () => floater.remove());
+    // Block turn_anims_complete until the poof / sound settle.
+    if (typeof _touchLandingFx === "function") _touchLandingFx(1400);
+  }
+
   // Bomb explosion animation (wait for token walk to finish)
   if (
     gs &&
@@ -1744,8 +1606,7 @@ function renderBoard(gs) {
     //
     // The chain starts at the bomb tile and spreads outward in both
     // directions at 5 tiles per second (STEP_MS = 200). It naturally
-    // stops at the edge of the blast (simple mode: the corner tiles
-    // bounding the side; classic mode: the 3-tile cluster).
+    // stops at the edge of the blast (the corner tiles bounding the side).
     let killCounter = 0;
     const STEP_MS = 200;
     const TILE_FLAME_MS = 600;
@@ -1767,8 +1628,7 @@ function renderBoard(gs) {
       const bombPos = exp.position;
       const blastTiles = Array.isArray(exp.tiles) ? exp.tiles : [];
       const boardSize =
-        (gs.boardLayout && gs.boardLayout.length) ||
-        (_simpleBoardActive ? SIMPLE_BOARD_SIZE : BOARD_SIZE);
+        (gs.boardLayout && gs.boardLayout.length) || BOARD_SIZE;
       const placer = (gs.players || []).find((p) => p.id === exp.placerId);
       const placerColor = placer && placer.color ? placer.color : null;
       const hex =
@@ -1843,6 +1703,7 @@ function renderBoard(gs) {
         const flame = document.createElement("div");
         flame.className = "bomb-chain-flame";
         flame.textContent = isCenter ? "\ud83d\udca5" : "\ud83d\udd25";
+        flame.style.setProperty("--pulse-color", hex);
         flame.style.left = tr.l + "%";
         flame.style.top = tr.t + "%";
         flame.style.width = tr.w + "%";
@@ -1971,10 +1832,23 @@ function renderBoard(gs) {
     if (typeof _runDeferredBombGameOver === "function") {
       setTimeout(() => _runDeferredBombGameOver(), chainEndsAt);
     }
+
+    // Block turn_anims_complete until the explosion finishes — without this
+    // the lander emits the signal while the chain sweep / kill banners are
+    // still playing and the server advances to the next player.
+    const lastBannerEndMs =
+      killCounter > 0 ? 3600 + (killCounter - 1) * 900 : 0;
+    const bombAnimMs = Math.max(chainEndsAt, lastBannerEndMs, 800);
+    if (typeof _touchLandingFx === "function") {
+      _touchLandingFx(bombAnimMs);
+    }
   }
   if (gs && !gs.lastExplosion) {
     window._explosionShown = null;
     window._bombChainHeldVictims = null;
+  }
+  if (gs && !gs.lastDefuse) {
+    window._defuseShown = null;
   }
 
   // Player tokens (persistent for smooth animation)
@@ -2149,76 +2023,8 @@ function updateSellHighlights() {
 
 // ——— Board Preview (client-side shuffle) ——————————————————————————
 
-function buildPreviewLayout() {
-  // Build a tile array matching the server's BOARD structure
-  const groupLetters = {
-    pink: "LF",
-    lightblue: "BJ",
-    red: "RD",
-    yellow: "CV",
-    orange: "GF",
-    darkblue: "GM",
-  };
 
-  const growTiles = [
-    { type: "grow", name: "GROW\n25%", growPct: 0.25 },
-    { type: "grow", name: "GROW\n50%", growPct: 0.5 },
-    { type: "grow", name: "GROW\n75%", growPct: 0.75 },
-    { type: "grow", name: "GROW\n100%", growPct: 1.0 },
-  ];
-
-  // Collect every tile (including grow tiles) into a single shuffle pool
-  const allTiles = [...growTiles];
-  for (let i = 0; i < BOARD_SIZE; i++) {
-    const prop = SPACE_DATA[i];
-    const special = SPECIAL_SPACES[i];
-    if (prop) {
-      allTiles.push({
-        tileName: prop.name,
-        group: prop.group,
-        price: prop.price,
-        type: "property",
-      });
-    } else if (special && special.type !== "corner") {
-      const entry = { type: special.type, name: special.name };
-      if (special.fullName) entry.fullName = special.fullName;
-      // Desert cacti are buyable
-      if (special.type === "desert") {
-        entry.tileName = special.name;
-        entry.group = "desert";
-        entry.price = 0;
-      }
-      // Mushroom
-      if (special.type === "special") {
-        entry.tileName = special.name;
-        entry.group = "mushroom";
-        entry.price = 7777;
-      }
-      allTiles.push(entry);
-    }
-  }
-
-  // Fisher-Yates shuffle every tile (grow tiles can land anywhere)
-  for (let i = allTiles.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [allTiles[i], allTiles[j]] = [allTiles[j], allTiles[i]];
-  }
-
-  // Build the full 52-tile layout with tileLabels
-  const layout = [];
-  const groupCounters = {};
-  for (let i = 0; i < BOARD_SIZE; i++) {
-    const tile = { ...allTiles[i], id: i };
-    if (tile.group && groupLetters[tile.group]) {
-      groupCounters[tile.group] = (groupCounters[tile.group] || 0) + 1;
-      tile.tileLabel = groupLetters[tile.group] + groupCounters[tile.group];
-    }
-    layout.push(tile);
-  }
-  return layout;
-}
-
-// Simple-mode board variation (mirrors backend BOARD_SIMPLE): 48 tiles —
+// board variation (mirrors backend BOARD_SIMPLE): 48 tiles —
 // 40 farms with yields 1..40 (shown as F1..F40), 6 GROW tiles (labelled 1-6
 // like in play), and 2 special tiles (Super Banana 777🍌, +25 Free Bananas).
 // No tax, no Vine Swing tile (it's an ability now), no corners. All shuffled.
@@ -2227,7 +2033,7 @@ function buildSimplePreviewLayout() {
   for (let i = 0; i < 40; i++) {
     allTiles.push({
       type: "property",
-      group: "simple",
+      group: "farm",
       tileName: `F${i + 1}`,
       price: i + 1,
     });
@@ -2271,8 +2077,8 @@ function renderPreviewTileList(layout) {
   if (!panel) return;
   panel.innerHTML = "";
 
-  // Simple-mode boards have a single "simple" farm group — render their own panel.
-  if (layout.some((t) => t.group === "simple")) {
+  // The board has a single "farm" group.
+  if (layout.some((t) => t.group === "farm")) {
     renderSimplePreviewTileList(layout, panel);
     return;
   }
@@ -2432,11 +2238,11 @@ function renderPreviewTileList(layout) {
   panel.appendChild(growSection);
 }
 
-// Tile list panel for the simple-mode board variation: 40 farms (compact yield
+// Tile list panel for the board variation: 40 farms (compact yield
 // grid), 6 GROW tiles (1-6), and the 2 special tiles.
 function renderSimplePreviewTileList(layout, panel) {
   const farms = layout
-    .filter((t) => t.group === "simple")
+    .filter((t) => t.group === "farm")
     .sort((a, b) => a.price - b.price);
   const grows = layout
     .filter((t) => t.type === "grow")
@@ -2504,42 +2310,15 @@ function renderSimplePreviewTileList(layout, panel) {
   }
   panel.appendChild(specialSection);
 
-  // Player colours — the four simple-mode monkeys (Red / Blue / Orange / Purple).
-  const colours = [
-    { name: "Red", hex: "#e23b3b" },
-    { name: "Blue", hex: "#2e7fe0" },
-    { name: "Orange", hex: "#ff8c00" },
-    { name: "Purple", hex: "#8e44ad" },
-  ];
-  const colourSection = document.createElement("div");
-  colourSection.className = "bp-group";
-  colourSection.innerHTML =
-    `<div class="bp-group-header">` +
-    `<span class="bp-group-dot" style="background:#888"></span>` +
-    `Player Colours ` +
-    `<span class="bp-group-meta">${colours.length} monkeys</span>` +
-    `</div>`;
-  const colourGrid = document.createElement("div");
-  colourGrid.className = "bp-yield-grid";
-  colourGrid.innerHTML = colours
-    .map(
-      (c) =>
-        `<span class="bp-yield-chip" style="border-color:${c.hex};color:${c.hex}">${c.name}</span>`,
-    )
-    .join("");
-  colourSection.appendChild(colourGrid);
-  panel.appendChild(colourSection);
 }
 
 function renderPreviewBoard(layout) {
   const board = document.getElementById("board-preview");
   board.innerHTML = "";
 
-  // Simple-mode previews are 48 tiles (full square loop); classic is 52.
-  _simpleBoardActive = Array.isArray(layout) && layout.length === SIMPLE_BOARD_SIZE;
-  // Mirror the live board: tag the preview with a mode class so the simple-mode
+  // Mirror the live board: tag the preview with the mode class so the
   // tile colour rules apply here too (hidden cover, farm/grow text).
-  board.classList.toggle("board-mode-simple", _simpleBoardActive);
+  board.classList.add("board-mode-simple");
   for (let i = 0; i < layout.length; i++) {
     const el = document.createElement("div");
     el.className = "space";
@@ -2554,7 +2333,7 @@ function renderPreviewBoard(layout) {
     const tile = layout[i];
     if (tile.type === "grow") {
       el.classList.add("corner");
-      // Simple-mode grow tiles show just their number (0-7), like in play.
+      // grow tiles show just their number (0-7), like in play.
       if (tile.growLabel != null) {
         el.innerHTML = `<span class="grow-yield">G${tile.growLabel}</span>`;
       } else {
@@ -2562,7 +2341,7 @@ function renderPreviewBoard(layout) {
       }
     } else if (tile.tileName) {
       const label = tile.tileLabel || tile.tileName;
-      if (tile.group === "simple") {
+      if (tile.group === "farm") {
         el.classList.add("g-simple");
         el.innerHTML = `<span class="simple-yield">F${tile.price}</span>`;
       } else if (tile.group === "desert") {

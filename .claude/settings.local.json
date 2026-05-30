@@ -14,7 +14,11 @@
       "Bash(git worktree *)",
       "Bash(node backend/test_game.js)",
       "PowerShell($conns = Get-NetTCPConnection -LocalPort 3000 -State Listen -ErrorAction SilentlyContinue; if \\($conns\\) { $conns | ForEach-Object { $p = Get-Process -Id $_.OwningProcess -ErrorAction SilentlyContinue; \"PID $\\($_.OwningProcess\\) \\($\\($p.ProcessName\\)\\) listening on 3000\" } } else { \"Nothing listening on port 3000\" }; \"---\"; Get-CimInstance Win32_Process -Filter \"Name='node.exe'\" -ErrorAction SilentlyContinue | Select-Object ProcessId, @{n='Cmd';e={$_.CommandLine}} | Format-List)",
-      "PowerShell(try { $r = Invoke-WebRequest -Uri \"http://localhost:3000/\" -UseBasicParsing -TimeoutSec 5; \"HTTP $\\($r.StatusCode\\), $\\($r.Content.Length\\) bytes served\" } catch { \"Request failed: $\\($_.Exception.Message\\)\" })"
+      "PowerShell(try { $r = Invoke-WebRequest -Uri \"http://localhost:3000/\" -UseBasicParsing -TimeoutSec 5; \"HTTP $\\($r.StatusCode\\), $\\($r.Content.Length\\) bytes served\" } catch { \"Request failed: $\\($_.Exception.Message\\)\" })",
+      "Bash(awk 'NR<1 || NR>152' c:/Users/You/Code/bananaland/frontend/board.js)",
+      "Bash(awk 'NR<2019 || NR>2086' c:/Users/You/Code/bananaland/frontend/board.js)",
+      "Bash(node -e \"const code = require\\('fs'\\).readFileSync\\('./frontend/board.js', 'utf8'\\); new Function\\(code\\); console.log\\('board.js parses ok'\\);\")",
+      "Bash(node -e \"const code = require\\('fs'\\).readFileSync\\('./frontend/game.js', 'utf8'\\); new Function\\(code\\); console.log\\('game.js parses ok'\\);\")"
     ]
   }
 }

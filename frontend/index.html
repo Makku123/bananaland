@@ -10,7 +10,7 @@
       href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@400;500;600;700;800&family=Bungee&family=Fredoka:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="styles.css?v=3" />
+    <link rel="stylesheet" href="styles.css?v=5" />
   </head>
   <body>
     <!-- Loading overlay (shown until app is ready) -->
@@ -481,7 +481,7 @@
                 id="twemoji-toggle"
                 onchange="twemojiSetEnabled(this.checked)"
               />
-              <span>Consistent Emojis (same on all devices)</span>
+              <span>Tweenmoji (same emoji set on all devices)</span>
             </label>
           </div>
           <div id="menu-auth-btns" class="menu-auth-btns">
@@ -558,92 +558,163 @@
             </div>
             <div class="form-section" style="grid-column: 1 / -1">
               <div class="form-section-title">🎮 Game Mode</div>
-              <label
-                >Mode
-                <select id="create-mode" onchange="toggleModeSettings()">
-                  <option value="simple" selected>Simple Mode (2-4 players)</option>
-                  <option value="simple_teams">2v2 Simple Teams (4 players)</option>
-                  <option value="ffa">Free for All (2-4 players)</option>
-                  <option value="teams">2v2 Teams (4 players)</option>
-                </select>
-              </label>
+              <div class="mode-chooser" id="mode-chooser">
+                <button
+                  type="button"
+                  class="mode-card mode-card--classic active"
+                  data-mode="classic"
+                  onclick="selectGameMode('classic')"
+                >
+                  <span class="mode-card-icon">🐵</span>
+                  <span class="mode-card-title">Classic</span>
+                  <span class="mode-card-sub">2–4 monkeys, free-for-all</span>
+                </button>
+                <button
+                  type="button"
+                  class="mode-card mode-card--2v2"
+                  data-mode="2v2"
+                  onclick="selectGameMode('2v2')"
+                >
+                  <span class="mode-card-icon">🤝</span>
+                  <span class="mode-card-title">2v2 Teams</span>
+                  <span class="mode-card-sub">4 monkeys, two teams</span>
+                </button>
+              </div>
+              <!-- Hidden select keeps existing JS (`document.getElementById('create-mode').value`) working. -->
+              <select id="create-mode" onchange="toggleModeSettings()" style="display:none">
+                <option value="classic" selected>Classic (2-4 players)</option>
+                <option value="2v2">2v2 (4 players)</option>
+              </select>
               <div id="team-settings" style="display: none">
-                <p class="mode-hint">Buy the Super Banana (7777🍌) to win!</p>
+                <p class="mode-hint">Buy the Super Banana (777🍌) to win!</p>
               </div>
             </div>
-            <div
-              id="simple-settings"
-              class="form-section"
-              style="grid-column: 1 / -1"
-            >
-              <div class="form-section-title">🎁 Item Auction (Simple Mode)</div>
-              <div style="display: flex; gap: 18px; flex-wrap: wrap; align-items: center">
-                <label class="toggle-label">
+            <div class="form-section options-section" style="grid-column: 1 / -1">
+              <div class="form-section-title">🔧 Options</div>
+
+              <!-- Item Auction options at the top -->
+              <div class="options-group options-group--item-auction">
+                <label class="toggle-card toggle-card--featured">
                   <input
                     type="checkbox"
                     id="create-item-auction-enabled"
                     checked
                     onchange="toggleItemAuctionFields()"
                   />
-                  <span>Enable Item Auctions 🎡</span>
+                  <span class="toggle-card-switch"></span>
+                  <span class="toggle-card-label">
+                    <span class="toggle-card-icon">🎡</span>
+                    <span class="toggle-card-text">
+                      <strong>Item Auctions</strong>
+                      <small>Spin the wheel &amp; silent-bid for items</small>
+                    </span>
+                  </span>
                 </label>
+                <div class="options-numbers options-numbers--inline">
+                  <label class="item-auction-sub number-field">
+                    <span class="number-field-label">🎯 Counter Start</span>
+                    <input
+                      type="number"
+                      id="create-item-auction-start"
+                      min="5"
+                      max="500"
+                      value="50"
+                    />
+                  </label>
+                  <label class="item-auction-sub number-field">
+                    <span class="number-field-label">⏱️ Item Bid Timer (sec)</span>
+                    <input
+                      type="number"
+                      id="create-item-auction-timer"
+                      min="5"
+                      max="60"
+                      value="15"
+                    />
+                  </label>
+                </div>
+                <p class="options-group-hint">
+                  Every roll subtracts from a shared counter; at 0 a wheel spins and players silent-bid on the chosen item.
+                </p>
               </div>
-              <div
-                class="item-auction-sub"
-                style="display: flex; gap: 18px; flex-wrap: wrap; margin-top: 8px"
-              >
-                <label
-                  >Counter Start
-                  <input
-                    type="number"
-                    id="create-item-auction-start"
-                    min="5"
-                    max="500"
-                    value="50"
-                    style="width: 90px"
-                  />
-                </label>
-                <label
-                  >Bid Timer (sec)
-                  <input
-                    type="number"
-                    id="create-item-auction-timer"
-                    min="5"
-                    max="60"
-                    value="15"
-                    style="width: 90px"
-                  />
-                </label>
-              </div>
-              <p class="mode-hint" style="margin-top: 6px">
-                Every dice roll subtracts from a shared counter. At 0, a wheel
-                spins and players silent-bid on the chosen item.
-              </p>
-            </div>
-            <div class="form-section" style="grid-column: 1 / -1">
-              <div class="form-section-title">🔧 Options</div>
-              <div style="display: flex; gap: 18px; flex-wrap: wrap">
-<label class="toggle-label">
-                  <input type="checkbox" id="create-bomb-mode" checked />
-                  <span>Pineapple Bomb Mode 🍍</span>
-                </label>
-                <label>Bomb Cost 🍌
+
+              <!-- Cost & timer adjusters in the middle -->
+              <div class="options-numbers options-numbers--middle">
+                <label class="number-field">
+                  <span class="number-field-label">🍍 Bomb Cost</span>
                   <input
                     type="number"
                     id="create-bomb-cost"
                     min="0"
                     max="99999"
                     value="666"
-                    style="width: 90px"
                   />
                 </label>
-                <label class="toggle-label">
-                  <input type="checkbox" id="create-monkey-poker" checked />
-                  <span>Monkey Poker 🐵</span>
+                <label class="number-field">
+                  <span class="number-field-label">⭐ Super Banana</span>
+                  <input
+                    type="number"
+                    id="create-super-banana-price"
+                    min="100"
+                    max="99999"
+                    value="777"
+                  />
                 </label>
-                <label class="toggle-label">
+                <label class="number-field">
+                  <span class="number-field-label">🍌 Free Bananas</span>
+                  <input
+                    type="number"
+                    id="create-free-bananas"
+                    min="1"
+                    max="9999"
+                    value="25"
+                  />
+                </label>
+                <label class="number-field">
+                  <span class="number-field-label">⏱️ Farm Bid Timer (sec)</span>
+                  <input
+                    type="number"
+                    id="create-farm-auction-timer"
+                    min="5"
+                    max="60"
+                    value="15"
+                  />
+                </label>
+              </div>
+
+              <!-- Remaining toggles at the bottom -->
+              <div class="options-toggles">
+                <label class="toggle-card">
+                  <input type="checkbox" id="create-bomb-mode" checked />
+                  <span class="toggle-card-switch"></span>
+                  <span class="toggle-card-label">
+                    <span class="toggle-card-icon">🍍</span>
+                    <span class="toggle-card-text">
+                      <strong>Pineapple Bomb Mode</strong>
+                      <small>Buy bombs to eliminate opponents</small>
+                    </span>
+                  </span>
+                </label>
+                <label class="toggle-card">
+                  <input type="checkbox" id="create-monkey-poker" checked />
+                  <span class="toggle-card-switch"></span>
+                  <span class="toggle-card-label">
+                    <span class="toggle-card-icon">🐵</span>
+                    <span class="toggle-card-text">
+                      <strong>Monkey Poker</strong>
+                      <small>Squat on rivals' farms to start a poker duel</small>
+                    </span>
+                  </span>
+                </label>
+                <label class="toggle-card">
                   <input type="checkbox" id="create-public" />
-                  <span>Public Lobby 🌐</span>
+                  <span class="toggle-card-switch"></span>
+                  <span class="toggle-card-label">
+                    <span class="toggle-card-icon">🌐</span>
+                    <span class="toggle-card-text">
+                      <strong>Public Lobby</strong>
+                      <small>Let anyone find &amp; join your game</small>
+                    </span>
+                  </span>
                 </label>
               </div>
             </div>
@@ -674,13 +745,8 @@
             /></label>
           </div>
           <div class="join-tabs">
-            <button class="join-tab" data-tab="browse" onclick="switchJoinTab('browse')">🌐 Public Lobbies</button>
             <button class="join-tab active" data-tab="code" onclick="switchJoinTab('code')">🎫 Enter Code</button>
-          </div>
-          <div id="join-tab-browse" class="join-tab-content">
-            <div id="public-lobbies" class="public-lobbies">
-              <div class="public-lobbies-empty">Loading...</div>
-            </div>
+            <button class="join-tab" data-tab="browse" onclick="switchJoinTab('browse')">🌐 Public Lobbies</button>
           </div>
           <div id="join-tab-code" class="join-tab-content active">
             <div class="join-grid">
@@ -703,6 +769,11 @@
               <button class="btn btn-big btn-glow" onclick="joinGame()">
                 🌴 Join Game
               </button>
+            </div>
+          </div>
+          <div id="join-tab-browse" class="join-tab-content">
+            <div id="public-lobbies" class="public-lobbies">
+              <div class="public-lobbies-empty">Loading...</div>
             </div>
           </div>
           <div class="card-actions">
@@ -751,9 +822,8 @@
               <label
                 >🎮 Game Mode
                 <select id="lobby-mode" onchange="updateLobbySettings()">
-                  <option value="ffa">Free for All</option>
-                  <option value="teams">2v2 Teams</option>
-                  <option value="simple">Simple Mode</option>
+                  <option value="classic">Classic</option>
+                  <option value="2v2">2v2</option>
                 </select>
               </label>
               <label
@@ -765,7 +835,7 @@
                 </select>
               </label>
             </div>
-            <div class="lobby-toggles-row" style="display: flex; gap: 12px; flex-wrap: wrap">
+            <div class="lobby-toggles-row" style="display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end">
               <label class="toggle-label">
                 <input type="checkbox" id="lobby-bomb-mode" onchange="updateLobbySettings()" />
                 <span>Pineapple Bomb Mode 🍍</span>
@@ -777,6 +847,39 @@
                   min="0"
                   max="99999"
                   value="666"
+                  style="width: 80px"
+                  onchange="updateLobbySettings()"
+                />
+              </label>
+              <label>Super Banana ⭐
+                <input
+                  type="number"
+                  id="lobby-super-banana-price"
+                  min="100"
+                  max="99999"
+                  value="777"
+                  style="width: 80px"
+                  onchange="updateLobbySettings()"
+                />
+              </label>
+              <label>Free Bananas 🍌
+                <input
+                  type="number"
+                  id="lobby-free-bananas"
+                  min="1"
+                  max="9999"
+                  value="25"
+                  style="width: 80px"
+                  onchange="updateLobbySettings()"
+                />
+              </label>
+              <label>Farm Bid Timer (sec) ⏱️
+                <input
+                  type="number"
+                  id="lobby-farm-auction-timer"
+                  min="5"
+                  max="60"
+                  value="15"
                   style="width: 80px"
                   onchange="updateLobbySettings()"
                 />
@@ -1040,7 +1143,16 @@
               </div>
             </div>
             <div id="turn-notification" class="turn-notification">
-              🍌 Your Turn! 🍌
+              <span class="turn-notif-banana turn-notif-banana-l">🍌</span>
+              <span class="turn-notif-text">
+                <span class="turn-notif-title">YOUR&nbsp;TURN</span>
+                <span class="turn-notif-sub">Time to roll!</span>
+              </span>
+              <span class="turn-notif-banana turn-notif-banana-r">🍌</span>
+              <span class="turn-notif-sparkle turn-notif-sparkle-1">✨</span>
+              <span class="turn-notif-sparkle turn-notif-sparkle-2">✨</span>
+              <span class="turn-notif-sparkle turn-notif-sparkle-3">✨</span>
+              <span class="turn-notif-sparkle turn-notif-sparkle-4">✨</span>
             </div>
             <div id="auction-won-notification" class="auction-won-notification">
               🎉 You Won the Auction! 🍌
@@ -1215,7 +1327,7 @@
                 <div id="bid-toast" class="bid-toast"></div>
               </div>
 
-              <!-- Item Auction Overlay (simple mode wheel + silent bid) -->
+              <!-- Item Auction Overlay (wheel + silent bid) -->
               <div
                 id="item-auction-box"
                 class="item-auction-box"
@@ -1232,10 +1344,10 @@
                       </svg>
                     </div>
                     <div class="item-auction-rim">
-                      <div class="item-auction-rim-studs"></div>
                       <div id="item-auction-wheel" class="item-auction-wheel">
                         <div class="item-auction-wheel-bg"></div>
                         <div class="item-auction-wheel-spokes"></div>
+                        <div class="item-auction-rim-studs"></div>
                         <div class="item-auction-wheel-slot slot-rabbitDice" data-item="rabbitDice">
                           <div class="slot-emoji">🐢</div>
                           <div class="slot-name">Turtle<br>Dice</div>
@@ -1719,11 +1831,10 @@
                       <h3>Special Tiles</h3>
                     </div>
                     <div class="help-tile-list">
-                      <div class="help-tile-row"><span class="help-tile-icon">⭐</span><b>Super Banana</b> — buy for 7,777🍌 to win</div>
-                      <div class="help-tile-row"><span class="help-tile-icon">🌿</span><b>Vine Swing</b> — teleport to any farm you own</div>
-                      <div class="help-tile-row"><span class="help-tile-icon">💵</span><b>Free Bananas</b> — +500🍌 (+25 in simple)</div>
-                      <div class="help-tile-row"><span class="help-tile-icon">🍌</span><b>Tax</b> — lose 10%</div>
-                      <div class="help-tile-row"><span class="help-tile-icon">🏜️</span><b>Desert</b> — dead tile, no yield</div>
+                      <div class="help-tile-row"><span class="help-tile-icon">⭐</span><b>Super Banana</b> — buy for 777🍌 to win</div>
+                      <div class="help-tile-row"><span class="help-tile-icon">🌿</span><b>Vine Swing</b> — won item; teleport to any tile</div>
+                      <div class="help-tile-row"><span class="help-tile-icon">💵</span><b>Free Bananas</b> — +25🍌</div>
+                      <div class="help-tile-row"><span class="help-tile-icon">🌴</span><b>GROW (1–6)</b> — fires when you land here, or the die face matches its label</div>
                     </div>
                   </div>
 
@@ -1744,21 +1855,22 @@
                     </div>
                     <div class="help-tile-list">
                       <div class="help-tile-row"><span class="help-tile-icon">🃏</span><b>Poker</b> — 2 non-teammates share a tile</div>
-                      <div class="help-tile-row"><span class="help-tile-icon">🍍</span><b>Bomb</b> — 666🍌 (adjustable) · 5-turn fuse · 3-tile blast · opponent = elim</div>
-                      <div class="help-tile-row"><span class="help-tile-icon">💥</span><b>Self-blast</b> — lose 50% bananas (not eliminated)</div>
+                      <div class="help-tile-row"><span class="help-tile-icon">🍍</span><b>Bomb</b> — 666🍌 (1000🍌 in 2v2) · 8-turn fuse · blasts the whole side · opponent = elim</div>
+                      <div class="help-tile-row"><span class="help-tile-icon">💥</span><b>Self-blast</b> — placer/teammate stepping on it defuses (no damage)</div>
                     </div>
                   </div>
 
-                  <!-- Pets -->
+                  <!-- Items -->
                   <div class="help-section">
                     <div class="help-section-header">
-                      <span class="help-section-icon">🐾</span>
-                      <h3>Pets <small>(free, off-turn)</small></h3>
+                      <span class="help-section-icon">🎁</span>
+                      <h3>Special Items <small>(won via item auction)</small></h3>
                     </div>
                     <div class="help-tile-list">
-                      <div class="help-tile-row"><span class="help-tile-icon">🦁</span><b>Strong</b> — +1 fwd · 15-roll cd</div>
-                      <div class="help-tile-row"><span class="help-tile-icon">🐆</span><b>Energy</b> — flip: heads +1 fwd · 7-roll cd</div>
-                      <div class="help-tile-row"><span class="help-tile-icon">🦄</span><b>Magic</b> — flip: ±1 · 15-roll cd</div>
+                      <div class="help-tile-row"><span class="help-tile-icon">🐢</span><b>Turtle Dice</b> — roll 1 die instead of 2</div>
+                      <div class="help-tile-row"><span class="help-tile-icon">🐇</span><b>Rabbit Dice</b> — roll 3 dice instead of 2</div>
+                      <div class="help-tile-row"><span class="help-tile-icon">1️⃣</span><b>Roll One</b> — move exactly 1 space</div>
+                      <div class="help-tile-row"><span class="help-tile-icon">🌿</span><b>Vine Swing</b> — teleport to any tile</div>
                     </div>
                   </div>
 
@@ -1769,9 +1881,8 @@
                       <h3>Trading</h3>
                     </div>
                     <div class="help-tile-list">
-                      <div class="help-tile-row"><span class="help-tile-icon">🏷️</span><b>Sell Listings</b> — up to 5, first come first served</div>
-                      <div class="help-tile-row"><span class="help-tile-icon">🔄</span><b>Swap</b> — 1-for-1 farm trade, off your turn</div>
-                      <div class="help-tile-row"><span class="help-tile-icon">🤝</span><b>Teams (2v2):</b> send 🍌 (150🍌) · swap (100🍌) · gift (300🍌)</div>
+                      <div class="help-tile-row"><span class="help-tile-icon">🏷️</span><b>Sell Listings</b> — list a farm at any price, first to buy wins</div>
+                      <div class="help-tile-row"><span class="help-tile-icon">🤝</span><b>2v2</b> — send 🍌 to teammate (50🍌 fee, cap = half your bananas)</div>
                     </div>
                   </div>
                 </div>
@@ -1953,40 +2064,7 @@
                   </button>
                 </label>
               </div>
-              <!-- Paid dice overrides (Classic only: 🐢 ×1 + 🐇 ×3, both 300).
-                   Hidden in simple mode — there Turtle/Rabbit/Roll One are won
-                   items armed from the "Your Special Items" box. Config in game.js. -->
-              <div style="display: flex; gap: 8px; margin-top: 4px">
-                <button
-                  class="btn btn-alt"
-                  id="btn-roll-1"
-                  onclick="armDiceOverride(1)"
-                  style="
-                    flex: 1;
-                    display: flex;
-                    flex-direction: column;
-                    align-items: center;
-                  "
-                >
-                  <span style="font-size: 1.2em; line-height: 1">🐢</span>
-                  <span>🎲 300🍌</span>
-                </button>
-                <button
-                  class="btn btn-alt"
-                  id="btn-roll-3"
-                  onclick="armDiceOverride(3)"
-                  style="
-                    flex: 1;
-                    display: flex;
-                    flex-direction: column;
-                    align-items: center;
-                  "
-                >
-                  <span style="font-size: 1.2em; line-height: 1">🐇</span>
-                  <span>🎲🎲🎲 300🍌</span>
-                </button>
-              </div>
-              <!-- Simple-mode Magic Dice (replaces pet-ability-box) -->
+              <!-- Magic Dice (replaces pet-ability-box) -->
               <div
                 class="magic-dice-box"
                 id="magic-dice-box"
@@ -2028,7 +2106,12 @@
                   Arm one for your next turn
                 </div>
 
-                <div class="special-item-row" id="special-row-rabbitDice">
+                <div
+                  class="special-item-row"
+                  id="special-row-rabbitDice"
+                  data-tip-title="🐢 Turtle Dice"
+                  data-tip-body="Roll just 1 die instead of 2. Arm it on any turn before you roll — it fires on your next roll."
+                >
                   <span class="special-item-icon">🐢</span>
                   <span class="special-item-label">Turtle Dice</span>
                   <span class="special-item-count" id="special-count-rabbitDice">×0</span>
@@ -2041,7 +2124,12 @@
                   </button>
                 </div>
 
-                <div class="special-item-row" id="special-row-cheetahDice">
+                <div
+                  class="special-item-row"
+                  id="special-row-cheetahDice"
+                  data-tip-title="🐇 Rabbit Dice"
+                  data-tip-body="Roll 3 dice instead of 2. Arm it before you roll — your next roll uses three dice."
+                >
                   <span class="special-item-icon">🐇</span>
                   <span class="special-item-label">Rabbit Dice</span>
                   <span class="special-item-count" id="special-count-cheetahDice">×0</span>
@@ -2054,7 +2142,12 @@
                   </button>
                 </div>
 
-                <div class="special-item-row" id="special-row-magicDice">
+                <div
+                  class="special-item-row"
+                  id="special-row-magicDice"
+                  data-tip-title="1️⃣ Roll One"
+                  data-tip-body="Move exactly 1 space — no dice roll. Arm it to fire instead of the next roll."
+                >
                   <span class="special-item-icon">1️⃣</span>
                   <span class="special-item-label">Roll One</span>
                   <span class="special-item-count" id="special-count-magicDice">×0</span>
@@ -2067,7 +2160,12 @@
                   </button>
                 </div>
 
-                <div class="special-item-row" id="special-row-teleport">
+                <div
+                  class="special-item-row"
+                  id="special-row-teleport"
+                  data-tip-title="🌿 Vine Swing"
+                  data-tip-body="Teleport to any tile you've revealed. Arm it to choose a destination on your next turn instead of rolling."
+                >
                   <span class="special-item-icon">🌿</span>
                   <span class="special-item-label">Vine Swing</span>
                   <span class="special-item-count" id="special-count-teleport">×0</span>
@@ -2223,26 +2321,6 @@
                   </div>
                 </div>
 
-                <!-- Farm Swap Section (teams only) -->
-                <div class="trade-section" id="trade-swap-section">
-                  <div class="trade-section-title">🔄 Swap Farms</div>
-                  <div class="trade-fee-notice">Swap fee: 100🍌 per trade</div>
-                  <label class="trade-label"
-                    >Your Farm
-                    <select id="swap-my-farm"></select>
-                  </label>
-                  <label class="trade-label"
-                    >Teammate's Farm
-                    <select id="swap-mate-farm"></select>
-                  </label>
-                  <button
-                    class="btn btn-glow"
-                    id="btn-swap-farm"
-                    onclick="swapFarm()"
-                  >
-                    Swap (100🍌)
-                  </button>
-                </div>
               </div>
 
               <button
@@ -2270,14 +2348,6 @@
                 🏷️ Sell
               </button>
 
-              <button
-                class="btn btn-alt"
-                id="btn-end"
-                onclick="endTurn()"
-                disabled
-              >
-                End Turn
-              </button>
               <button
                 type="button"
                 class="btn btn-toggles"
@@ -2315,10 +2385,6 @@
                 >
                   <input type="checkbox" id="chk-auto-roll" />
                   Auto Roll
-                </label>
-                <label class="auto-toggle" title="Automatically end your turn">
-                  <input type="checkbox" id="chk-auto-end" />
-                  Auto End
                 </label>
                 <label class="toggle-reveal"
                   ><input
@@ -2470,24 +2536,8 @@
     >
       <div class="board-preview-content">
         <div class="board-preview-header">
-          <h2>🗺️ Board Variations</h2>
+          <h2>🗺️ The Board</h2>
           <p class="board-preview-subtitle">Every game is different — tiles shuffle each time!</p>
-          <div class="bp-mode-toggle">
-            <button
-              id="bp-mode-classic"
-              class="bp-mode-btn active"
-              onclick="setPreviewMode('classic')"
-            >
-              Classic
-            </button>
-            <button
-              id="bp-mode-simple"
-              class="bp-mode-btn"
-              onclick="setPreviewMode('simple')"
-            >
-              Simple
-            </button>
-          </div>
         </div>
         <!-- Variations Content -->
         <div id="bp-view-variations" class="bp-view">

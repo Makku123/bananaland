@@ -222,6 +222,64 @@ function playTaxSound() {
   } catch (e) {}
 }
 
+// Soft "thunk" played when a grow chain hits its stop (next revealed grow, or
+// loops back to itself). Low-pitched triangle with a quick downward sweep —
+// short enough to read as a "landed" beat without stepping on the chain music.
+function playGrowChainStop() {
+  try {
+    if (_sfxVolume === 0) return;
+    const ctx = _getAudioCtx();
+    if (!ctx) return;
+    const t = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = "triangle";
+    osc.frequency.setValueAtTime(220, t);
+    osc.frequency.exponentialRampToValueAtTime(90, t + 0.11);
+    gain.gain.setValueAtTime(0.001, t);
+    gain.gain.linearRampToValueAtTime(0.18, t + 0.012);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.13);
+    osc.connect(gain).connect(_sfxDest(ctx));
+    osc.start(t);
+    osc.stop(t + 0.14);
+  } catch (e) {}
+}
+
+// Magical "zip" played when the Super Banana swaps to a new hidden tile.
+// Two short upward sine sweeps stacked for a sparkly teleport feel.
+function playSuperBananaSwap() {
+  try {
+    if (_sfxVolume === 0) return;
+    const ctx = _getAudioCtx();
+    if (!ctx) return;
+    const t = ctx.currentTime;
+    // First sweep: low → high (the "vanish")
+    const o1 = ctx.createOscillator();
+    const g1 = ctx.createGain();
+    o1.type = "sine";
+    o1.frequency.setValueAtTime(420, t);
+    o1.frequency.exponentialRampToValueAtTime(1200, t + 0.22);
+    g1.gain.setValueAtTime(0.001, t);
+    g1.gain.linearRampToValueAtTime(0.14, t + 0.03);
+    g1.gain.exponentialRampToValueAtTime(0.001, t + 0.24);
+    o1.connect(g1).connect(_sfxDest(ctx));
+    o1.start(t);
+    o1.stop(t + 0.25);
+    // Second sweep slightly delayed and detuned: high → very high (the "reappear")
+    const o2 = ctx.createOscillator();
+    const g2 = ctx.createGain();
+    o2.type = "sine";
+    o2.frequency.setValueAtTime(880, t + 0.08);
+    o2.frequency.exponentialRampToValueAtTime(1760, t + 0.32);
+    g2.gain.setValueAtTime(0.001, t + 0.08);
+    g2.gain.linearRampToValueAtTime(0.1, t + 0.11);
+    g2.gain.exponentialRampToValueAtTime(0.001, t + 0.34);
+    o2.connect(g2).connect(_sfxDest(ctx));
+    o2.start(t + 0.08);
+    o2.stop(t + 0.35);
+  } catch (e) {}
+}
+
 function playBananaWhoosh() {
   try {
     if (_sfxVolume === 0) return;
@@ -335,6 +393,46 @@ function playExplosionSound() {
     snap.connect(snapGain).connect(_sfxDest(ctx));
     snap.start(t);
     snap.stop(t + 0.1);
+  } catch (e) {}
+}
+
+function playDefuseSound() {
+  try {
+    if (_sfxVolume === 0) return;
+    const ctx = _getAudioCtx();
+    if (!ctx) return;
+    const t = ctx.currentTime;
+    // Hissing fizzle — filtered noise that fades out (defused fuse).
+    const buf = ctx.createBuffer(1, ctx.sampleRate * 0.6, ctx.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < data.length; i++) {
+      data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (ctx.sampleRate * 0.22));
+    }
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    const bp = ctx.createBiquadFilter();
+    bp.type = "bandpass";
+    bp.frequency.setValueAtTime(1800, t);
+    bp.frequency.exponentialRampToValueAtTime(500, t + 0.55);
+    bp.Q.value = 0.8;
+    const hissGain = ctx.createGain();
+    hissGain.gain.setValueAtTime(0.28, t);
+    hissGain.gain.exponentialRampToValueAtTime(0.001, t + 0.6);
+    src.connect(bp).connect(hissGain).connect(_sfxDest(ctx));
+    src.start(t);
+    src.stop(t + 0.6);
+    // Descending blip on top — the "phew, defused" wink.
+    const blip = ctx.createOscillator();
+    const blipGain = ctx.createGain();
+    blip.type = "triangle";
+    blip.frequency.setValueAtTime(620, t);
+    blip.frequency.exponentialRampToValueAtTime(180, t + 0.25);
+    blipGain.gain.setValueAtTime(0.0001, t);
+    blipGain.gain.exponentialRampToValueAtTime(0.22, t + 0.02);
+    blipGain.gain.exponentialRampToValueAtTime(0.001, t + 0.3);
+    blip.connect(blipGain).connect(_sfxDest(ctx));
+    blip.start(t);
+    blip.stop(t + 0.32);
   } catch (e) {}
 }
 
@@ -495,7 +593,7 @@ function initSocket() {
     // (scoped CSS overrides hang off this body class).
     document.body.classList.toggle(
       "mode-simple",
-      state.gameMode === "simple" || state.gameMode === "simple_teams",
+      state.gameMode === "classic" || state.gameMode === "2v2",
     );
     // Sync no-timer toggle with server state
     const noTimerChk = document.getElementById("chk-no-timer");
@@ -533,9 +631,16 @@ function initSocket() {
     // If poker just started, defer BOTH poker players' deductions until the
     // poker table visually appears.
     if (window._prevPlayerMoney) {
+      // Start picks and pet/item teleports set diceRolled=true but never trigger
+      // a walk animation, so the normal "defer until walk lands" path would
+      // strand the gain/loss bundle entirely. Treat teleports as immediate.
+      const isStartPickTeleport =
+        !!(gs.lastStartPick && gs.lastStartPick.turn === gs.turn) ||
+        !!(gs.lastTeleport && gs.lastTeleport.turn === gs.turn);
       // Detect if a brand-new dice roll just arrived (walk animation hasn't started yet)
       const isNewDiceRoll = gs.diceRolled && gs.dice && !gs.petUsedThisTurn &&
-        gs.currentPlayer && (gs.dice.join("-") + "-" + gs.turn) !== window._lastDiceKey;
+        gs.currentPlayer && !isStartPickTeleport &&
+        (gs.dice.join("-") + "-" + gs.turn) !== window._lastDiceKey;
       const walkInProgress = window._tokenWalking || isNewDiceRoll;
       const pokerJustStarted = gs.poker && !gs.poker.resolved && walkInProgress;
       const walkingId = window._walkingPlayerId || (isNewDiceRoll && gs.currentPlayer ? gs.currentPlayer.id : null);
@@ -858,12 +963,8 @@ function showReveal() {
   overlay.innerHTML = "";
 
   const content = document.createElement("div");
-  content.className = "reveal-content";
-  const _isSimpleAny =
-    gs.gameMode === "simple" || gs.gameMode === "simple_teams";
-  if (_isSimpleAny) content.classList.add("reveal-content--simple");
+  content.className = "reveal-content reveal-content--simple";
 
-  // Title
   const title = document.createElement("div");
   title.className = "reveal-title";
   title.innerHTML = "\ud83c\udf4c THE BOARD \ud83c\udf4c";
@@ -871,234 +972,14 @@ function showReveal() {
 
   const subtitle = document.createElement("div");
   subtitle.className = "reveal-subtitle";
-  subtitle.textContent = _isSimpleAny
-    ? "Here's every tile in this run \u2014 shuffled fresh."
-    : "Here are all the tiles this game...";
+  subtitle.textContent = "Here's every tile in this run \u2014 shuffled fresh.";
   content.appendChild(subtitle);
 
-  // Simple mode uses a dedicated grouping (Farms / Grow Tiles / Special Tiles)
-  // because its tiles all share `group: "simple"` and would otherwise be
-  // dropped by the classic colour-keyed renderer below.
-  if (_isSimpleAny) {
-    _renderSimpleReveal(content);
-    _attachRevealCountdown(content, overlay);
-    return;
-  }
-
-  // Group tiles from boardLayout
-  const colorOrder = [
-    "yellow",
-    "lightblue",
-    "red",
-    "pink",
-    "darkblue",
-    "orange",
-  ];
-  const groupNames = {
-    yellow: "Cavendish",
-    lightblue: "Blue Java",
-    red: "Red Dacca",
-    pink: "Lady Finger",
-    orange: "Goldfinger",
-    darkblue: "Gros Michel",
-  };
-  const tileEmojis = {
-    yellow: "\ud83c\udf34",
-    lightblue: "\ud83c\udf34",
-    red: "\ud83c\udf34",
-    pink: "\ud83c\udf34",
-    orange: "\ud83c\udf34",
-    darkblue: "\ud83c\udf34",
-  };
-
-  const farmGroups = {};
-  const nonFarms = [];
-  const cacti = [];
-  const grows = [];
-  let mushroom = null;
-
-  for (const tile of gs.boardLayout) {
-    if (tile.type === "grow") {
-      grows.push(tile);
-      continue;
-    }
-    if (tile.type === "desert") {
-      cacti.push(tile);
-    } else if (tile.group && tile.group !== "desert" && tile.group !== "mushroom") {
-      if (!farmGroups[tile.group]) farmGroups[tile.group] = [];
-      farmGroups[tile.group].push(tile);
-    } else if (tile.type === "special") {
-      mushroom = tile;
-    } else {
-      nonFarms.push(tile);
-    }
-  }
-
-  let delay = 0;
-  const tilesGrid = document.createElement("div");
-  tilesGrid.className = "reveal-grid";
-
-  // Farm groups
-  for (const colorKey of colorOrder) {
-    const tiles = farmGroups[colorKey];
-    if (!tiles || tiles.length === 0) continue;
-
-    const section = document.createElement("div");
-    section.className = "reveal-group";
-
-    const header = document.createElement("div");
-    header.className = "reveal-group-header";
-    header.innerHTML =
-      '<span class="reveal-group-dot" style="background:var(--gc-' +
-      colorKey +
-      ')"></span> ' +
-      groupNames[colorKey] +
-      ' <span class="reveal-group-meta">' +
-      tiles.length +
-      " farms \u00b7 " +
-      tiles[0].price +
-      "\ud83c\udf4c yield</span>";
-    section.appendChild(header);
-
-    const row = document.createElement("div");
-    row.className = "reveal-group-tiles";
-
-    for (const t of tiles) {
-      const el = document.createElement("div");
-      el.className = "reveal-tile";
-      el.style.background = "var(--gc-" + colorKey + ")";
-      el.innerHTML =
-        '<span class="reveal-tile-emoji">' +
-        (tileEmojis[colorKey] || "\ud83c\udf34") +
-        "</span>" +
-        '<span class="reveal-tile-label">' +
-        (t.tileLabel || "") +
-        "</span>";
-      row.appendChild(el);
-      delay++;
-    }
-    section.appendChild(row);
-    tilesGrid.appendChild(section);
-  }
-
-  // Cacti section
-  if (cacti.length > 0) {
-    const section = document.createElement("div");
-    section.className = "reveal-group";
-
-    const header = document.createElement("div");
-    header.className = "reveal-group-header";
-    header.innerHTML =
-      '<span class="reveal-group-dot" style="background:#5a8a3c"></span> Desert \ud83c\udf35 ' +
-      '<span class="reveal-group-meta">' +
-      cacti.length +
-      " tiles</span>";
-    section.appendChild(header);
-
-    const row = document.createElement("div");
-    row.className = "reveal-group-tiles";
-
-    for (const t of cacti) {
-      const el = document.createElement("div");
-      el.className = "reveal-tile reveal-tile-cacti";
-      el.innerHTML = '<span class="reveal-tile-emoji">\ud83c\udf35</span>';
-      row.appendChild(el);
-      delay++;
-    }
-    section.appendChild(row);
-    tilesGrid.appendChild(section);
-  }
-
-  // Non-farms (non-cacti)
-  if (nonFarms.length > 0) {
-    const section = document.createElement("div");
-    section.className = "reveal-group";
-
-    const header = document.createElement("div");
-    header.className = "reveal-group-header";
-    header.innerHTML =
-      '<span class="reveal-group-dot" style="background:#000"></span> Other Tiles';
-    section.appendChild(header);
-
-    const row = document.createElement("div");
-    row.className = "reveal-group-tiles";
-
-    for (const t of nonFarms) {
-      const el = document.createElement("div");
-      el.className = "reveal-tile reveal-tile-other";
-      const icon = t.tileName || t.name || "?";
-      el.innerHTML = '<span class="reveal-tile-emoji">' + icon + "</span>";
-      row.appendChild(el);
-      delay++;
-    }
-    section.appendChild(row);
-    tilesGrid.appendChild(section);
-  }
-
-  // Grow tiles (now shuffled into the board like any other tile)
-  if (grows.length > 0) {
-    const section = document.createElement("div");
-    section.className = "reveal-group";
-
-    const header = document.createElement("div");
-    header.className = "reveal-group-header";
-    header.innerHTML =
-      '<span class="reveal-group-dot" style="background:#2e7d32"></span> Grow Tiles 🌴 ' +
-      '<span class="reveal-group-meta">' +
-      grows.length +
-      " tiles (hidden & shuffled)</span>";
-    section.appendChild(header);
-
-    const row = document.createElement("div");
-    row.className = "reveal-group-tiles";
-
-    grows.sort((a, b) => (a.growPct || 0) - (b.growPct || 0));
-    for (const t of grows) {
-      const el = document.createElement("div");
-      el.className = "reveal-tile reveal-tile-other";
-      const pct = Math.round((t.growPct || 0) * 100);
-      el.innerHTML =
-        '<span class="reveal-tile-emoji">🌴</span>' +
-        '<span class="reveal-tile-label">' + pct + '%</span>';
-      row.appendChild(el);
-      delay++;
-    }
-    section.appendChild(row);
-    tilesGrid.appendChild(section);
-  }
-
-  // Mushroom — last tile (#52 feeling)
-  if (mushroom) {
-    const section = document.createElement("div");
-    section.className = "reveal-group";
-
-    const header = document.createElement("div");
-    header.className = "reveal-group-header";
-    header.innerHTML =
-      '<span class="reveal-group-dot" style="background:#fff"></span> Super Banana \u2b50';
-    section.appendChild(header);
-
-    const row = document.createElement("div");
-    row.className = "reveal-group-tiles";
-
-    const el = document.createElement("div");
-    el.className = "reveal-tile reveal-tile-mushroom";
-    el.innerHTML =
-      '<span class="reveal-tile-emoji">' +
-      (mushroom.name || "\u2b50") +
-      "</span>";
-    row.appendChild(el);
-    section.appendChild(row);
-    tilesGrid.appendChild(section);
-  }
-
-  content.appendChild(tilesGrid);
+  _renderSimpleReveal(content);
   _attachRevealCountdown(content, overlay);
 }
 
-// Build and attach the shared countdown footer + start the 5-second timer.
-// Called by both the classic and simple-mode reveal paths so the timing/
-// presentation of the countdown stays identical between modes.
+// Build and attach the countdown footer + start the 5-second timer.
 function _attachRevealCountdown(content, overlay) {
   const acceptBar = document.createElement("div");
   acceptBar.className = "reveal-accept-bar";
@@ -1134,10 +1015,8 @@ function _attachRevealCountdown(content, overlay) {
   }, 1000);
 }
 
-// Simple-mode reveal: 40 farms (F1\u2013F40), 6 grow tiles (G1\u2013G6), and 2 special
-// tiles (+25 Free Bananas, Super Banana). The colour-keyed classic renderer
-// would silently drop these \u2014 every simple-mode tile shares `group: "simple"`,
-// which isn't in colorOrder.
+// Reveal: 40 farms (F1\u2013F40), 6 grow tiles (G1\u2013G6), and 2 special tiles
+// (+25 Free Bananas, Super Banana).
 function _renderSimpleReveal(content) {
   const tilesGrid = document.createElement("div");
   tilesGrid.className = "reveal-grid reveal-grid--simple";
@@ -1148,7 +1027,7 @@ function _renderSimpleReveal(content) {
   for (const tile of gs.boardLayout || []) {
     if (tile.type === "grow") {
       grows.push(tile);
-    } else if (tile.group === "simple") {
+    } else if (tile.group === "farm") {
       farms.push(tile);
     } else if (tile.type === "special" || tile.type === "freebananas") {
       specials.push(tile);
@@ -1278,20 +1157,12 @@ function showLobby() {
   // Settings summary (non-host read-only view)
   const settingsEl = document.getElementById("lobby-settings");
   const modeLabel =
-    gs.gameMode === "teams"
-      ? "2v2 Teams"
-      : gs.gameMode === "simple_teams"
-        ? "2v2 Simple Teams"
-        : gs.gameMode === "simple"
-          ? "Simple Mode"
-          : "Free for All";
-  const _superBananaWinModes =
-    gs.gameMode === "teams" || gs.gameMode === "simple_teams";
+    gs.gameMode === "2v2" ? "2v2" : "Classic";
   settingsEl.innerHTML = `
     <div class="lobby-setting">\ud83c\udf4c <span class="lobby-setting-val">${gs.startingMoney || 500}</span></div>
     <div class="lobby-setting">\ud83d\udc65 <span class="lobby-setting-val">${gs.maxPlayers || 4} max</span></div>
     <div class="lobby-setting">\ud83c\udfae <span class="lobby-setting-val">${modeLabel}</span></div>
-    ${_superBananaWinModes ? `<div class="lobby-setting">\u2b50 <span class="lobby-setting-val">Win: Buy the Super Banana (7777\ud83c\udf4c)</span></div>` : ""}
+    <div class="lobby-setting">\u2b50 <span class="lobby-setting-val">Win: Buy the Super Banana (777\ud83c\udf4c)</span></div>
     ${gs.bombMode ? '<div class="lobby-setting">\ud83c\udf4d <span class="lobby-setting-val">Pineapple Bomb Mode</span></div>' : ""}
     ${gs.monkeyPoker ? '<div class="lobby-setting">\ud83d\udc35 <span class="lobby-setting-val">Monkey Poker</span></div>' : ""}
     ${!gs.monkeyPoker ? '<div class="lobby-setting">\ud83c\udccf <span class="lobby-setting-val">Real Poker</span></div>' : ""}
@@ -1313,8 +1184,8 @@ function showLobby() {
       lobbyBananas.value = String(gs.startingMoney || 3333);
       document.getElementById("lobby-bananas-display").textContent =
         gs.startingMoney || 3333;
-      lobbyMode.value = gs.gameMode || "ffa";
-      if (gs.gameMode === "teams" || gs.gameMode === "simple_teams") {
+      lobbyMode.value = gs.gameMode || "classic";
+      if (gs.gameMode === "2v2") {
         lobbyMax.value = "4";
         lobbyMax.disabled = true;
       } else {
@@ -1325,6 +1196,12 @@ function showLobby() {
       document.getElementById("lobby-bomb-mode").checked = !!gs.bombMode;
       const lobbyBombCost = document.getElementById("lobby-bomb-cost");
       if (lobbyBombCost && gs.bombCost != null) lobbyBombCost.value = gs.bombCost;
+      const lobbySuper = document.getElementById("lobby-super-banana-price");
+      if (lobbySuper && gs.superBananaPrice != null) lobbySuper.value = gs.superBananaPrice;
+      const lobbyFb = document.getElementById("lobby-free-bananas");
+      if (lobbyFb && gs.freeBananasAmount != null) lobbyFb.value = gs.freeBananasAmount;
+      const lobbyAuctTimer = document.getElementById("lobby-farm-auction-timer");
+      if (lobbyAuctTimer && gs.farmAuctionTimer != null) lobbyAuctTimer.value = gs.farmAuctionTimer;
       document.getElementById("lobby-monkey-poker").checked = !!gs.monkeyPoker;
     } finally {
       _syncingLobby = false;
@@ -1367,19 +1244,17 @@ function showLobby() {
         ? '<span class="lobby-player-role">\ud83d\udc51 Host</span>'
         : "";
     const editHint = "";
-    const isTeamMode =
-      gs.gameMode === "teams" || gs.gameMode === "simple_teams";
-    const isSimpleAny =
-      gs.gameMode === "simple" || gs.gameMode === "simple_teams";
+    const isTeamMode = gs.gameMode === "2v2";
     const teamTag = isTeamMode
-      ? `<span class="lobby-team-tag">${idx < 2 ? "Team A" : "Team B"}</span>`
+      ? `<span class="lobby-team-tag lobby-team-tag--${idx < 2 ? "a" : "b"}">${idx < 2 ? "Team A" : "Team B"}</span>`
       : "";
-    const petBadge = isSimpleAny
-      ? ""
-      : p.pet
-        ? p.pet === "hidden"
-          ? `<span class="lobby-pet-badge">\u2713 Pet chosen</span>`
-          : `<span class="lobby-pet-badge">${PET_EMOJIS[p.pet] || "\ud83d\udc3e"} ${petDisplayName(p.pet)}</span>`
+    const petBadge = "";
+    // 2v2: any player can swap themselves to the other team once the lobby
+    // has all four monkeys (matches the backend rule). The button only renders
+    // on your own row; for others it's display-only.
+    const teamSwitchBtn =
+      isTeamMode && isMe && gs.state === "waiting" && gs.players.length === 4
+        ? `<button class="lobby-btn-switch-team" title="Switch teams">↔️ Switch</button>`
         : "";
     const hostActions = (isHost && !isMe && gs.state === "waiting")
       ? `<div class="lobby-host-actions">
@@ -1393,6 +1268,7 @@ function showLobby() {
         <div class="lobby-player-name">${p.name}${editHint}</div>
         ${role}${teamTag}${petBadge}
       </div>
+      ${teamSwitchBtn}
       ${hostActions}
     `;
 
@@ -1405,7 +1281,7 @@ function showLobby() {
     const slot = document.createElement("div");
     slot.className = "lobby-slot-empty";
     const teamTag =
-      gs.gameMode === "teams" || gs.gameMode === "simple_teams"
+      gs.gameMode === "2v2"
         ? `<span class="lobby-team-tag">${i < 2 ? "Team A" : "Team B"}</span>`
         : "";
     slot.innerHTML =
@@ -1435,6 +1311,12 @@ function showLobby() {
       }
     };
   });
+  list.querySelectorAll(".lobby-btn-switch-team").forEach((btn) => {
+    btn.onclick = (e) => {
+      e.stopPropagation();
+      socket.emit("switch_team", { gameId });
+    };
+  });
 
   // Waiting indicator
   const waitingEl = document.getElementById("lobby-waiting");
@@ -1445,7 +1327,7 @@ function showLobby() {
     waitingEl.style.display = "flex";
     waitingTextEl.textContent =
       `Waiting for players to return (${readyCount}/${totalCount})`;
-  } else if (gs.gameMode === "teams" || gs.gameMode === "simple_teams") {
+  } else if (gs.gameMode === "2v2") {
     waitingEl.style.display = gs.players.length < 4 ? "flex" : "none";
     waitingTextEl.textContent = "Waiting for players";
   } else {
@@ -1457,7 +1339,7 @@ function showLobby() {
   const allHavePets = gs.players.every((p) => p.pet);
   if (waitingForLobby) {
     btn.disabled = true;
-  } else if (gs.gameMode === "teams" || gs.gameMode === "simple_teams") {
+  } else if (gs.gameMode === "2v2") {
     btn.disabled = !(
       myId === gs.admin &&
       gs.players.length === 4 &&
@@ -1534,7 +1416,7 @@ const PET_NAMES = {
 function petDisplayName(petType) {
   if (
     gs &&
-    (gs.gameMode === "simple" || gs.gameMode === "simple_teams") &&
+    (gs.gameMode === "classic" || gs.gameMode === "2v2") &&
     petType === "strong"
   ) {
     return "Magic Dice";
@@ -1560,7 +1442,7 @@ function cancelPet() {
   socket.emit("cancel_pet", { gameId });
 }
 
-// ── Simple-mode Magic Dice ────────────────────────────────────────
+// ── Magic Dice ────────────────────────────────────────
 function useMagicDice(steps) {
   if (!socket || !gameId) return;
   socket.emit("use_magic_dice", { gameId, steps });
@@ -1597,7 +1479,7 @@ function _makeMagicDieButton(n) {
   return die;
 }
 
-// ── Simple-mode GROW pulse animation ──────────────────────────────
+// ── GROW pulse animation ──────────────────────────────
 // When a grow tile fires on a rolled number (pre-move), a glow of the roller's
 // colour starts on that grow tile and chains clockwise, one tile at a time, to
 // the next genuinely-revealed grow (its range). Each of the roller's farms the
@@ -1617,7 +1499,7 @@ const SIMPLE_PLAYER_COLOR_HEX = {
 function _computeGrowPulseBySource(gs, source) {
   if (
     !gs ||
-    (gs.gameMode !== "simple" && gs.gameMode !== "simple_teams")
+    (gs.gameMode !== "classic" && gs.gameMode !== "2v2")
   ) {
     return [];
   }
@@ -1642,8 +1524,8 @@ function _computeLandGrowPulse(gs) {
 
 // Tiles strictly clockwise after growPos up to (excluding) the next genuinely
 // revealed grow. Wraps almost the whole board if no other grow is known yet.
-// Mirrors the backend _simpleGrowRange.
-function _simpleGrowRangePath(gs, growPos) {
+// Mirrors the backend _growRange.
+function _growRangePath(gs, growPos) {
   const boardSize = (gs.boardLayout || []).length || 48;
   const revealedGrows = new Set(
     (gs.genuineRevealedGrows || []).filter((p) => p !== growPos),
@@ -1757,10 +1639,13 @@ function _runGrowPulse(gs, growPositions, cur, onAllDone, opts) {
   const epTile = handleEP ? gs.diceMatchEarlyPickup : null;
   let epFired = false;
   if (!window._pulseRevealedTiles) window._pulseRevealedTiles = new Set();
+  // Track active grow-pulse animation count so the End-Turn countdown can wait
+  // for the chain to finish before starting its own 2s tick.
+  window._growPulseActive = (window._growPulseActive || 0) + 1;
 
   let maxTotal = 0;
   for (const growPos of growPositions) {
-    const fullPath = [growPos, ..._simpleGrowRangePath(gs, growPos)];
+    const fullPath = [growPos, ..._growRangePath(gs, growPos)];
     const len = fullPath.length || 1;
     const grew = firedSet.has(growPos); // this grow produced bananas
     // 7 tiles/sec normally, but shrink the step so a long chain still fits
@@ -1791,14 +1676,70 @@ function _runGrowPulse(gs, growPositions, cur, onAllDone, opts) {
         }
       }, t);
     }
+    // Small "bump" the moment the chain hits its stop — only for chains that
+    // actually grew something. Empty fires zip past silently so a long board
+    // of barren grows doesn't become a thud-fest.
+    if (grew) {
+      setTimeout(() => {
+        if (typeof playGrowChainStop === "function") playGrowChainStop();
+      }, Math.round((len - 1) * stepMs));
+    }
   }
 
   setTimeout(() => {
     // Safety net: if the early-pickup tile somehow wasn't on a pulse path, still
     // fire it so the pickup reads before the walk.
     if (epTile != null && !epFired) _firePulseEarlyPickup(gs, cur, epTile);
+    window._growPulseActive = Math.max(0, (window._growPulseActive || 1) - 1);
     if (typeof onAllDone === "function") onAllDone();
   }, maxTotal + GROW_PULSE_BOUNCE_TAIL);
+}
+
+// ── End-of-turn signal ─────────────────────────────────────────────────
+// There is no End Turn button and no countdown — the lander's client emits
+// turn_anims_complete the instant every visible animation for the turn has
+// settled (walk, dice spin, pre-walk grow chain pulse, post-walk grow chain
+// pulse, landing FX), and the server advances to the next player on receipt.
+// A 100 ms ticker watches the anim flags so we fire the moment they clear.
+function _ensureEndTurnTicker() {
+  if (window._endTurnTicker) return;
+  window._endTurnTicker = setInterval(_tickEndTurnCountdown, 100);
+}
+function _tickEndTurnCountdown() {
+  if (!gs || !gs.players) return;
+  const isMyTurnNow =
+    gs.currentPlayer && gs.currentPlayer.id === myId && !gs.gameOver;
+  const overlayOpen =
+    !!gs.auction ||
+    !!gs.vineSwing ||
+    !!gs.poker ||
+    !!gs.mushroomPending ||
+    !!gs.itemAuction ||
+    !!window._bombPlacementMode;
+  const animsBlocking = !!(
+    window._tokenWalking ||
+    window._diceRollingPositions ||
+    (window._growPulseActive && window._growPulseActive > 0) ||
+    // _growPulsePending bridges the 250 ms gap between walk-end and the
+    // post-landing grow chain pulse starting. Without it the ticker fires
+    // turn_anims_complete during that gap.
+    (window._growPulsePending && window._growPulsePending > 0) ||
+    (window._landingFxBusyUntil && Date.now() < window._landingFxBusyUntil)
+  );
+  // Reset the per-turn latch when the turn changes.
+  if (window._endTurnTurnKey !== gs.turn) {
+    window._endTurnTurnKey = gs.turn;
+    window._endTurnSignalSent = false;
+  }
+  // Fire the signal once per turn, the instant every animation settles.
+  const canSignal =
+    isMyTurnNow && gs.diceRolled && !overlayOpen && !animsBlocking;
+  if (canSignal && !window._endTurnSignalSent) {
+    window._endTurnSignalSent = true;
+    if (socket && gameId) {
+      socket.emit("turn_anims_complete", { gameId, turn: gs.turn });
+    }
+  }
 }
 
 function updateMagicDiceBox(me, isMyTurn) {
@@ -1867,7 +1808,7 @@ function updateLobbyPets() {
   const petSection = document.getElementById("lobby-pet-section");
   if (!petSection || !gs) return;
   // Simple modes auto-assign Magic Dice — hide the picker entirely.
-  if (gs.gameMode === "simple" || gs.gameMode === "simple_teams") {
+  if (gs.gameMode === "classic" || gs.gameMode === "2v2") {
     petSection.style.display = "none";
     return;
   }
@@ -1887,7 +1828,7 @@ function updatePetAbilityBox(me, isMyTurn) {
   const box = document.getElementById("pet-ability-box");
   // Simple mode has no pet/cooldown UI here — Magic Dice is a won item shown in
   // the "Your Special Items" box (see updateSpecialItems). Hide both panels.
-  if (gs && (gs.gameMode === "simple" || gs.gameMode === "simple_teams")) {
+  if (gs && (gs.gameMode === "classic" || gs.gameMode === "2v2")) {
     if (box) box.style.display = "none";
     const magicBox = document.getElementById("magic-dice-box");
     if (magicBox) magicBox.style.display = "none";
@@ -1964,7 +1905,7 @@ function updatePetAbilityBox(me, isMyTurn) {
     }
     if (petBtn) {
       // Energy/Strong/Magic pet: disable on your turn or if already pending
-      const diceArmed = !!window._armedDiceOverride;
+      const diceArmed = false;
       // Only magic pet requires having rolled at least once first
       const notYetRolled = me.pet === "magic" && !me.hasRolled;
       if (me.pet === "energy" || me.pet === "strong" || me.pet === "magic") {
@@ -2006,7 +1947,7 @@ function updatePetAbilityBox(me, isMyTurn) {
         targetSel.innerHTML = "";
         const opponents = gs.players.filter((p) => {
           if (p.id === myId || p.bankrupt) return false;
-          if (gs.gameMode === "teams" && gs.teams) {
+          if (gs.gameMode === "2v2" && gs.teams) {
             const myTeam = gs.teams.A.includes(myId) ? "A" : "B";
             return !gs.teams[myTeam].includes(p.id);
           }
@@ -2032,18 +1973,36 @@ function updatePetAbilityBox(me, isMyTurn) {
 // (e.g. deferred deductions from that same detector). The amount guard below
 // silently no-ops on 0/negative amounts so a stray call can't draw stray
 // flying bananas. Pair with bananaBurst() for the inverse (score went up).
+// Fires the canonical loss visual bundle: bananas flying OUT of the player's
+// piece (capped at 5 emojis) + red "-N🍌" floater near their score. The
+// red score-wheel flash is driven by _animateMoneyWheel on the actual money
+// element update.
+// Push out the "no animations running" deadline so the End-Turn countdown waits
+// for landing FX (banana rain, +/- money floaters, steal text) to settle.
+function _touchLandingFx(ms) {
+  const dur = Math.max(0, Number(ms) || 0);
+  const until = Date.now() + dur;
+  if (!window._landingFxBusyUntil || window._landingFxBusyUntil < until) {
+    window._landingFxBusyUntil = until;
+  }
+}
+
 function _showMoneyDeduction(playerId, amount) {
   if (!amount || amount <= 0) return;
-  // Show flying bananas from the player's token (up to 5, no text)
+  _touchLandingFx(1200);
   const player = gs && gs.players && gs.players.find((p) => p.id === playerId);
   if (player != null) {
     let anchor = document.querySelector(`.token[data-player-id="${playerId}"]`);
-    if (!anchor) anchor = document.querySelector(".token-me");
+    if (!anchor && playerId === myId) anchor = document.querySelector(".token-me");
+    if (!anchor) {
+      const pstat = document.querySelector(`.pstat[data-player-id="${playerId}"] .pstat-monkey`);
+      if (pstat) anchor = pstat;
+    }
     if (anchor) {
       const rect = anchor.getBoundingClientRect();
       const originX = rect.left + rect.width / 2;
       const originY = rect.top + rect.height / 2;
-      const count = 3;
+      const count = Math.min(5, Math.max(1, Math.floor(amount)));
       for (let i = 0; i < count; i++) {
         const el = document.createElement("span");
         el.className = "banana-burst-icon";
@@ -2086,14 +2045,9 @@ function _showMoneyDeduction(playerId, amount) {
 function _animateMoneyEl(el, targetVal, suffix) {
   if (!el) return;
   suffix = suffix || "\ud83c\udf4c";
-  // Simple modes get a per-digit slot-machine wheel (each reel spins upward
-  // on a gain, downward on a loss). Classic / ffa keep the existing smooth
-  // counter so they look unchanged for players used to that mode.
-  if (
-    typeof gs !== "undefined" &&
-    gs &&
-    (gs.gameMode === "simple" || gs.gameMode === "simple_teams")
-  ) {
+  // Per-digit slot-machine wheel \u2014 each reel spins upward on a gain,
+  // downward on a loss.
+  if (typeof gs !== "undefined" && gs) {
     _animateMoneyWheel(el, targetVal, suffix);
     return;
   }
@@ -2342,28 +2296,46 @@ function _showPropertyCardFlip(propName, propGroup, propPrice, timeStr, isWin) {
   overlay.className = "prop-card-flip-overlay";
 
   const card = document.createElement("div");
-  card.className = "prop-card-flip";
+  card.className = "prop-card-flip" + (isWin ? " prop-card-flip-win" : " prop-card-flip-miss");
 
   // Front face (question mark)
   const front = document.createElement("div");
   front.className = "prop-card-face prop-card-front";
   front.innerHTML = `<span class="prop-card-q">?</span>`;
 
-  // Back face (property details)
+  // Back face (property details). Structure:
+  //   header  \u2014 "FARM" label sits inside the group-coloured banner
+  //   name    \u2014 the big farm name (focal point)
+  //   yield   \u2014 pill showing the per-grow yield
+  //   stamp   \u2014 diagonal BOUGHT / MISSED sticker overlaid on top
+  //   time    \u2014 optional small "(Xs)" footer for accept speed
   const back = document.createElement("div");
-  back.className = "prop-card-face prop-card-back" + (propGroup ? " g-" + propGroup : "");
-  if (isWin) {
-    back.innerHTML =
-      `<div class="prop-card-stamp">BOUGHT</div>` +
-      `<div class="prop-card-name">${propName}</div>` +
-      (propPrice ? `<div class="prop-card-price">${propPrice}\ud83c\udf4c yield</div>` : "") +
-      (timeStr ? `<div class="prop-card-time">${timeStr}</div>` : "");
-  } else {
-    back.innerHTML =
-      `<div class="prop-card-stamp prop-card-stamp-miss">MISSED</div>` +
-      `<div class="prop-card-name">${propName}</div>` +
-      (propPrice ? `<div class="prop-card-price">${propPrice}\ud83c\udf4c yield</div>` : "");
-  }
+  back.className =
+    "prop-card-face prop-card-back" + (propGroup ? " g-" + propGroup : "");
+  const header = `<div class="prop-card-header">FARM</div>`;
+  const safeName = String(propName || "").replace(/[<&>]/g, (c) =>
+    ({ "<": "&lt;", "&": "&amp;", ">": "&gt;" })[c],
+  );
+  // Long names shrink to fit so the card doesn't overflow.
+  const nameSizeClass =
+    safeName.length > 10
+      ? " prop-card-name-xs"
+      : safeName.length > 6
+        ? " prop-card-name-sm"
+        : "";
+  const name = `<div class="prop-card-name${nameSizeClass}">${safeName}</div>`;
+  const yieldPill = propPrice
+    ? `<div class="prop-card-yield">
+         <span class="prop-card-yield-num">${propPrice}\ud83c\udf4c</span>
+         <span class="prop-card-yield-label">per grow</span>
+       </div>`
+    : "";
+  const stamp = isWin
+    ? `<div class="prop-card-stamp">BOUGHT</div>`
+    : `<div class="prop-card-stamp prop-card-stamp-miss">MISSED</div>`;
+  const time =
+    isWin && timeStr ? `<div class="prop-card-time">${timeStr}</div>` : "";
+  back.innerHTML = header + name + yieldPill + stamp + time;
 
   card.appendChild(front);
   card.appendChild(back);
@@ -2422,7 +2394,7 @@ function showGame() {
     const startPickLabel =
       cur &&
       cur.startPickPending &&
-      (gs.gameMode === "simple" || gs.gameMode === "simple_teams");
+      (gs.gameMode === "classic" || gs.gameMode === "2v2");
     document.getElementById("turn-name").textContent = cur
       ? isMyTurnLabel
         ? startPickLabel
@@ -2469,7 +2441,7 @@ function showGame() {
   }
   const rollDelayDone = window._rollReady || gs.diceRolled;
   const needsStartPick =
-    (gs.gameMode === "simple" || gs.gameMode === "simple_teams") &&
+    (gs.gameMode === "classic" || gs.gameMode === "2v2") &&
     gs.currentPlayer &&
     !!gs.currentPlayer.startPickPending;
   const canRoll =
@@ -2483,49 +2455,7 @@ function showGame() {
   document.getElementById("btn-roll").disabled = !canRoll;
   document.getElementById("btn-debug-move").disabled = !canRoll;
 
-  // Dice override buttons: arm a paid dice count for your NEXT roll (armed on
-  // other players' turns). Classic only: Turtle x1 + x3, both 300. In simple
-  // mode the Rabbit/Cheetah dice are won items, armed from the "Your Special
-  // Items" box (updateSpecialItems), so these two buttons are hidden.
-  const myMoney = me ? me.money : 0;
-  const simpleMode =
-    gs.gameMode === "simple" || gs.gameMode === "simple_teams";
-  const roll1Btn = document.getElementById("btn-roll-1");
-  const roll3Btn = document.getElementById("btn-roll-3");
-  const armedDice = window._armedDiceOverride || null;
-  const petIsArmedForDice =
-    (document.getElementById("btn-auto-pet") &&
-      document.getElementById("btn-auto-pet").dataset.armed === "true") ||
-    (me && me.pendingPet);
-  const isFirstRound = gs.turn < gs.players.length;
-  // Per-button config: icon, the dice count it arms, and its cost.
-  const cfgA = { icon: "\uD83D\uDC22", count: 1, cost: 300 }; // Turtle x1
-  const cfgB = { icon: "\uD83D\uDC07", count: 3, cost: 300 }; // x3
-  const configDiceBtn = (btn, cfg, otherCount) => {
-    if (!btn) return;
-    // Hidden entirely in simple mode (won dice items replace these).
-    if (simpleMode) {
-      btn.style.display = "none";
-      return;
-    }
-    btn.style.display = me ? "" : "none";
-    btn.disabled =
-      isMyTurn ||
-      myMoney < cfg.cost ||
-      !!petIsArmedForDice ||
-      isFirstRound ||
-      armedDice === otherCount;
-    const armed = armedDice === cfg.count;
-    const tail = armed ? "Armed \u2713" : `${cfg.cost}\uD83C\uDF4C`;
-    btn.innerHTML =
-      `<span style="font-size:1.2em;line-height:1">${cfg.icon}</span>` +
-      `<span>\uD83C\uDFB2\u00d7${cfg.count} ${tail}</span>`;
-    btn.classList.toggle("btn-armed", armed);
-    btn.onclick = () => armDiceOverride(cfg.count);
-  };
-  configDiceBtn(roll1Btn, cfgA, cfgB.count);
-  configDiceBtn(roll3Btn, cfgB, cfgA.count);
-  // When it's our turn and dice override is armed, show indicator on roll button
+  // Roll-button label: prefer the armed won item over plain "Roll Dice".
   const _ARMED_ROLL_LABEL = {
     rabbitDice: "\uD83D\uDC22 Turtle Dice",
     cheetahDice: "\uD83D\uDC07 Rabbit Dice",
@@ -2535,21 +2465,16 @@ function showGame() {
   const rollBtn = document.getElementById("btn-roll");
   const myArmed = me && me.armedAbility;
   if (rollBtn) {
-    if (canRoll && (gs.gameMode === "simple" || gs.gameMode === "simple_teams") && myArmed) {
+    if (canRoll && myArmed) {
       rollBtn.textContent = _ARMED_ROLL_LABEL[myArmed] || "Roll Dice";
-    } else if (canRoll && armedDice) {
-      rollBtn.textContent = `\uD83C\uDFB2 Roll (${armedDice} ${armedDice === 1 ? "die" : "dice"})`;
     } else {
       rollBtn.textContent = "Roll Dice";
     }
   }
 
-  // Armed special ability (simple mode) fires the moment your turn is ready —
-  // takes precedence over a plain auto-roll.
-  if (canRoll) _maybeFireArmedAbility();
-
   // Auto-roll: trigger dice roll when it's our turn and we haven't rolled yet
-  // (skip if an ability is armed/being fired — that drives the turn instead).
+  // (skip if an ability is armed — the user must click Roll themselves so the
+  // armed item is consumed deliberately, with room to disarm beforehand).
   if (
     canRoll &&
     !myArmed &&
@@ -2582,16 +2507,16 @@ function showGame() {
   }
 
   // Universal dice roll notification — show for all players when dice are rolled.
-  // Simple-mode start picks teleport instantly, so skip the walk animation path.
+  // start picks teleport instantly, so skip the walk animation path.
   const diceNotif = document.getElementById("dice-roll-notification");
   const isStartPickTeleport =
     !!(gs.lastStartPick && gs.lastStartPick.turn === gs.turn) ||
     !!(gs.lastTeleport && gs.lastTeleport.turn === gs.turn);
-  // Simple-mode Magic Dice (the "strong" pet) should walk step-by-step like a
+  // Magic Dice (the "strong" pet) should walk step-by-step like a
   // normal roll. It sets petUsedThisTurn, so the regular gate would skip it —
   // detect it explicitly: a single chosen value > 0 that actually moves.
   const isMagicDiceWalk =
-    (gs.gameMode === "simple" || gs.gameMode === "simple_teams") &&
+    (gs.gameMode === "classic" || gs.gameMode === "2v2") &&
     gs.petUsedThisTurn &&
     gs.lastPetUsed &&
     gs.lastPetUsed.petType === "strong" &&
@@ -2612,6 +2537,7 @@ function showGame() {
       // defer money effects (closes the gap between _lastDiceKey set and walk start)
       window._tokenWalking = true;
       window._walkPileCollected = 0;
+      window._walkFreeBananasBursted = 0;
       // Freeze token positions and tile reveals at pre-roll state during animation
       window._diceRollingPositions = window._prevPlayerPositions || null;
       window._walkStartPositions = window._prevPlayerPositions ? Object.assign({}, window._prevPlayerPositions) : null;
@@ -2620,7 +2546,7 @@ function showGame() {
       window._frozenBananaPiles = window._prevBananaPileState || null;
       window._tokenVisitedTiles = new Set();
       // Clear any stale grow-pulse gating from a prior turn (set fresh below if
-      // a simple-mode rolled grow fires this turn).
+      // a rolled grow fires this turn).
       window._pulseRevealedTiles = null;
       // Freeze per-player pile totals so pstat-pile decreases in sync with board collection
       if (gs.properties) {
@@ -2646,7 +2572,7 @@ function showGame() {
       // The banana burst + money update still fire at walk-end via path #2.
       if (
         gs &&
-        (gs.gameMode === "simple" || gs.gameMode === "simple_teams") &&
+        (gs.gameMode === "classic" || gs.gameMode === "2v2") &&
         window._prevPlayerPositions &&
         window._prevBananaPileState
       ) {
@@ -2697,7 +2623,7 @@ function showGame() {
             die2El.style.setProperty("--die-final", DIE_TRANSFORMS[gs.dice[1]]);
           if (numDice >= 3)
             die3El.style.setProperty("--die-final", DIE_TRANSFORMS[gs.dice[2]]);
-          // Simple-mode GROW pulse: a coloured glow chains from each fired grow
+          // GROW pulse: a coloured glow chains from each fired grow
           // along its range, popping in grown piles as it crosses. Rolled-number
           // grows pulse BEFORE the walk; a grow you LAND on pulses after you
           // arrive (see the walk-end grow branch). While any pulse is in play
@@ -2707,7 +2633,7 @@ function showGame() {
           const landGrows = _computeLandGrowPulse(gs);
           const usePulse = pulseGrows.length > 0;
           const anyGrowPulse =
-            (gs.gameMode === "simple" || gs.gameMode === "simple_teams") &&
+            (gs.gameMode === "classic" || gs.gameMode === "2v2") &&
             (pulseGrows.length > 0 || landGrows.length > 0);
           // Show dice-match pile grows immediately when dice settle
           const hasDiceMatch = gs.diceMatchTiles && gs.diceMatchTiles.length > 0;
@@ -2717,12 +2643,12 @@ function showGame() {
             window._diceMatchStealRender = true;
             renderBoard(gs); // pulse case: grown piles stay hidden (gated)
           }
-          // Early Pickup: the player was standing on a farm of theirs that grew
-          // (classic dice-match, or simple-mode rolled grow — both set
-          // diceMatchEarlyPickup). Show a floater on that tile, burst the fresh
-          // growth, mark it visited so its pile clears, and add a short delay
-          // before the walk so the pickup reads clearly. In the pulse case this
-          // is fired by the pulse when it crosses the tile (see _runGrowPulse).
+          // Early Pickup: the player was standing on a farm of theirs that
+          // grew (rolled grow sets diceMatchEarlyPickup). Show a floater on
+          // that tile, burst the fresh growth, mark it visited so its pile
+          // clears, and add a short delay before the walk so the pickup
+          // reads clearly. In the pulse case this is fired by the pulse
+          // when it crosses the tile (see _runGrowPulse).
           const hasEarlyPickup = gs.diceMatchEarlyPickup != null;
           if (hasEarlyPickup && !usePulse) {
             const epTile = document.getElementById("space-" + gs.diceMatchEarlyPickup);
@@ -2757,8 +2683,8 @@ function showGame() {
             window._diceRollingPositions[cur.id] != null
               ? window._diceRollingPositions[cur.id]
               : cur.position;
-          // Board loop length: 52 (classic) or 48 (simple, cornerless).
-          const BSZ = (gs.boardLayout && gs.boardLayout.length) || 52;
+          // Board loop length: 48 (cornerless).
+          const BSZ = (gs.boardLayout && gs.boardLayout.length) || 48;
           // Detect backward movement (e.g. magic pet tails): if forward distance > half the board, walk backward instead
           const forwardDist = (cur.position - startPos + BSZ) % BSZ;
           const backwardDist = (startPos - cur.position + BSZ) % BSZ;
@@ -2812,29 +2738,35 @@ function showGame() {
               // an intermediate step so the board.js walk-through check can't catch it)
               const _landingSpace = gs.boardLayout && gs.boardLayout[cur.position];
               if (_landingSpace && _landingSpace.type === "freebananas" && !(window._freeBananasShown && window._freeBananasShown.has(cur.position))) {
+                if (window._freeBananasShown) window._freeBananasShown.add(cur.position);
                 const _wasHidden = window._diceRollingRevealed && !window._diceRollingRevealed.has(cur.position);
                 const _isMe = cur.id === myId;
-                if (_isMe) {
-                  setTimeout(() => showPopupAtBananaBox((gs && (gs.gameMode === "simple" || gs.gameMode === "simple_teams") ? "+25" : "+500") + "\uD83C\uDF4C", "free-bananas-popup-player"), _wasHidden ? 1100 : 100);
-                } else {
-                  setTimeout(() => {
-                    const pstat = document.querySelector(`.pstat[data-player-id="${cur.id}"]`);
-                    const anchor = pstat && pstat.querySelector(".pstat-money");
-                    if (anchor) {
-                      const rect = anchor.getBoundingClientRect();
-                      const floater = document.createElement("div");
-                      floater.className = "free-bananas-popup-player";
-                      floater.textContent = (gs && (gs.gameMode === "simple" || gs.gameMode === "simple_teams") ? "+25" : "+500") + "\uD83C\uDF4C";
-                      floater.style.position = "fixed";
-                      floater.style.left = rect.left + rect.width / 2 + "px";
-                      floater.style.top = rect.top + "px";
-                      floater.style.pointerEvents = "none";
-                      floater.style.zIndex = "1000";
-                      document.body.appendChild(floater);
-                      floater.addEventListener("animationend", () => floater.remove());
-                    }
-                  }, _wasHidden ? 1100 : 100);
-                }
+                // Tile bounce + banana rain on the freebananas tile itself.
+                // Mirrors the walk-through detector in board.js; the bounce uses
+                // the same delay as the floater so the source reads as one beat.
+                const _fbTile = document.getElementById("space-" + cur.position);
+                const _fbAmount = 25;
+                setTimeout(() => {
+                  if (_fbTile) {
+                    _fbTile.classList.remove("freebananas-triggered");
+                    void _fbTile.offsetWidth;
+                    _fbTile.classList.add("freebananas-triggered");
+                    _fbTile.addEventListener(
+                      "animationend",
+                      () => _fbTile.classList.remove("freebananas-triggered"),
+                      { once: true },
+                    );
+                  }
+                  if (typeof bananaBurst === "function" && _fbTile) {
+                    // bananaBurst handles the green "+25\uD83C\uDF4C" floater near
+                    // the player's score as part of the canonical gain bundle.
+                    bananaBurst(_fbAmount, cur.id, _fbTile);
+                  }
+                }, _wasHidden ? 1100 : 100);
+                // Track now (synchronously) so the post-walk reconciliation
+                // below \u2014 which runs BEFORE the deferred burst above \u2014 subtracts
+                // this gain and doesn't ALSO rain bananas on the landing token.
+                window._walkFreeBananasBursted = (window._walkFreeBananasBursted || 0) + _fbAmount;
               }
               // Fully unfreeze positions and reveals
               window._diceRollingPositions = null;
@@ -2865,13 +2797,18 @@ function showGame() {
                       gs.diceMatchGrownAmounts[gs.diceMatchEarlyPickup]) ||
                     0;
                 }
-                const nonPileGain = totalGain - pileGain - earlyPickupGain;
+                // Free Bananas pickups already rained on the source tile via
+                // the per-trigger burst — subtract so this fallback burst on
+                // the landing token doesn't rain a second copy on top.
+                const freeBananasBursted = window._walkFreeBananasBursted || 0;
+                const nonPileGain = totalGain - pileGain - earlyPickupGain - freeBananasBursted;
                 if (nonPileGain > 0) {
                   bananaBurst(nonPileGain, _walkPlayer.id);
                 }
               }
               window._walkPreMoney = null;
               window._walkPileCollected = 0;
+              window._walkFreeBananasBursted = 0;
               // NOTE: _walkingPlayerId, _walkingLandingPos, and _frozenPileTotals
               // are intentionally NOT cleared here — the frozen renderBoard below
               // (for GROW landings) needs them so picked-up piles render as 0
@@ -2986,7 +2923,18 @@ function showGame() {
                   // pulse finishes so it doesn't re-render and cut the glow.
                   _landingPulseRan = true;
                   if (!window._pulseRevealedTiles) window._pulseRevealedTiles = new Set();
+                  // Pre-flag a pending pulse so the End-of-turn ticker keeps
+                  // waiting through the 250 ms gap between walk-end and the
+                  // pulse start. Without this, animsBlocking briefly clears
+                  // (token done walking, dice settled, _growPulseActive still
+                  // 0) and the server ends the turn before the landing grow
+                  // chain ever runs.
+                  window._growPulsePending = (window._growPulsePending || 0) + 1;
                   setTimeout(() => {
+                    window._growPulsePending = Math.max(
+                      0,
+                      (window._growPulsePending || 1) - 1,
+                    );
                     _runGrowPulse(
                       gs,
                       _landGrowsNow,
@@ -3082,6 +3030,34 @@ function showGame() {
     if (gs.dice[0]) setDieFace(die1El, gs.dice[0]);
     if (gs.dice[1]) setDieFace(die2El, gs.dice[1]);
     if (gs.dice[2]) setDieFace(die3El, gs.dice[2]);
+  }
+
+  // Start-pick grow chain: when a player picks a grow tile as their first
+  // landing, the regular dice-roll path is skipped (no walk to attach the
+  // pulse to). Detect the pick + a "land"-source grow on the same tile and
+  // run the chain animation here so the chain visibly fires off the picked
+  // grow. Keyed by lastStartPick so it only fires once per pick.
+  if (
+    gs.lastStartPick &&
+    gs.lastStartPick.turn === gs.turn &&
+    window._lastStartPickGrowKey !==
+      `${gs.lastStartPick.playerId}:${gs.lastStartPick.turn}`
+  ) {
+    const pickPos = gs.lastStartPick.position;
+    const landGrows = Array.isArray(gs.lastGrowActivated)
+      ? gs.lastGrowActivated
+          .filter((a) => a && a.source === "land" && a.pos === pickPos)
+          .map((a) => a.pos)
+      : [];
+    if (landGrows.length > 0) {
+      window._lastStartPickGrowKey = `${gs.lastStartPick.playerId}:${gs.lastStartPick.turn}`;
+      const pickedCur = gs.players.find(
+        (p) => p.id === gs.lastStartPick.playerId,
+      );
+      if (typeof _runGrowPulse === "function" && pickedCur) {
+        _runGrowPulse(gs, landGrows, pickedCur, null, { earlyPickup: false });
+      }
+    }
   }
 
   // Turn notification — show once per turn, keep visible for 1.5s (suppress during pet resolving)
@@ -3189,6 +3165,13 @@ function showGame() {
             "\u2b50 Can't afford it! The Super Banana will swap with another tile and hide...";
       }, 3000);
     } else if (!gs.mushroomPending && !gs.superBananaWin) {
+      // The pending-swap window just closed without becoming a win, so the
+      // backend has already moved the Super Banana to a new hidden tile.
+      // Fire the swap sound on this transition only (gated by _mushNotifShown
+      // so we don't replay it on every subsequent render).
+      if (window._mushNotifShown && typeof playSuperBananaSwap === "function") {
+        playSuperBananaSwap();
+      }
       window._mushNotifShown = false;
       window._superBananaFoundShown = false;
       window._superBananaBoughtShown = false;
@@ -3289,45 +3272,34 @@ function showGame() {
     }
   }
 
-  // Auction win notification
-  const auctionNotif = document.getElementById("auction-won-notification");
-  if (auctionNotif) {
-    if (gs.auction) {
-      window._lastAuctionPos = gs.auction.position;
-      window._lastAuctionAcceptTime = gs.auction.acceptTime || null;
-      window._lastAuctionWasParticipant = !!(gs.auction.bids && gs.auction.bids[myId]);
-      window._lastAuctionPropName = gs.auction.propName || null;
-      window._lastAuctionPropGroup = gs.auction.propGroup || null;
-      window._lastAuctionPropPrice = gs.auction.propPrice || null;
-    } else if (window._lastAuctionPos != null) {
-      const wonProp = _gsPlayerMap[myId];
-      if (wonProp && wonProp.properties.includes(window._lastAuctionPos)) {
-        const timeStr = window._lastAuctionAcceptTime
-          ? ` (${window._lastAuctionAcceptTime}s)`
-          : "";
-        // Card flip animation
-        _showPropertyCardFlip(
-          window._lastAuctionPropName || `Farm #${window._lastAuctionPos}`,
-          window._lastAuctionPropGroup,
-          window._lastAuctionPropPrice,
-          timeStr,
-          true
-        );
-      } else if (window._lastAuctionWasParticipant) {
-        // Lost the auction — show notification and play loss sound
-        playAuctionLoss();
-        _showPropertyCardFlip(
-          window._lastAuctionPropName || `Farm #${window._lastAuctionPos}`,
-          window._lastAuctionPropGroup,
-          window._lastAuctionPropPrice,
-          "",
-          false
-        );
-      } else {
-        playAuctionLoss();
-      }
-      window._lastAuctionPos = null;
-      window._lastAuctionWasParticipant = false;
+  // Auction win/loss card — driven by the public lastResolvedAuction snapshot
+  // so non-landers (who bid blind and never see the farm in gs.auction) still
+  // get the BOUGHT/MISSED card with the right name + group colour. Fires once
+  // per resolved auction, keyed on resolvedAt.
+  const resolved = gs.lastResolvedAuction;
+  if (resolved && resolved.resolvedAt !== window._lastShownResolvedAt) {
+    window._lastShownResolvedAt = resolved.resolvedAt;
+    const wasParticipant =
+      Array.isArray(resolved.participantIds) &&
+      resolved.participantIds.includes(myId);
+    const propLabel = resolved.propName || `Farm #${resolved.position}`;
+    if (resolved.winnerId && resolved.winnerId === myId) {
+      _showPropertyCardFlip(
+        propLabel,
+        resolved.propGroup,
+        resolved.propPrice,
+        "",
+        true
+      );
+    } else if (wasParticipant) {
+      playAuctionLoss();
+      _showPropertyCardFlip(
+        propLabel,
+        resolved.propGroup,
+        resolved.propPrice,
+        "",
+        false
+      );
     }
   }
 
@@ -3350,17 +3322,9 @@ function showGame() {
       `Position: ${me.position}`;
   }
 
-  // End turn (disabled during auction, vine swing, poker, mushroom pending, or auction end delay)
-  const canEnd =
-    !gs.auction &&
-    !gs.vineSwing &&
-    !gs.poker &&
-    !gs.mushroomPending &&
-    !gs.autoEndDelay &&
-    isMyTurn &&
-    gs.diceRolled;
-  // Like canEnd but ignores autoEndDelay — pet can fire during the delay
-  // (server's usePetAbility cancels the auto-end timer)
+  // Pet auto-fire condition. There is no End Turn button anymore — the
+  // server advances the turn the moment _ensureEndTurnTicker's anim-complete
+  // signal arrives.
   const canPetFire =
     !gs.auction &&
     !gs.vineSwing &&
@@ -3368,70 +3332,7 @@ function showGame() {
     !gs.mushroomPending &&
     isMyTurn &&
     gs.diceRolled;
-  document.getElementById("btn-end").disabled = !canEnd;
-
-  // Show countdown timer on End Turn button when auto-end delay is active
-  // Don't show it while the token is still walking — wait until it lands
-  const btnEnd = document.getElementById("btn-end");
-  if (
-    gs.autoEndDelay &&
-    gs.autoEndDelayMs > 0 &&
-    !window._tokenWalking &&
-    !window._diceRollingPositions
-  ) {
-    if (!window._autoEndCountdown) {
-      window._autoEndCountdownStart = Date.now();
-      window._autoEndCountdownMs = gs.autoEndDelayMs;
-      window._autoEndCountdown = setInterval(() => {
-        const elapsed = Date.now() - window._autoEndCountdownStart;
-        const remaining = Math.max(0, window._autoEndCountdownMs - elapsed);
-        const secs = Math.ceil(remaining / 1000);
-        const btn = document.getElementById("btn-end");
-        if (btn) btn.textContent = `Ending turn in ${secs}`;
-        if (remaining <= 0) {
-          clearInterval(window._autoEndCountdown);
-          window._autoEndCountdown = null;
-          if (btn) btn.textContent = "End Turn";
-        }
-      }, 100);
-    }
-  } else {
-    if (window._autoEndCountdown) {
-      clearInterval(window._autoEndCountdown);
-      window._autoEndCountdown = null;
-    }
-    btnEnd.textContent = "End Turn";
-  }
-
-  // Auto-end: end turn automatically when possible (skip if pet is usable or auto-pet is armed)
-  // Respect autoEndDelay so we don't skip the server's 2s pause after auction/pitch
-  // Skip if bomb placement overlay is open — the player deliberately chose to
-  // place a bomb, so don't yank the turn away before they pick a tile.
-  if (
-    canEnd &&
-    !window._bombPlacementMode &&
-    document.getElementById("chk-auto-end").checked
-  ) {
-    const mePetReady = me && me.pet && me.petCooldown <= 0;
-    const petBtn = document.getElementById("btn-auto-pet");
-    const petArmed =
-      mePetReady &&
-      petBtn &&
-      petBtn.dataset.armed === "true" &&
-      window._petArmedForTurn != null &&
-      (gs.turn || 0) >= window._petArmedForTurn;
-    if (!mePetReady && !petArmed && !window._autoEndQueued) {
-      window._autoEndQueued = true;
-      setTimeout(() => {
-        window._autoEndQueued = false;
-        // Re-check pet usability at execution time to avoid stale timer ending turn
-        const meNow = gs && _gsPlayerMap[myId];
-        const petReady = meNow && meNow.pet && meNow.petCooldown <= 0;
-        if (!petReady && document.getElementById("chk-auto-end").checked)
-          endTurn();
-      }, 0);
-    }
-  }
+  _ensureEndTurnTicker();
 
   // Auto vine swing: pick a random owned farm when vine swing is active
   // Gate on !_tokenWalking so the emit waits until the walk animation finishes
@@ -3570,23 +3471,38 @@ function showGame() {
   // Pet ability panel
   updatePetAbilityBox(me, isMyTurn);
 
-  // Trade button: visible but disabled when it's your turn
+  // Sell button: hidden entirely in classic mode (sell feature is 2v2-only).
+  // Visible but enabled in other modes; the panel handles its own gating.
   const sellBtn = document.getElementById("btn-sell");
   if (sellBtn) {
-    sellBtn.style.display = "";
-    sellBtn.disabled = false;
-    const isTeams = gs.gameMode === "teams";
-    if (!isSellMode()) {
-      sellBtn.innerHTML = isTeams ? "🎁 Give" : "🏷️ Sell";
+    if (gs.gameMode === "classic") {
+      sellBtn.style.display = "none";
+    } else {
+      sellBtn.style.display = "";
+      sellBtn.disabled = false;
+      if (!isSellMode()) {
+        sellBtn.innerHTML = "🏷️ Sell";
+      }
+    }
+  }
+  // Sell-listings toggle in the board header — also classic-hidden since no
+  // listings can ever exist there once the sell button is gone.
+  const sellListingsToggle = document.getElementById("board-trade-deals-toggle");
+  if (sellListingsToggle) {
+    sellListingsToggle.style.display = gs.gameMode === "classic" ? "none" : "";
+  }
+  // If the panel itself was left open from a previous mode/state, close it.
+  if (gs.gameMode === "classic") {
+    const panel = document.getElementById("board-trade-deals");
+    if (panel && !panel.classList.contains("board-trade-deals-hidden")) {
+      panel.classList.add("board-trade-deals-hidden");
     }
   }
 
-  // Send Bananas button (any team mode)
+  // Send Bananas button (2v2 only — teammates need a way to transfer)
   const sendBananasBtn = document.getElementById("btn-send-bananas");
   if (sendBananasBtn) {
-    const isTeamsMode =
-      gs.gameMode === "teams" || gs.gameMode === "simple_teams";
-    sendBananasBtn.style.display = isTeamsMode ? "" : "none";
+    sendBananasBtn.style.display = gs.gameMode === "2v2" ? "" : "none";
   }
 
   // Bomb buttons
@@ -3636,19 +3552,15 @@ function showGame() {
     if (!stillValid) cancelAbilityTargeting();
   }
 
-  // Simple Mode "Your Special Items" box
+  // Classic "Your Special Items" box
   updateSpecialItems(me, isMyTurn);
 
-  // Simple Mode Item Auction (wheel + silent bid overlay)
+  // Classic Item Auction (wheel + silent bid overlay)
   updateItemAuctionUI(me);
 
-  // In team mode: hide jungle log (trade panel replaces it)
+  // Jungle log always visible.
   const logBox = document.querySelector(".log-box");
-  if (gs.gameMode === "teams") {
-    if (logBox) logBox.style.display = "none";
-  } else {
-    if (logBox) logBox.style.display = "";
-  }
+  if (logBox) logBox.style.display = "";
 
   // Auction panel
   updateAuctionPanel();
@@ -3684,7 +3596,7 @@ function showGame() {
   plist.innerHTML = "";
   const isAnimating = !!(window._diceRollingPositions || window._tokenWalking);
   const frozenPlayerMoney = isAnimating ? window._prevPlayerMoney : window._pokerMoneyFrozen || null;
-  if ((gs.gameMode === "teams" || gs.gameMode === "simple_teams") && gs.teams) {
+  if (gs.gameMode === "2v2" && gs.teams) {
     // Section off by team
     for (const teamKey of ["A", "B"]) {
       const teamDiv = document.createElement("div");
@@ -3701,13 +3613,9 @@ function showGame() {
         const isMe = p.id === myId;
         div.className = "pstat" + (isMe ? " pstat-me" : "");
         div.setAttribute("data-player-id", p.id);
-        // Simple modes don't surface the pet badge (Magic Dice is a consumable,
-        // shown separately under Special Items).
-        const isSimpleAny =
-          gs.gameMode === "simple" || gs.gameMode === "simple_teams";
-        const petTag = p.pet && !isSimpleAny
-          ? `<span class="pstat-pet">${PET_EMOJIS[p.pet] || ""}${p.petCooldown > 0 ? p.petCooldown : "✓"}</span>`
-          : "";
+        // Magic Dice is a consumable shown separately under Special Items;
+        // no pet badge surfaces here.
+        const petTag = "";
         const pileTag = playerPiles[p.id]
           ? `<span class="pstat-pile">${playerPiles[p.id]}🍌</span>`
           : "";
@@ -3730,7 +3638,7 @@ function showGame() {
       // the Your Special Items box), so no pet badge is rendered there.
       const petCd = p.petCooldown > 0 ? p.petCooldown : "✓";
       const petTag =
-        p.pet && gs.gameMode !== "simple"
+        p.pet && gs.gameMode !== "classic"
           ? `<span class="pstat-pet">${PET_EMOJIS[p.pet] || ""}${petCd}</span>`
           : "";
       const pileTag = playerPiles[p.id]
@@ -3833,128 +3741,23 @@ function updateOwnerPanel() {
   const el = document.getElementById("owner-list");
   if (!el) return;
   el.innerHTML = "";
-  const isSimpleMode =
-    gs && (gs.gameMode === "simple" || gs.gameMode === "simple_teams");
-  const GROUP_NAMES = isSimpleMode
-    ? { simple: "Farms" }
-    : {
-        yellow: "Cavendish",
-        lightblue: "Blue Java",
-        red: "Red Dacca",
-        pink: "Lady Finger",
-        darkblue: "Gros Michel",
-        orange: "Goldfinger",
-      };
-  const GROUP_ACRONYMS = isSimpleMode
-    ? { simple: "F" }
-    : {
-        yellow: "CV",
-        lightblue: "BJ",
-        red: "RD",
-        pink: "LF",
-        darkblue: "GM",
-        orange: "GF",
-      };
   gs.players.forEach((player) => {
     const section = document.createElement("div");
     section.className = "owner-section";
 
     const ownedIds = player.properties || [];
-    let propsHTML;
-    if (ownedIds.length === 0) {
-      propsHTML = '<div class="owner-empty">No farms yet</div>';
-    } else if (isSimpleMode) {
-      propsHTML = buildSimpleGrowGroupedProps(player);
-    } else {
-      const counts = {};
-      const prices = {};
-      ownedIds.forEach((id) => {
-        const tile = gs.boardLayout && gs.boardLayout[id];
-        if (!tile || !tile.group) return;
-        counts[tile.group] = (counts[tile.group] || 0) + 1;
-        if (!prices[tile.group]) prices[tile.group] = tile.price;
-      });
-      // Build list of farms per group
-      const farmsByGroup = {};
-      ownedIds.forEach((id) => {
-        const tile = gs.boardLayout && gs.boardLayout[id];
-        if (!tile || !tile.group) return;
-        if (!farmsByGroup[tile.group]) farmsByGroup[tile.group] = [];
-        farmsByGroup[tile.group].push(tile);
-      });
-      // Count total tiles per group from board layout
-      const groupTotals = {};
-      if (gs.boardLayout) {
-        for (const key of Object.keys(gs.boardLayout)) {
-          const t = gs.boardLayout[key];
-          if (t && t.group && GROUP_NAMES[t.group]) {
-            groupTotals[t.group] = (groupTotals[t.group] || 0) + 1;
-          }
-        }
-      }
-      // Compute chain multipliers for this player's farms
-      // (simple mode has no chain bonuses — leave map empty so every farm shows 1x)
-      const _playerChainMults = {};
-      if (!isSimpleMode) {
-        const ownedProps = ownedIds
-          .map((id) => {
-            const tile = gs.boardLayout && gs.boardLayout[id];
-            return tile && tile.group ? { id, group: tile.group } : null;
-          })
-          .filter(Boolean);
-        const posSet = new Set(ownedProps.map((p) => p.id));
-        const visited = new Set();
-        for (const prop of ownedProps) {
-          if (visited.has(prop.id)) continue;
-          const chain = [];
-          const queue = [prop.id];
-          visited.add(prop.id);
-          while (queue.length > 0) {
-            const cur = queue.shift();
-            chain.push(cur);
-            const neighbors = [(cur - 1 + 52) % 52, (cur + 1) % 52];
-            for (const n of neighbors) {
-              if (visited.has(n) || !posSet.has(n)) continue;
-              const nProp = ownedProps.find((p) => p.id === n);
-              if (!nProp || nProp.group !== prop.group) continue;
-              visited.add(n);
-              queue.push(n);
-            }
-          }
-          for (const c of chain) {
-            _playerChainMults[c] = chain.length;
-          }
-        }
-      }
-      propsHTML = '<div class="owner-props">';
-      Object.keys(GROUP_NAMES).forEach((g) => {
-        if (!counts[g]) return;
-        const countLabel = `${counts[g]}/${groupTotals[g] || "?"}`;
-        propsHTML += `<div class="owner-set-group">`;
-        propsHTML += `<div class="owner-set-header"><span class="owner-prop-dot g-${g}"></span><span class="owner-set-name">${GROUP_ACRONYMS[g]} — ${GROUP_NAMES[g]}</span> <span class="owner-set-count">${countLabel}</span></div>`;
-        const farms = farmsByGroup[g] || [];
-        farms.forEach((f) => {
-          const chainMult = _playerChainMults[f.id] || 1;
-          const effectivePrice = Math.round(f.price * chainMult);
-          const chainLabel =
-            chainMult > 1
-              ? ` <span class="owner-prop-bonus">${chainMult}x</span>`
-              : "";
-          propsHTML += `<div class="owner-set-farm"><span class="owner-farm-name">${f.tileLabel || f.tileName || f.name}</span><span class="owner-prop-price">${effectivePrice}🍌${chainLabel}</span></div>`;
-        });
-        propsHTML += `</div>`;
-      });
-      propsHTML += "</div>";
-    }
+    const propsHTML = ownedIds.length === 0
+      ? '<div class="owner-empty">No farms yet</div>'
+      : buildGrowGroupedProps(player);
 
     section.innerHTML =
-      `<div class="owner-header"><div class="owner-monkey c-${player.color}">${MONKEY_EMOJI[player.color] || "\uD83D\uDC35"}</div>${player.name}</div>` +
+      `<div class="owner-header"><div class="owner-monkey c-${player.color}">${MONKEY_EMOJI[player.color] || "🐵"}</div>${player.name}</div>` +
       propsHTML;
     el.appendChild(section);
   });
 }
 
-// Simple mode: group a player's owned farms by the grow tile whose range they
+// Group a player's owned farms by the grow tile whose range they
 // fall in \u2014 the nearest grow tile counterclockwise (the one whose number, when
 // rolled, grows them). Only GENUINELY revealed grow tiles count: a grow that's
 // merely been scouted does NOT anchor farms, matching how grows actually fire.
@@ -3965,7 +3768,7 @@ function updateOwnerPanel() {
 //   - If no grow tile is revealed yet, all farms list under a single
 //     "No grow tiles revealed yet" header.
 // Groups sort by grow label (1-6); farms within a group sort by yield desc.
-function buildSimpleGrowGroupedProps(player) {
+function buildGrowGroupedProps(player) {
   const ownedIds = player.properties || [];
   const N = (gs.boardLayout && gs.boardLayout.length) || 52;
 
@@ -4004,7 +3807,7 @@ function buildSimpleGrowGroupedProps(player) {
   const undiscovered = []; // only populated when NO grow is revealed yet
   for (const id of ownedIds) {
     const tile = gs.boardLayout && gs.boardLayout[id];
-    if (!tile || tile.group !== "simple") continue;
+    if (!tile || tile.group !== "farm") continue;
     const anchor = anchorGrowOf(id);
     if (anchor != null && growLabelByPos[anchor] != null) {
       const label = growLabelByPos[anchor];
@@ -4053,15 +3856,7 @@ function buildSimpleGrowGroupedProps(player) {
 
 // ── Actions ────────────────────────────────────────────────────────
 
-const CHART_GROUPS = [
-  { key: "yellow", label: "CV — Cavendish" },
-  { key: "lightblue", label: "BJ — Blue Java" },
-  { key: "red", label: "RD — Red Dacca" },
-  { key: "pink", label: "LF — Lady Finger" },
-  { key: "darkblue", label: "GM — Gros Michel" },
-  { key: "orange", label: "GF — Goldfinger" },
-];
-const CHART_GROUPS_SIMPLE = [{ key: "simple", label: "F — Farms" }];
+const CHART_GROUPS = [{ key: "farm", label: "F — Farms" }];
 
 function updatePropertyChart() {
   const el = document.getElementById("property-chart");
@@ -4069,10 +3864,7 @@ function updatePropertyChart() {
   el.innerHTML = "";
   if (!gs || !gs.boardLayout) return;
 
-  const chartGroups =
-    gs.gameMode === "simple" || gs.gameMode === "simple_teams"
-      ? CHART_GROUPS_SIMPLE
-      : CHART_GROUPS;
+  const chartGroups = CHART_GROUPS;
 
   // Build map: group -> [{name, price, owner, ownerColor}]
   const grouped = {};
@@ -4104,9 +3896,9 @@ function updatePropertyChart() {
     if (!items || items.length === 0) return;
 
     // Sort by label number so LF1, LF2, LF3 appear in order
-    // (simple mode uses tile.price for ordering since there are no labels)
+    // (uses tile.price for ordering since there are no labels)
     items.sort((a, b) => {
-      if (key === "simple") return (a.price || 0) - (b.price || 0);
+      if (key === "farm") return (a.price || 0) - (b.price || 0);
       const numA = parseInt((a.label || "").replace(/\D/g, "")) || 0;
       const numB = parseInt((b.label || "").replace(/\D/g, "")) || 0;
       return numA - numB;
@@ -4136,7 +3928,7 @@ function updatePropertyChart() {
   updateGrowChart();
 }
 
-// Simple-mode only: a discovery tracker for the 8 GROW tiles (labeled 0-7).
+// only: a discovery tracker for the 8 GROW tiles (labeled 0-7).
 // Lists every grow label; ones you've revealed show their board tile, the rest
 // stay "?" so the fog of war is preserved.
 function updateGrowChart() {
@@ -4147,7 +3939,7 @@ function updateGrowChart() {
   // that point; before then tiles still read "GROW 100%".
   if (
     !gs ||
-    (gs.gameMode !== "simple" && gs.gameMode !== "simple_teams") ||
+    (gs.gameMode !== "classic" && gs.gameMode !== "2v2") ||
     gs.state !== "playing" ||
     !gs.boardLayout
   ) {
@@ -4224,13 +4016,11 @@ function updateTileLegend() {
     if (counts[tile.type] !== undefined) counts[tile.type]++;
   }
 
-  const isSimple =
-    gs && (gs.gameMode === "simple" || gs.gameMode === "simple_teams");
   const entries = [
     { icon: "🌿", name: "Vine Swing", count: counts.bus },
     {
       icon: "🍌",
-      name: isSimple ? "+25" : "+500",
+      name: "+25",
       count: counts.freebananas,
     },
     { icon: "🍌", name: "-10% Peel", count: counts.tax10 },
@@ -4266,6 +4056,12 @@ function createGame() {
     parseInt(document.getElementById("create-item-auction-start").value) || 50;
   const itemAuctionTimer =
     parseInt(document.getElementById("create-item-auction-timer").value) || 15;
+  const superBananaEl = document.getElementById("create-super-banana-price");
+  const superBananaPrice = superBananaEl ? (parseInt(superBananaEl.value) || 777) : 777;
+  const freeBananasEl = document.getElementById("create-free-bananas");
+  const freeBananasAmount = freeBananasEl ? (parseInt(freeBananasEl.value) || 25) : 25;
+  const farmAuctionTimerEl = document.getElementById("create-farm-auction-timer");
+  const farmAuctionTimer = farmAuctionTimerEl ? (parseInt(farmAuctionTimerEl.value) || 15) : 15;
   if (!socket.connected)
     return showToast("Connecting to server, please try again.", "warning");
   socket.emit("create_game", {
@@ -4280,6 +4076,9 @@ function createGame() {
     itemAuctionEnabled,
     itemAuctionStartValue: itemAuctionStart,
     itemAuctionTimer,
+    superBananaPrice,
+    freeBananasAmount,
+    farmAuctionTimer,
   });
 }
 
@@ -4287,12 +4086,10 @@ function toggleItemAuctionFields() {
   const enabled = document.getElementById(
     "create-item-auction-enabled",
   ).checked;
-  document.querySelectorAll("#simple-settings .item-auction-sub").forEach(
-    (el) => {
-      el.style.opacity = enabled ? "1" : "0.4";
-      el.style.pointerEvents = enabled ? "" : "none";
-    },
-  );
+  document.querySelectorAll(".item-auction-sub").forEach((el) => {
+    el.style.opacity = enabled ? "1" : "0.4";
+    el.style.pointerEvents = enabled ? "" : "none";
+  });
 }
 
 function pasteCode() {
@@ -4350,13 +4147,7 @@ function _handlePublicLobbies(lobbies) {
   }
   container.innerHTML = lobbies.map(l => {
     const modeLabel =
-      l.gameMode === "teams"
-        ? "Teams"
-        : l.gameMode === "simple_teams"
-          ? "2v2 Simple"
-          : l.gameMode === "simple"
-            ? "Simple"
-            : "FFA";
+      l.gameMode === "2v2" ? "2v2" : "Classic";
     return `<button class="public-lobby-item" onclick="joinPublicLobby('${l.gameId}')">
       <div class="public-lobby-host">${l.hostName}'s game</div>
       <div class="public-lobby-details">
@@ -4388,7 +4179,7 @@ function rollDice(diceCount) {
   if (
     diceCount === undefined &&
     gs &&
-    (gs.gameMode === "simple" || gs.gameMode === "simple_teams")
+    (gs.gameMode === "classic" || gs.gameMode === "2v2")
   ) {
     if (armed === "magicDice") {
       useMagicDice(1); // Roll One — guaranteed move of 1
@@ -4399,40 +4190,16 @@ function rollDice(diceCount) {
       return;
     }
   }
-  let override = diceCount || window._armedDiceOverride || undefined;
-  // Simple mode: an armed Turtle Dice rolls 1 die, an armed Rabbit Dice rolls 3
-  // (server consumes the item + clears armedAbility on the roll); default 2d6.
+  let override = diceCount || undefined;
+  // An armed Turtle Dice rolls 1 die, an armed Rabbit Dice rolls 3 (server
+  // consumes the item + clears armedAbility on the roll); default 2d6.
   // (Legacy keys: rabbitDice = Turtle / 1 die, cheetahDice = Rabbit / 3 dice.)
-  if (
-    override === undefined &&
-    gs &&
-    (gs.gameMode === "simple" || gs.gameMode === "simple_teams") &&
-    (armed === "rabbitDice" || armed === "cheetahDice")
-  ) {
+  if (override === undefined && (armed === "rabbitDice" || armed === "cheetahDice")) {
     override = armed === "rabbitDice" ? 1 : 3;
   }
-  window._armedDiceOverride = null;
   const opts = { gameId };
-  // Simple mode arms 1 (Turtle) or 3 (Rabbit); classic arms 1 or 3. The server
-  // ignores a value that doesn't apply to the current mode.
   if (override === 1 || override === 2 || override === 3) opts.diceCount = override;
   socket.emit("roll_dice", opts);
-}
-
-function armDiceOverride(count) {
-  if (window._armedDiceOverride === count) {
-    window._armedDiceOverride = null;
-  } else {
-    window._armedDiceOverride = count;
-    // Disarm pet if armed
-    const petBtn = document.getElementById("btn-auto-pet");
-    if (petBtn && petBtn.dataset.armed === "true") {
-      petBtn.dataset.armed = "false";
-      const txt = document.getElementById("pet-toggle-text");
-      if (txt) txt.innerHTML = "Use Pet Next Turn";
-    }
-  }
-  route();
 }
 
 function debugMove() {
@@ -4779,10 +4546,10 @@ function updateAuctionPanel() {
   if (titleEl) titleEl.textContent = "🏷️ PRICE IT 🏷️";
   box.style.display = "block";
 
-  // In classic mode only the lander sees the farm; in 2v2 simple the
-  // teammate also sees it (the backend sets propName=null for opponents).
-  // Anyone who can see propName here is allowed to — the backend already
-  // gated visibility per viewer.
+  // Only the lander sees the farm; in 2v2 simple the teammate also sees
+  // it (the backend sets propName=null for opponents). Anyone who can see
+  // propName here is allowed to — the backend already gated visibility per
+  // viewer.
   const propEl = document.getElementById("auction-prop");
   if (a.propName) {
     propEl.textContent = `${a.propName} — ${a.propPrice}🍌 yield`;
@@ -4830,7 +4597,7 @@ function updateAuctionPanel() {
       highEl.textContent = "Choice locked in — waiting for the others (nobody can see it).";
     } else {
       const isTeammate =
-        (gs.gameMode === "teams" || gs.gameMode === "simple_teams") &&
+        gs.gameMode === "2v2" &&
         gs.teams &&
         a.respondStartTime &&
         _getMyTeamKey() === _getLanderTeamKey(a);
@@ -5699,6 +5466,12 @@ function updateLobbySettings() {
   const bombCostEl = document.getElementById("lobby-bomb-cost");
   const bombCost = bombCostEl ? (parseInt(bombCostEl.value) || 666) : 666;
   const monkeyPoker = document.getElementById("lobby-monkey-poker").checked;
+  const superBananaEl = document.getElementById("lobby-super-banana-price");
+  const superBananaPrice = superBananaEl ? (parseInt(superBananaEl.value) || 777) : 777;
+  const freeBananasEl = document.getElementById("lobby-free-bananas");
+  const freeBananasAmount = freeBananasEl ? (parseInt(freeBananasEl.value) || 25) : 25;
+  const farmAuctionTimerEl = document.getElementById("lobby-farm-auction-timer");
+  const farmAuctionTimer = farmAuctionTimerEl ? (parseInt(farmAuctionTimerEl.value) || 15) : 15;
   socket.emit("update_settings", {
     gameId,
     startingMoney: money,
@@ -5708,16 +5481,33 @@ function updateLobbySettings() {
     bombMode,
     bombCost,
     monkeyPoker,
+    superBananaPrice,
+    freeBananasAmount,
+    farmAuctionTimer,
   });
+}
+
+// Drive the visual mode-chooser on the create-game screen. The hidden
+// <select id="create-mode"> stays the source of truth so toggleModeSettings()
+// and createGame() don't need to know about the cards.
+function selectGameMode(mode) {
+  const sel = document.getElementById("create-mode");
+  if (!sel) return;
+  sel.value = mode;
+  const chooser = document.getElementById("mode-chooser");
+  if (chooser) {
+    chooser.querySelectorAll(".mode-card").forEach((card) => {
+      card.classList.toggle("active", card.dataset.mode === mode);
+    });
+  }
+  toggleModeSettings();
 }
 
 function toggleModeSettings() {
   const mode = document.getElementById("create-mode").value;
   const teamSettings = document.getElementById("team-settings");
   const maxSelect = document.getElementById("create-max");
-  const simpleSettings = document.getElementById("simple-settings");
-  const isTeams = mode === "teams" || mode === "simple_teams";
-  const isSimple = mode === "simple" || mode === "simple_teams";
+  const isTeams = mode === "2v2";
   if (isTeams) {
     teamSettings.style.display = "";
     maxSelect.value = "4";
@@ -5726,29 +5516,25 @@ function toggleModeSettings() {
     teamSettings.style.display = "none";
     maxSelect.disabled = false;
   }
-  if (simpleSettings) {
-    simpleSettings.style.display = isSimple ? "" : "none";
-  }
-  // Default starting bananas per mode: 333 in simple modes, 2222 elsewhere.
   const bananasEl = document.getElementById("create-bananas");
   const bananasDisp = document.getElementById("bananas-display");
   if (bananasEl) {
-    bananasEl.value = isSimple ? 333 : 2222;
+    bananasEl.value = 333;
     if (bananasDisp) bananasDisp.textContent = bananasEl.value;
   }
-  // 2v2 simple bumps bomb cost to 1000 by default (classic/ffa/simple stay 666).
+  // 2v2 simple bumps bomb cost to 1000 by default; solo simple stays 666.
   const bombCostEl = document.getElementById("create-bomb-cost");
   if (bombCostEl) {
-    bombCostEl.value = mode === "simple_teams" ? 1000 : 666;
+    bombCostEl.value = isTeams ? 1000 : 666;
   }
-  if (isSimple) toggleItemAuctionFields();
+  toggleItemAuctionFields();
 }
 
 function endTurn() {
   socket.emit("end_turn", { gameId });
 }
 
-// ── Simple Mode Special Items ────────────────────────────────────
+// ── Classic Special Items ────────────────────────────────────
 // Items: Turtle Dice (1 die) / Rabbit Dice (3 dice) arm the roll; Roll One
 // auto-moves 1; Vine Swing picks one of YOUR farms (board-targeting). Only Vine
 // Swing flows through useCard.
@@ -5760,14 +5546,14 @@ function useCard(cardType) {
   }
 }
 
-function _canUseSimpleCard(me, cardType) {
+function _canUseCard(me, cardType) {
   if (!me || !gs) return false;
   const owned = (me.cards && me.cards[cardType]) || 0;
   if (owned <= 0) return false;
   if (cardType === "teleport") {
     // Vine Swing needs at least one farm YOU own to swing to.
     return (gs.properties || []).some(
-      (p) => p && p.owner === myId && p.group === "simple",
+      (p) => p && p.owner === myId && p.group === "farm",
     );
   }
   return false;
@@ -5786,7 +5572,7 @@ function _isAbilityTileSelectable(mode, pos, state) {
     // Vine Swing: only a farm YOU own (occupied is fine — triggers poker
     // server-side). Mirrors the backend _validateTeleportTarget rule.
     const prop = (state.properties || []).find((p) => p.id === pos);
-    return !!(prop && prop.owner === myId && prop.group === "simple");
+    return !!(prop && prop.owner === myId && prop.group === "farm");
   }
   return false;
 }
@@ -5827,7 +5613,7 @@ function cancelAbilityTargeting() {
     socket &&
     gameId &&
     gs &&
-    (gs.gameMode === "simple" || gs.gameMode === "simple_teams") &&
+    (gs.gameMode === "classic" || gs.gameMode === "2v2") &&
     me &&
     me.armedAbility &&
     wasCard === "teleport"
@@ -5912,33 +5698,35 @@ function _dismissAbilitiesPopoverKey(e) {
   if (e.key === "Escape") toggleAbilitiesPopover(false);
 }
 
-// Arm/disarm one special ability for your NEXT turn (server-authoritative, so
-// it survives refresh/reconnect and stays private to you). Only allowed while
-// it is NOT your turn; it fires when your turn starts. One armed at a time —
-// arming another swaps it; clicking the armed one disarms.
+// Arm/disarm one special ability so it fires on the next roll
+// (server-authoritative — survives refresh/reconnect, stays private).
+// Allowed at any time except during the first-pick phase. If armed after
+// you've already rolled this turn, the item persists and fires on your NEXT
+// roll. One armed at a time — arming another swaps it; clicking the armed
+// one disarms.
 function armSpecialAbility(type) {
   if (
     !socket ||
     !gameId ||
     !gs ||
-    (gs.gameMode !== "simple" && gs.gameMode !== "simple_teams")
+    (gs.gameMode !== "classic" && gs.gameMode !== "2v2")
   ) {
     return;
   }
   const me = _gsPlayerMap[myId];
   if (!me) return;
-  const isMyTurn = !!(gs.currentPlayer && gs.currentPlayer.id === myId);
-  if (isMyTurn) return; // can't arm on your own turn
+  if (me.startPickPending) return; // blocked during the first-pick phase
   if (((me.cards && me.cards[type]) | 0) <= 0) return; // must own it
   // Toggle off if it's already the armed one; null disarms.
   const next = me.armedAbility === type ? null : type;
   socket.emit("arm_ability", { gameId, ability: next });
 }
 
-// "Your Special Items" box (simple mode). You ARM one ability during other
-// players' turns; it fires when your turn starts (Double/Triple auto-roll;
-// Magic Dice / Vine Swing open tile-targeting). Everyone starts with one of
-// each, so the box shows even with item auctions off (unless you hold nothing).
+// "Your Special Items" box. Arm one item (off-turn OR on your own turn before
+// you roll); it's consumed when you click Roll — the manual click is the
+// trigger so you can always disarm beforehand. Clicking the armed button
+// disarms. Everyone starts with one of each, so the box shows even with item
+// auctions off (unless you hold nothing).
 function updateSpecialItems(me, isMyTurn) {
   const box = document.getElementById("special-items");
   if (!box) return;
@@ -5946,7 +5734,7 @@ function updateSpecialItems(me, isMyTurn) {
     me && me.cards && Object.keys(me.cards).some((k) => (me.cards[k] || 0) > 0);
   if (
     !gs ||
-    (gs.gameMode !== "simple" && gs.gameMode !== "simple_teams") ||
+    (gs.gameMode !== "classic" && gs.gameMode !== "2v2") ||
     gs.state !== "playing" ||
     !me ||
     me.startPickPending ||
@@ -5966,20 +5754,29 @@ function updateSpecialItems(me, isMyTurn) {
     !gs.petResolving &&
     !gs.itemAuction &&
     !window._abilityTargetMode;
-  // You arm DURING other players' turns (commit ahead). On your own turn the
-  // armed ability fires; you can't change it then.
-  const canArm = !isMyTurn && noBlockingState && !me.startPickPending;
+  // You can arm/disarm at any point except during the first-pick phase or
+  // during a blocking overlay. If armed after rolling on your turn, it
+  // persists and fires on your NEXT roll.
+  const canArm = noBlockingState && !me.startPickPending;
   const armed = me.armedAbility || null;
 
   const sub = document.getElementById("special-items-sub");
   if (sub) {
-    sub.textContent = isMyTurn
-      ? armed
-        ? "Your armed item fires now!"
-        : "Arm an item on others' turns for next time"
-      : armed
-        ? "Armed — fires when your turn starts"
-        : "Arm one for your next turn";
+    if (isMyTurn) {
+      if (gs.diceRolled) {
+        sub.textContent = armed
+          ? "Armed — fires on your next roll (or disarm)"
+          : "Arm one for your next roll";
+      } else {
+        sub.textContent = armed
+          ? "Armed — click Roll to fire (or disarm)"
+          : "Arm one — fires when you click Roll";
+      }
+    } else {
+      sub.textContent = armed
+        ? "Armed — fires on your next roll (or disarm)"
+        : "Arm one for your next roll";
+    }
   }
 
   const setItem = (key) => {
@@ -6000,39 +5797,7 @@ function updateSpecialItems(me, isMyTurn) {
   setItem("teleport");
 }
 
-// Fire the armed special ability at the start of your ready turn. Double/Triple
-// auto-roll; Magic Dice / Vine Swing open tile targeting (you pick on your
-// turn). Fires once per turn; clears the armed choice.
-function _maybeFireArmedAbility() {
-  if (
-    !gs ||
-    (gs.gameMode !== "simple" && gs.gameMode !== "simple_teams")
-  ) {
-    return;
-  }
-  const me = _gsPlayerMap[myId];
-  const armed = me && me.armedAbility;
-  if (!armed) return;
-  if (window._abilityTargetMode) return; // already targeting
-  const fireKey = "armed:" + gs.turn;
-  if (window._armedAbilityFiredKey === fireKey) return;
-  window._armedAbilityFiredKey = fireKey;
-  setTimeout(() => {
-    // Re-check it's still our ready, unrolled turn (server is authoritative;
-    // consuming the item / clearing armedAbility happens server-side).
-    if (!gs || !gs.currentPlayer || gs.currentPlayer.id !== myId) return;
-    if (gs.diceRolled || window._abilityTargetMode) return;
-    if (armed === "rabbitDice" || armed === "cheetahDice") {
-      rollDice(armed === "rabbitDice" ? 1 : 3); // Turtle = 1 die, Rabbit = 3 dice
-    } else if (armed === "magicDice") {
-      useMagicDice(1); // Roll One — guaranteed move of 1 (no picker)
-    } else if (armed === "teleport") {
-      useCard("teleport");
-    }
-  }, 250);
-}
-
-// ── Simple Mode Item Auction (wheel + silent bid) ─────────────────
+// ── Classic Item Auction (wheel + silent bid) ─────────────────
 const ITEM_AUCTION_META = {
   // Legacy keys → current items.
   rabbitDice: { emoji: "🐢", name: "Turtle Dice" }, // roll 1 die
@@ -6632,25 +6397,13 @@ function openSellPanel() {
     return;
   }
 
-  const isTeams = gs.gameMode === "teams";
-
   const bananasSection = document.getElementById("trade-bananas-section");
-  const swapSection = document.getElementById("trade-swap-section");
   if (bananasSection) bananasSection.style.display = "none";
-  if (swapSection) swapSection.style.display = "none";
 
-  // In teams mode: hide price section, change header/button labels
   const panelHeader = panel.querySelector(".trade-panel-header");
-  const priceSection = document.getElementById("sell-price-label");
   const confirmBtn = document.getElementById("btn-sell-confirm");
-  if (isTeams) {
-    if (panelHeader) panelHeader.firstChild.textContent = "🎁 Give Farm ";
-    if (priceSection) priceSection.style.display = "none";
-    if (confirmBtn) confirmBtn.textContent = "Give to Teammate (300🍌)";
-  } else {
-    if (panelHeader) panelHeader.firstChild.textContent = "🏷️ Sell Farm ";
-    if (confirmBtn) confirmBtn.textContent = "Confirm Listing";
-  }
+  if (panelHeader) panelHeader.firstChild.textContent = "🏷️ Sell Farm ";
+  if (confirmBtn) confirmBtn.textContent = "Confirm Listing";
 
   resetSellSelection();
 
@@ -6665,10 +6418,7 @@ function closeSellPanel() {
   window._sellState = null;
   document.getElementById("trade-panel").style.display = "none";
   const sellBtn = document.getElementById("btn-sell");
-  if (sellBtn) {
-    const isTeams = gs && gs.gameMode === "teams";
-    sellBtn.innerHTML = isTeams ? "🎁 Give" : "🏷️ Sell";
-  }
+  if (sellBtn) sellBtn.innerHTML = "🏷️ Sell";
   const closeX = document.querySelector(".trade-panel-close");
   if (closeX) closeX.style.display = "";
   updateSellHighlights();
@@ -6693,7 +6443,6 @@ function updateSellUI() {
   const state = window._sellState;
   if (!state) return;
 
-  const isTeams = gs && gs.gameMode === "teams";
   const hint = document.getElementById("sell-phase-hint");
   const selectedItem = document.getElementById("sell-selected-item");
   const confirmBtn = document.getElementById("btn-sell-confirm");
@@ -6701,19 +6450,16 @@ function updateSellUI() {
   const selectedLabel = document.querySelector(
     "#sell-selected-display .trade-selected-label",
   );
-  if (selectedLabel)
-    selectedLabel.textContent = isTeams ? "Farm to give:" : "Farm to sell:";
+  if (selectedLabel) selectedLabel.textContent = "Farm to sell:";
 
   if (state.selectedTile === null) {
     hint.textContent = "Click one of your farms on the board to select it";
     hint.className = "trade-phase-hint phase-mine";
     selectedItem.textContent = "None selected";
     confirmBtn.disabled = true;
-    if (priceLabel && !isTeams) priceLabel.style.display = "none";
+    if (priceLabel) priceLabel.style.display = "none";
   } else {
-    hint.textContent = isTeams
-      ? "Confirm to give this farm to your teammate"
-      : "Set your asking price and confirm the listing";
+    hint.textContent = "Set your asking price and confirm the listing";
     hint.className = "trade-phase-hint phase-mine";
     selectedItem.innerHTML = `<span class="trade-chip trade-chip-mine">${getTileName(state.selectedTile)} ✕</span>`;
     selectedItem.querySelector(".trade-chip-mine").onclick = () => {
@@ -6722,7 +6468,7 @@ function updateSellUI() {
       updateSellHighlights();
     };
     confirmBtn.disabled = false;
-    if (priceLabel && !isTeams) priceLabel.style.display = "";
+    if (priceLabel) priceLabel.style.display = "";
   }
 }
 
@@ -6787,16 +6533,6 @@ function sellCalcBackspace() {
 function confirmSell() {
   const state = window._sellState;
   if (!state || state.selectedTile === null) return;
-
-  if (gs && gs.gameMode === "teams") {
-    // Teams mode: give farm directly to teammate
-    socket.emit("give_farm", {
-      gameId,
-      propPos: state.selectedTile,
-    });
-    closeSellPanel();
-    return;
-  }
 
   const priceInput = document.getElementById("sell-price-input");
   const price = parseInt(priceInput.value) || 0;
@@ -6887,15 +6623,11 @@ function updateSellListingsNotification() {
 function updateSendBananaAmount(val) {
   val = Math.max(0, Math.round(Number(val) || 0));
   const me = gs && _gsPlayerMap[myId];
-  // 2v2 simple uses a 50-banana fee and caps the amount sent at half the
-  // sender's bananas. Classic teams uses a 150-banana fee, no cap.
-  const isSimpleTeams = gs && gs.gameMode === "simple_teams";
-  const fee = isSimpleTeams ? 50 : 150;
+  // 50-banana fee, capped at half the sender's bananas.
+  const fee = 50;
   const myMoney = me ? me.money : 0;
   let maxSend = Math.max(1, myMoney - fee);
-  if (isSimpleTeams) {
-    maxSend = Math.min(maxSend, Math.floor(myMoney / 2));
-  }
+  maxSend = Math.min(maxSend, Math.floor(myMoney / 2));
   val = Math.min(val, maxSend);
   const display = document.getElementById("send-banana-display");
   const hidden = document.getElementById("send-banana-input");
@@ -6964,13 +6696,9 @@ function toggleSendBananas() {
   }
   // Close sell panel if open
   if (isSellMode()) closeSellPanel();
-  // Tune fee/cap copy for the active mode.
-  const isSimpleTeams = gs.gameMode === "simple_teams";
   const feeNotice = document.getElementById("send-banana-fee-notice");
   if (feeNotice) {
-    feeNotice.textContent = isSimpleTeams
-      ? "Transfer fee: 50🍌 · Max send: half your bananas"
-      : "Transfer fee: 150🍌";
+    feeNotice.textContent = "Transfer fee: 50🍌 · Max send: half your bananas";
   }
   // Reset calculator
   updateSendBananaAmount(0);
@@ -6986,58 +6714,6 @@ function closeSendBananas() {
   if (panel) panel.style.display = "none";
   const btn = document.getElementById("btn-send-bananas");
   if (btn) btn.innerHTML = "🍌 Send Bananas";
-}
-
-// ── Farm Swap ──────────────────────────────────────────────────────
-
-function populateFarmSwap() {
-  const myFarmSel = document.getElementById("swap-my-farm");
-  const mateFarmSel = document.getElementById("swap-mate-farm");
-  if (!myFarmSel || !mateFarmSel) return;
-  myFarmSel.innerHTML = "";
-  mateFarmSel.innerHTML = "";
-
-  const me = _gsPlayerMap[myId];
-  if (!me || !gs.teams) return;
-
-  const myTeam = gs.teams.A.includes(myId) ? "A" : "B";
-  const mateId = gs.teams[myTeam].find((id) => id !== myId);
-  const mate = _gsPlayerMap[mateId];
-  if (!mate) return;
-
-  // My farms
-  me.properties.forEach((pos) => {
-    const tile = gs.boardLayout && gs.boardLayout[pos];
-    if (!tile || !tile.tileLabel) return;
-    const opt = document.createElement("option");
-    opt.value = pos;
-    opt.textContent = `${tile.tileLabel} (${tile.price}🍌 yield)`;
-    myFarmSel.appendChild(opt);
-  });
-
-  // Teammate farms
-  mate.properties.forEach((pos) => {
-    const tile = gs.boardLayout && gs.boardLayout[pos];
-    if (!tile || !tile.tileLabel) return;
-    const opt = document.createElement("option");
-    opt.value = pos;
-    opt.textContent = `${tile.tileLabel} (${tile.price}🍌 yield)`;
-    mateFarmSel.appendChild(opt);
-  });
-
-  // Update swap button state
-  const swapBtn = document.getElementById("btn-swap-farm");
-  if (swapBtn) {
-    swapBtn.disabled =
-      myFarmSel.options.length === 0 || mateFarmSel.options.length === 0;
-  }
-}
-
-function swapFarm() {
-  const myFarmPos = parseInt(document.getElementById("swap-my-farm").value);
-  const mateFarmPos = parseInt(document.getElementById("swap-mate-farm").value);
-  if (isNaN(myFarmPos) || isNaN(mateFarmPos)) return;
-  socket.emit("swap_farm", { gameId, myFarmPos, mateFarmPos });
 }
 
 function leaveGame() {
@@ -7102,7 +6778,32 @@ function initFloaters() {
 // Pair with _showMoneyDeduction() for the inverse (score went down).
 function bananaBurst(amount, playerId, anchorEl) {
   if (!amount || amount <= 0) return;
+  // Only rain bananas when the player's ACTUAL money score has gone up.
+  // Stepping on (or landing on) a grow tile bumps the "to be collected"
+  // pile total but NOT player.money, so any phantom call from a pile
+  // animation must not fire the rain. We compare the canonical server
+  // money (gs.players[i].money) against the snapshot taken just before
+  // the latest gs update (_prevPlayerMoney). If money didn't rise, skip.
+  if (
+    playerId &&
+    typeof gs !== "undefined" &&
+    gs &&
+    gs.players &&
+    window._prevPlayerMoney
+  ) {
+    const player = gs.players.find((p) => p && p.id === playerId);
+    const prev = window._prevPlayerMoney[playerId];
+    if (player && prev != null && player.money <= prev) return;
+  }
   playBananaWhoosh();
+  _bananaBurstImpl(amount, playerId, anchorEl);
+  _bananaGainFloater(amount, playerId);
+  // Hold the end-turn countdown until this landing FX has had time to play out
+  // (rain ~0.85s + max ~0.25s delay + small buffer).
+  _touchLandingFx(1200);
+}
+
+function _bananaBurstImpl(amount, playerId, anchorEl) {
   // Caller-supplied anchor takes priority — used for leave-steal so the
   // banana rain falls on the SQUATTED TILE the player is departing, not on
   // their moving token. Falls back to the player's token / "me" token / pstat
@@ -7111,8 +6812,12 @@ function bananaBurst(amount, playerId, anchorEl) {
   if (!anchor && playerId) {
     anchor = document.querySelector(`.token[data-player-id="${playerId}"]`);
   }
-  if (!anchor) {
+  if (!anchor && playerId === myId) {
     anchor = document.querySelector(".token-me");
+  }
+  if (!anchor && playerId) {
+    const pstatMonkey = document.querySelector(`.pstat[data-player-id="${playerId}"] .pstat-monkey`);
+    if (pstatMonkey) anchor = pstatMonkey;
   }
   if (!anchor) {
     const mePstat = document.querySelector(".pstat-me .pstat-monkey");
@@ -7123,7 +6828,7 @@ function bananaBurst(amount, playerId, anchorEl) {
   const rect = anchor.getBoundingClientRect();
   const originX = rect.left + rect.width / 2;
   const originY = rect.top + rect.height / 2;
-  const count = 3;
+  const count = Math.min(5, Math.max(1, Math.floor(amount)));
   for (let i = 0; i < count; i++) {
     const el = document.createElement("span");
     el.className = "banana-burst-icon banana-burst-down";
@@ -7140,6 +6845,30 @@ function bananaBurst(amount, playerId, anchorEl) {
     document.body.appendChild(el);
     el.addEventListener("animationend", () => el.remove());
   }
+}
+
+// Green "+N\u{1F34C}" floater near the player's banana score (mirror of
+// the red "-N\u{1F34C}" floater fired by _showMoneyDeduction for losses).
+// Only meaningful when amount > 0; the guard in bananaBurst already
+// enforces that.
+function _bananaGainFloater(amount, playerId) {
+  if (!amount || amount <= 0) return;
+  const isMe = playerId === myId;
+  const moneyAnchor = isMe
+    ? document.getElementById("info-money")
+    : document.querySelector(`.pstat[data-player-id="${playerId}"] .pstat-money`);
+  if (!moneyAnchor) return;
+  const mRect = moneyAnchor.getBoundingClientRect();
+  const popup = document.createElement("div");
+  popup.className = "money-gain-float";
+  popup.textContent = `+${amount}🍌`;
+  popup.style.position = "fixed";
+  popup.style.left = mRect.left + mRect.width / 2 + "px";
+  popup.style.top = mRect.top + "px";
+  popup.style.pointerEvents = "none";
+  popup.style.zIndex = "1000";
+  document.body.appendChild(popup);
+  popup.addEventListener("animationend", () => popup.remove());
 }
 
 function initBoardFloaters() {
@@ -7199,10 +6928,6 @@ window.addEventListener("DOMContentLoaded", () => {
         } else {
           txt.innerHTML = "Use Pet Next Turn";
         }
-      }
-      // Disarm dice override when pet is armed
-      if (now) {
-        window._armedDiceOverride = null;
       }
       // Energy/Strong/Magic pets activate off-turn — fire usePet immediately when toggled on
       if (now && gs) {
@@ -7734,32 +7459,20 @@ function showEmojiReaction(playerId, emoji) {
 // ── Board Preview ──────────────────────────────────────────────────
 
 let _previewLayout = null;
-let _previewMode = "classic"; // "classic" | "simple"
 
 function openBoardPreview() {
   const overlay = document.getElementById("board-preview-overlay");
   overlay.style.display = "flex";
-  setPreviewMode(_previewMode);
+  shuffleBoardPreview();
 }
 
 function closeBoardPreview() {
   document.getElementById("board-preview-overlay").style.display = "none";
 }
 
-// Switch the preview between the classic and simple-mode boards, then re-shuffle.
-function setPreviewMode(mode) {
-  _previewMode = mode === "simple" ? "simple" : "classic";
-  const classicBtn = document.getElementById("bp-mode-classic");
-  const simpleBtn = document.getElementById("bp-mode-simple");
-  if (classicBtn) classicBtn.classList.toggle("active", _previewMode === "classic");
-  if (simpleBtn) simpleBtn.classList.toggle("active", _previewMode === "simple");
-  shuffleBoardPreview();
-}
-
 function shuffleBoardPreview() {
   playShuffleSound();
-  _previewLayout =
-    _previewMode === "simple" ? buildSimplePreviewLayout() : buildPreviewLayout();
+  _previewLayout = buildSimplePreviewLayout();
   renderPreviewBoard(_previewLayout);
 }
 
@@ -7798,36 +7511,16 @@ const TUTORIAL_STEPS = [
     title: "The Board",
     icon: "🗺️",
     render() {
-      const tiles = [];
-      // Row 1 (top)
-      const labels = ["🌴GO", "🟡", "🔵", "🌵", "🔴", "🍄", "🌴25%"];
-      const classes = ["corner", "prop", "prop", "special", "prop", "special", "corner"];
-      for (let i = 0; i < 7; i++) {
-        tiles.push(`<div class="tut-tile tut-tile-${classes[i]}">${labels[i]}</div>`);
-      }
-      // Middle rows (sides only)
-      const leftTiles = ["🟠", "💰", "🎰", "🟡", "🌿"];
-      const rightTiles = ["🔵", "💀", "🟠", "🟡", "🌿"];
-      for (let r = 0; r < 5; r++) {
-        tiles.push(`<div class="tut-tile tut-tile-prop">${leftTiles[r]}</div>`);
-        for (let c = 0; c < 5; c++) {
-          tiles.push(`<div class="tut-tile" style="background:transparent;"></div>`);
-        }
-        tiles.push(`<div class="tut-tile tut-tile-prop">${rightTiles[r]}</div>`);
-      }
-      // Bottom row
-      const botLabels = ["🌴75%", "🟡", "🔴", "🌿", "💗", "🔵", "🌴50%"];
-      const botClasses = ["corner", "prop", "prop", "special", "prop", "prop", "corner"];
-      for (let i = 0; i < 7; i++) {
-        tiles.push(`<div class="tut-tile tut-tile-${botClasses[i]}">${botLabels[i]}</div>`);
-      }
       return `
         <div class="tut-icon">🗺️</div>
         <h2>The Board</h2>
-        <p>The board has <span class="tut-highlight">52 spaces</span> arranged in a square loop. Each game shuffles the tiles, so no two games are the same!</p>
-        <div class="tut-board-mini">${tiles.join("")}</div>
-        <p><span class="tut-highlight">Corners</span> (🌴) give you banana growth bonuses when you pass them: 100%, 25%, 50%, and 75%.</p>
-        <p>Colored tiles are <span class="tut-highlight">buyable farms</span>. Special tiles include deserts 🌵, vine swings 🌿, mushrooms 🍄, and more.</p>`;
+        <p>The board has <span class="tut-highlight">48 spaces</span> arranged in a cornerless square loop. Every game shuffles the tiles, so no two games are the same!</p>
+        <p>The board holds:</p>
+        <p>🌴 <strong>6 GROW tiles</strong> — labeled 1–6, hidden until discovered</p>
+        <p>🏞️ <strong>40 farms</strong> — labelled F1..F40 by yield</p>
+        <p>⭐ <strong>1 Super Banana</strong> — buy it for 777🍌 to win the game</p>
+        <p>🎁 <strong>1 Free Bananas</strong> — small banana payout when you land or pass</p>
+        <p>You start <span class="tut-highlight">off the board</span> — your very first turn is choosing any tile to start on.</p>`;
     },
   },
   // 2: Dice & Movement
@@ -7838,41 +7531,28 @@ const TUTORIAL_STEPS = [
       return `
         <div class="tut-icon">🎲</div>
         <h2>Rolling the Dice</h2>
-        <p>On your turn, roll <span class="tut-highlight">1 to 3 dice</span>. More dice means you move farther, but you might overshoot a tile you wanted!</p>
+        <p>The default roll is <span class="tut-highlight">2 dice</span>. The Turtle Dice item drops you to 1 die for precision; the Rabbit Dice item bumps you to 3 dice for speed. Both are won items, not bought.</p>
         <div class="tut-dice-demo">
           <div class="tut-die" onclick="tutRollDie(this)">3</div>
           <div class="tut-die" onclick="tutRollDie(this)">5</div>
-          <div class="tut-die" onclick="tutRollDie(this)">2</div>
         </div>
-        <p style="text-align:center;font-size:0.8em;color:#aaa;">Click the dice to roll them!</p>
-        <p>As you move, you <span class="tut-highlight">collect bananas</span> from piles on each tile you pass through. Bigger piles mean more bananas!</p>
-        <div class="tut-tip"><strong>Tip:</strong> If your dice total matches the number on the tile you land on, you get a <span class="tut-highlight">500 banana bonus</span>!</div>`;
+        <p>Each die face <span class="tut-highlight">also fires</span> the GROW tile with that number, if it has been revealed. Doubles fire once.</p>
+        <p>As you move, you <span class="tut-highlight">collect bananas</span> from piles on each farm you cross — even ones you don't own.</p>
+        <div class="tut-tip"><strong>Tip:</strong> Discovering a GROW tile unlocks its die-face trigger for everyone, so picking when to land on a hidden GROW is a tactical decision.</div>`;
     },
   },
   // 3: Buying Farms
   {
     title: "Buying Farms",
-    icon: "🌴",
+    icon: "🏞️",
     render() {
       return `
-        <div class="tut-icon">🌴</div>
+        <div class="tut-icon">🏞️</div>
         <h2>Buying Farms</h2>
-        <p>When you land on an unowned farm, you can <span class="tut-highlight">buy it</span>! Farms come in 6 color groups:</p>
-        <div style="display:flex;gap:6px;justify-content:center;flex-wrap:wrap;margin:8px 0;">
-          <span style="color:#ffe135;">● Yellow (12)</span>
-          <span style="color:#87ceeb;">● Blue (7)</span>
-          <span style="color:#e74c3c;">● Red (5)</span>
-          <span style="color:#ff69b4;">● Pink (5)</span>
-          <span style="color:#4169e1;">● DarkBlue (4)</span>
-          <span style="color:#ff8c00;">● Orange (3)</span>
-        </div>
-        <div class="tut-property-card" style="border-color:#87ceeb;">
-          <div class="tut-prop-name" style="color:#87ceeb;">Coconut Cove</div>
-          <div class="tut-prop-price">🍌 200</div>
-          <div class="tut-prop-rent">Rent: 20 → 40 → 80 → 160</div>
-        </div>
-        <p>When opponents land on your farm, they <span class="tut-highlight">pay you rent</span>. Own more farms in the same color group to increase rent!</p>
-        <div class="tut-tip"><strong>Tip:</strong> Orange farms are rare (only 3!) but have high rent. They're great investments.</div>`;
+        <p>Every farm is labeled <span class="tut-highlight">F1..F40</span>. The number is the farm's yield — how many bananas it grows each time a GROW fires on it.</p>
+        <p>You don't auto-buy a farm by landing on it — instead, every unowned farm goes to an <span class="tut-highlight">auction</span> when someone lands on it.</p>
+        <p>Owning a farm doesn't collect rent. Instead, GROW tiles deposit bananas onto your farms over time — and that pile is what you (or anyone walking past) can collect.</p>
+        <div class="tut-tip"><strong>Tip:</strong> Higher-numbered farms grow faster but cost more to win in auction. Pick your battles.</div>`;
     },
   },
   // 4: Banana Economy
@@ -7884,21 +7564,11 @@ const TUTORIAL_STEPS = [
         <div class="tut-icon">🍌</div>
         <h2>The Banana Economy</h2>
         <p>Bananas are your currency. You start with <span class="tut-highlight">2,222 bananas</span> (customizable). Here's how to earn more:</p>
-        <p>🌴 <strong>Passing corners</strong> — grow your bananas by 25-100%</p>
-        <p>🚶 <strong>Walking over tiles</strong> — collect banana piles along the way</p>
-        <p>🏠 <strong>Rent from farms</strong> — opponents pay you when they land on your farms</p>
-        <p>🎰 <strong>Poker wins</strong> — defeat opponents in card showdowns</p>
-        <p>🎲 <strong>Dice match bonus</strong> — land on a tile matching your dice total</p>
-        <h2 style="font-size:1em;margin-top:12px;">Chain Multipliers</h2>
-        <div class="tut-chain-demo">
-          <div class="tut-chain-tile owned" style="background:rgba(255,225,53,0.2);color:#ffe135;">🌴</div>
-          <span class="tut-chain-arrow">→</span>
-          <div class="tut-chain-tile owned" style="background:rgba(255,225,53,0.2);color:#ffe135;">🌴</div>
-          <span class="tut-chain-arrow">→</span>
-          <div class="tut-chain-tile owned" style="background:rgba(255,225,53,0.2);color:#ffe135;">🌴</div>
-          <div class="tut-chain-mult">×3 bonus!</div>
-        </div>
-        <p>Own <span class="tut-highlight">adjacent farms</span> to earn chain multipliers on banana collection — the longer the chain, the bigger the bonus!</p>`;
+        <p>🌴 <strong>GROW tiles</strong> — landing on or rolling a GROW deposits bananas on every farm you own (yield = farm number)</p>
+        <p>🚶 <strong>Walking over piles</strong> — own a farm with a pile? Walk over it to harvest. Squat on someone else's pile? You collect it when you LEAVE</p>
+        <p>🎰 <strong>Poker wins</strong> — defeat opponents in card showdowns when you land on the same tile</p>
+        <p>🎁 <strong>Free Bananas</strong> — small bonus on the Free Bananas tile</p>
+        <p>🏆 <strong>Win the game</strong> — be the first to afford and buy the <span class="tut-highlight">Super Banana</span> (777🍌)</p>`;
     },
   },
   // 5: Auctions
@@ -7939,43 +7609,38 @@ const TUTORIAL_STEPS = [
         <div class="tut-tip"><strong>Tip:</strong> If you have a strong hand (high cards), raise aggressively. If your hand is weak, consider folding early to minimize losses.</div>`;
     },
   },
-  // 7: Pets
+  // 7: Special Items
   {
-    title: "Pet Abilities",
-    icon: "🐾",
+    title: "Special Items",
+    icon: "🎁",
     render() {
       return `
-        <div class="tut-icon">🐾</div>
-        <h2>Pet Abilities</h2>
-        <p>Choose a pet companion before the game starts. Each pet has a <span class="tut-highlight">unique special ability</span> you can activate during gameplay!</p>
+        <div class="tut-icon">🎁</div>
+        <h2>Special Items</h2>
+        <p>Every few rolls a random <span class="tut-highlight">Item Auction</span> fires — bid bananas to win one of these consumables. You start with one of each.</p>
         <div class="tut-pets-grid">
           <div class="tut-pet-item">
-            <span class="tut-pet-icon">💪</span>
-            <div class="tut-pet-name">Strong</div>
-            <div class="tut-pet-desc">Move forward 1 space</div>
+            <span class="tut-pet-icon">🐢</span>
+            <div class="tut-pet-name">Turtle Dice</div>
+            <div class="tut-pet-desc">Roll 1 die instead of 2</div>
           </div>
           <div class="tut-pet-item">
-            <span class="tut-pet-icon">🔮</span>
-            <div class="tut-pet-name">Magic</div>
-            <div class="tut-pet-desc">Teleport an opponent randomly</div>
+            <span class="tut-pet-icon">🐇</span>
+            <div class="tut-pet-name">Rabbit Dice</div>
+            <div class="tut-pet-desc">Roll 3 dice instead of 2</div>
           </div>
           <div class="tut-pet-item">
-            <span class="tut-pet-icon">⚡</span>
-            <div class="tut-pet-name">Energy</div>
-            <div class="tut-pet-desc">Coin flip: +2 or -1 spaces</div>
-          </div>
-          <div class="tut-pet-item">
-            <span class="tut-pet-icon">😈</span>
-            <div class="tut-pet-name">Devil</div>
-            <div class="tut-pet-desc">Push back opponent, steal 200🍌</div>
+            <span class="tut-pet-icon">1️⃣</span>
+            <div class="tut-pet-name">Roll One</div>
+            <div class="tut-pet-desc">Move exactly 1 space</div>
           </div>
           <div class="tut-pet-item">
             <span class="tut-pet-icon">🌿</span>
             <div class="tut-pet-name">Vine Swing</div>
-            <div class="tut-pet-desc">Choose your landing tile</div>
+            <div class="tut-pet-desc">Teleport to any tile of your choice</div>
           </div>
         </div>
-        <div class="tut-tip"><strong>Strategy:</strong> Devil is risky (10-roll cooldown) but devastating. Vine Swing gives the most control. Strong is reliable and charges fast (6 rolls).</div>`;
+        <div class="tut-tip"><strong>Tip:</strong> You can <span class="tut-highlight">arm</span> an item to fire when YOUR next turn starts — useful when you're playing around an opponent's roll.</div>`;
     },
   },
   // 8: Pineapple Bombs
@@ -7986,14 +7651,15 @@ const TUTORIAL_STEPS = [
       return `
         <div class="tut-icon">🍍💣</div>
         <h2>Pineapple Bombs</h2>
-        <p>The most dangerous weapon in Monkey Business! Buy a bomb for <span class="tut-highlight">500 bananas</span> and plant it on any tile.</p>
-        <p>If an opponent lands on your bomb... <strong>BOOM!</strong> They're <span style="color:#e74c3c;font-weight:700;">eliminated</span> from the game!</p>
+        <p>Buy a bomb for <span class="tut-highlight">666 bananas</span> (or 1000 in 2v2 simple teams) and plant it on any tile.</p>
+        <p>An enemy landing on it triggers a <strong>BOOM!</strong> across the entire 12-tile side — everyone on that side <span style="color:#e74c3c;font-weight:700;">goes down</span>.</p>
         <div style="text-align:center;font-size:2em;margin:10px 0;animation:pulse 1.5s infinite;">🍍💥🐒</div>
         <p>Key bomb rules:</p>
-        <p>💣 Bombs <span class="tut-highlight">expire after 8 turns</span> if nobody triggers them</p>
-        <p>💣 You can't bomb your own teammates (in 2v2 mode)</p>
-        <p>💣 The bomber gets a <span class="tut-highlight">bounty reward</span> for each elimination</p>
-        <div class="tut-tip"><strong>Strategy:</strong> Place bombs on high-traffic tiles near corners, or on properties your opponent needs to complete a color group. Mind games are half the fun!</div>`;
+        <p>💣 You're <span class="tut-highlight">immune</span> to your own bomb — walking back onto it defuses it</p>
+        <p>💣 In 2v2 simple teams, your teammate can also defuse it</p>
+        <p>💣 Bombs expire after 8 turns if nobody triggers them</p>
+        <p>💣 Successful enemy kills transfer their farms + bananas to the bomber</p>
+        <div class="tut-tip"><strong>Strategy:</strong> Place bombs on sides loaded with enemy farms to maximize collateral damage.</div>`;
     },
   },
   // 9: Game Modes & Tips
@@ -8004,14 +7670,14 @@ const TUTORIAL_STEPS = [
       return `
         <div class="tut-icon">🏆</div>
         <h2>Game Modes</h2>
-        <p><strong>🐒 Free-for-All (2-4 players)</strong> — Last monkey standing wins! Bankrupt or bomb everyone else.</p>
-        <p><strong>🤝 2v2 Teams (4 players)</strong> — Work with your partner to reach the team banana target first. You can swap farms and trade bananas freely with your teammate.</p>
+        <p><strong>🐒 Classic (2-4 players)</strong> — Free-for-all. Be the first to buy the Super Banana for 777🍌 and you win.</p>
+        <p><strong>🤝 2v2 (4 players)</strong> — Work with your partner. Either teammate buying the Super Banana wins for both. Send bananas to your teammate (50🍌 fee, capped at half your stash).</p>
         <h2 style="font-size:1em;margin-top:14px;">Top Tips for Success</h2>
-        <p>🧠 <strong>Buy strategically</strong> — Focus on completing color groups for maximum rent</p>
-        <p>🎯 <strong>Choose dice count wisely</strong> — Fewer dice for precision, more dice for speed</p>
-        <p>💰 <strong>Keep a reserve</strong> — Don't spend all your bananas on farms. You need money for auctions, bombs, and rent!</p>
-        <p>🐾 <strong>Time your pet ability</strong> — Don't waste it early. Save it for a critical moment</p>
-        <p>👀 <strong>Watch opponents</strong> — Track their banana count and farm positions to predict their moves</p>
+        <p>🧠 <strong>Reveal high-number GROWs early</strong> — landing on a GROW unlocks its die-face trigger for the whole game</p>
+        <p>🎯 <strong>Pick which farms you actually want</strong> — every unowned farm goes to auction, so save bananas for the ones that matter</p>
+        <p>💰 <strong>Mind your piles</strong> — bananas sit on farms waiting to be collected. Don't leave them parked for opponents</p>
+        <p>🎁 <strong>Arm items off-turn</strong> — set a Roll One or Vine Swing to fire the moment your turn starts</p>
+        <p>👀 <strong>Watch the Super Banana</strong> — once anyone is close to 777, race them or bomb them</p>
         <div class="tut-tip"><strong>Ready?</strong> Click <span class="tut-highlight">Start Playing!</span> to head back to the menu and create or join a game!</div>`;
     },
   },

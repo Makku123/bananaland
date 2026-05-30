@@ -163,13 +163,18 @@ body {
 }
 .card-header h2 {
   margin: 0;
-  font-size: 1.5em;
-  color: #f0e6c0;
+  font-size: 1.6em;
+  letter-spacing: 0.5px;
+  background: linear-gradient(180deg, #fff89b 0%, #f0e6c0 55%, #d4c896 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
   text-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
 }
 .card-header-icon {
-  font-size: 1.8em;
+  font-size: 1.85em;
   animation: bobble 2s ease-in-out infinite;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.4));
 }
 
 /* Card actions (bottom buttons) */
@@ -195,13 +200,15 @@ body {
   border-color: rgba(255, 225, 53, 0.15);
 }
 .form-section-title {
-  font-size: 0.78em;
+  font-size: 0.92em;
   font-weight: 700;
   color: #ffe135;
   letter-spacing: 1.5px;
   text-transform: uppercase;
-  margin-bottom: 2px;
-  text-shadow: 0 0 12px rgba(255, 225, 53, 0.15);
+  margin-bottom: 4px;
+  text-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.5),
+    0 0 12px rgba(255, 225, 53, 0.2);
 }
 
 /* Create card override – wider, 2-column form grid */
@@ -600,6 +607,94 @@ body {
   background: #1a2e0f;
   color: #f0f0f0;
 }
+/* Visual mode chooser — replaces the bland <select> on the create-game form
+   with two clickable cards. The hidden <select> stays the source of truth so
+   the rest of the code can keep reading .value from it. */
+.mode-chooser {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+}
+.mode-card {
+  appearance: none;
+  flex: 1 1 220px;
+  min-width: 180px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  border: 2px solid rgba(255, 255, 255, 0.1);
+  background: linear-gradient(160deg, rgba(15, 25, 10, 0.85), rgba(25, 40, 18, 0.65));
+  color: #fff6cf;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    transform 0.16s cubic-bezier(0.34, 1.56, 0.64, 1),
+    border-color 0.18s ease-out,
+    box-shadow 0.18s ease-out,
+    background 0.18s ease-out;
+  box-shadow: inset 0 1px 2px rgba(255, 255, 255, 0.05), 0 2px 6px rgba(0, 0, 0, 0.25);
+  position: relative;
+  overflow: hidden;
+}
+.mode-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 90% 10%, rgba(255, 225, 53, 0.18), transparent 55%);
+  opacity: 0;
+  transition: opacity 0.22s ease-out;
+  pointer-events: none;
+}
+.mode-card:hover {
+  border-color: rgba(255, 225, 53, 0.45);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35), 0 0 18px rgba(255, 225, 53, 0.15);
+}
+.mode-card:hover::before {
+  opacity: 1;
+}
+.mode-card.active {
+  border-color: #ffe135;
+  background: linear-gradient(160deg, rgba(50, 70, 22, 0.95), rgba(35, 55, 18, 0.85));
+  box-shadow:
+    0 0 0 2px rgba(255, 225, 53, 0.25),
+    0 8px 22px rgba(0, 0, 0, 0.4),
+    0 0 28px rgba(255, 225, 53, 0.25),
+    inset 0 1px 2px rgba(255, 255, 255, 0.08);
+}
+.mode-card.active::before {
+  opacity: 1;
+}
+.mode-card-icon {
+  font-size: 30px;
+  line-height: 1;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.45));
+  margin-bottom: 2px;
+}
+.mode-card-title {
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  color: #ffe135;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.55);
+}
+.mode-card-sub {
+  font-size: 12px;
+  color: rgba(255, 246, 207, 0.78);
+  letter-spacing: 0.4px;
+}
+.mode-card:focus-visible {
+  outline: none;
+  border-color: #ffe135;
+  box-shadow:
+    0 0 0 3px rgba(255, 225, 53, 0.3),
+    inset 0 1px 3px rgba(0, 0, 0, 0.2);
+}
 .card input[type="range"] {
   -webkit-appearance: none;
   appearance: none;
@@ -664,6 +759,190 @@ body {
 .toggle-label:hover span {
   color: #f0e6c0;
 }
+
+/* ── New Game · Options section ─────────────────────────── */
+.options-section {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.options-group {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 225, 53, 0.22);
+  background: rgba(255, 225, 53, 0.04);
+}
+.options-group--item-auction {
+  background:
+    radial-gradient(circle at 0% 0%, rgba(255, 168, 64, 0.16), transparent 60%),
+    radial-gradient(circle at 100% 100%, rgba(255, 225, 53, 0.10), transparent 60%),
+    rgba(0, 0, 0, 0.18);
+  border-color: rgba(255, 168, 64, 0.35);
+  box-shadow: 0 0 0 1px rgba(255, 168, 64, 0.05) inset;
+}
+.options-group-hint {
+  margin: 0;
+  font-size: 0.82em;
+  color: #a39879;
+  line-height: 1.35;
+}
+
+/* Number input cards (cost / timer fields) */
+.options-numbers {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 10px;
+}
+.options-numbers--middle {
+  padding: 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 225, 53, 0.18);
+  background: rgba(0, 0, 0, 0.22);
+}
+.number-field {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 4px !important;
+  margin: 0;
+}
+.number-field-label {
+  font-size: 0.8em;
+  font-weight: 600;
+  color: #d8c98a;
+  letter-spacing: 0.02em;
+}
+.number-field input[type="number"] {
+  width: 100% !important;
+  padding: 9px 12px;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 225, 53, 0.22);
+  border-radius: 9px;
+  color: #ffe135;
+  font-weight: 700;
+  font-size: 0.98em;
+  transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
+}
+.number-field input[type="number"]:hover {
+  border-color: rgba(255, 225, 53, 0.45);
+}
+.number-field input[type="number"]:focus {
+  border-color: #ffe135;
+  background: rgba(0, 0, 0, 0.5);
+  box-shadow: 0 0 0 3px rgba(255, 225, 53, 0.18);
+  outline: none;
+}
+
+/* Toggle cards (pill switches with title + subtitle) */
+.options-toggles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 10px;
+}
+.toggle-card {
+  position: relative;
+  display: flex !important;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 225, 53, 0.18);
+  background: rgba(0, 0, 0, 0.28);
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s, transform 0.08s;
+  margin: 0;
+}
+.toggle-card:hover {
+  border-color: rgba(255, 225, 53, 0.45);
+  background: rgba(255, 225, 53, 0.06);
+}
+.toggle-card:active {
+  transform: scale(0.99);
+}
+.toggle-card input[type="checkbox"] {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+  width: 0;
+  height: 0;
+}
+.toggle-card-switch {
+  position: relative;
+  flex-shrink: 0;
+  width: 40px;
+  height: 22px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.10);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  transition: background 0.2s, border-color 0.2s;
+}
+.toggle-card-switch::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #e6e6e6;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.35);
+  transition: transform 0.2s ease, background 0.2s;
+}
+.toggle-card input[type="checkbox"]:checked ~ .toggle-card-switch {
+  background: linear-gradient(135deg, #ffd54f, #ff9800);
+  border-color: rgba(255, 225, 53, 0.55);
+  box-shadow: 0 0 10px rgba(255, 168, 64, 0.35);
+}
+.toggle-card input[type="checkbox"]:checked ~ .toggle-card-switch::after {
+  transform: translateX(18px);
+  background: #fff;
+}
+.toggle-card input[type="checkbox"]:focus-visible ~ .toggle-card-switch {
+  outline: 2px solid #ffe135;
+  outline-offset: 2px;
+}
+.toggle-card-label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+}
+.toggle-card-icon {
+  font-size: 1.35em;
+  flex-shrink: 0;
+  line-height: 1;
+}
+.toggle-card-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.toggle-card-text strong {
+  font-size: 0.95em;
+  font-weight: 700;
+  color: #d8c98a;
+  transition: color 0.15s;
+}
+.toggle-card-text small {
+  font-size: 0.78em;
+  color: #8d8467;
+  line-height: 1.25;
+}
+.toggle-card input[type="checkbox"]:checked ~ .toggle-card-label .toggle-card-text strong {
+  color: #ffe135;
+}
+.toggle-card--featured {
+  background: rgba(0, 0, 0, 0.32);
+  border-color: rgba(255, 168, 64, 0.35);
+}
+.toggle-card--featured .toggle-card-icon {
+  font-size: 1.5em;
+}
+
 .auto-toggle {
   display: inline-flex;
   align-items: center;
@@ -1887,7 +2166,9 @@ body {
 
 /* ── Panels ───────────────────────────────────────────────────── */
 .panel {
-  width: 250px;
+  /* Widened from 250 → 290 so the Owned Farms and Farm Chart rows fit larger
+     fonts without ellipsis-clipping the farm names. */
+  width: 290px;
   flex-shrink: 0;
   background: linear-gradient(180deg, #1a2c0e 0%, #162808 50%, #0f1e06 100%);
   padding: 16px 14px;
@@ -1962,11 +2243,11 @@ body {
 .owner-set-header {
   display: flex;
   align-items: center;
-  gap: 6px;
-  font-size: 0.78em;
-  color: #ddd;
+  gap: 7px;
+  font-size: 0.94em;
+  color: #efe5b8;
   font-weight: 700;
-  padding: 2px 4px;
+  padding: 3px 4px;
   border-radius: 4px;
 }
 .owner-set-name {
@@ -1975,10 +2256,10 @@ body {
 .owner-set-farm {
   display: flex;
   align-items: center;
-  gap: 6px;
-  font-size: 0.72em;
-  color: #999;
-  padding: 1px 4px 1px 22px;
+  gap: 7px;
+  font-size: 0.88em;
+  color: #c4c0a8;
+  padding: 3px 4px 3px 24px;
   border-radius: 4px;
   transition: background 0.15s;
 }
@@ -1992,9 +2273,9 @@ body {
   white-space: nowrap;
 }
 .owner-prop-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 2px;
+  width: 11px;
+  height: 11px;
+  border-radius: 3px;
   flex-shrink: 0;
 }
 .owner-prop-dot.g-yellow {
@@ -2030,14 +2311,14 @@ body {
   );
 }
 .owner-empty {
-  font-size: 0.72em;
-  color: #666;
-  margin-left: 20px;
+  font-size: 0.86em;
+  color: #888;
+  margin-left: 22px;
   font-style: italic;
 }
 .owner-prop-mult {
   font-weight: 800;
-  font-size: 0.88em;
+  font-size: 1.05em;
 }
 .owner-prop-mult.g-yellow {
   color: #f1c40f;
@@ -2067,15 +2348,15 @@ body {
   margin-left: 4px;
 }
 .owner-set-count {
-  color: rgba(255, 255, 255, 0.45);
-  font-size: 0.78em;
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 0.88em;
   font-weight: 600;
   margin-left: 2px;
 }
 .owner-prop-price {
   margin-left: auto;
   color: #ffe135;
-  font-size: 0.88em;
+  font-size: 1.04em;
   font-weight: 800;
   opacity: 1;
 }
@@ -2158,18 +2439,18 @@ body {
   border: 1px solid rgba(255, 255, 255, 0.03);
 }
 .chart-group-label {
-  font-size: 0.75em;
+  font-size: 0.92em;
   font-weight: 700;
   text-transform: uppercase;
-  margin-bottom: 4px;
+  margin-bottom: 6px;
   display: flex;
   align-items: center;
-  gap: 6px;
-  color: #ccc;
+  gap: 7px;
+  color: #e1d8a8;
 }
 .chart-group-dot {
-  width: 10px;
-  height: 10px;
+  width: 12px;
+  height: 12px;
   border-radius: 3px;
   flex-shrink: 0;
   box-shadow: 0 0 4px rgba(0, 0, 0, 0.3);
@@ -2211,26 +2492,28 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  font-size: 0.72em;
-  padding: 4px 6px 4px 14px;
-  color: #aaa;
+  font-size: 0.88em;
+  padding: 5px 6px 5px 16px;
+  color: #c4c0a8;
   border-radius: 4px;
   transition: background 0.15s;
+  gap: 8px;
 }
 .chart-item:hover {
   background: rgba(255, 255, 255, 0.04);
 }
 .chart-item.chart-owned {
-  color: #666;
+  color: #777;
   text-decoration: line-through;
 }
 .chart-item-name {
   flex: 1;
+  font-weight: 600;
 }
 .chart-item-price {
-  color: #8cb88c;
-  font-size: 0.95em;
-  font-weight: 600;
+  color: #a8d49a;
+  font-size: 1em;
+  font-weight: 700;
 }
 .chart-item.chart-owned .chart-item-price {
   color: #555;
@@ -2478,7 +2761,9 @@ body {
     radial-gradient(ellipse at center, #1a4510 0%, #0f2a08 55%, #080e04 100%);
   min-width: 0;
   min-height: 0;
-  padding: 8px;
+  /* Lateral padding leaves room for the banana-pile chips that hang off the
+     left/right edge tiles, so the sidebars don't clip them at narrow widths. */
+  padding: 8px 44px;
   overflow: hidden;
   position: relative;
 }
@@ -2539,13 +2824,13 @@ body {
   display: none;
 }
 .board-chat-header {
-  padding: 6px 12px;
-  font-size: 11px;
-  font-weight: 700;
+  padding: 10px 14px;
+  font-size: 13px;
+  font-weight: 800;
   color: #ffe135;
-  background: rgba(0, 0, 0, 0.25);
-  border-bottom: 1px solid rgba(74, 107, 42, 0.35);
-  letter-spacing: 0.5px;
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.35), rgba(0, 0, 0, 0.15));
+  border-bottom: 1px solid rgba(255, 225, 53, 0.18);
+  letter-spacing: 0.8px;
   text-transform: uppercase;
   flex-shrink: 0;
   display: flex;
@@ -2553,6 +2838,7 @@ body {
   justify-content: space-between;
   cursor: grab;
   user-select: none;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
 }
 .board-chat-header:active {
   cursor: grabbing;
@@ -2581,20 +2867,23 @@ body {
   top: auto;
   transform: none;
   z-index: 56;
-  background: rgba(20, 36, 12, 0.92);
-  border: 1px solid rgba(74, 107, 42, 0.5);
+  background: linear-gradient(160deg, rgba(30, 50, 18, 0.95), rgba(20, 34, 12, 0.95));
+  border: 1.5px solid rgba(255, 225, 53, 0.35);
   border-radius: 50%;
-  width: 40px;
-  height: 40px;
-  font-size: 18px;
+  width: 44px;
+  height: 44px;
+  font-size: 20px;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.4);
+  box-shadow:
+    0 3px 14px rgba(0, 0, 0, 0.5),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
   transition:
     transform 0.15s,
-    box-shadow 0.15s;
+    box-shadow 0.15s,
+    border-color 0.15s;
 }
 .board-chat-toggle:hover {
   transform: scale(1.12);
@@ -2630,12 +2919,12 @@ body {
   right: auto;
   top: auto;
   z-index: 56;
-  background: rgba(20, 36, 12, 0.92);
-  border: 1px solid rgba(74, 107, 42, 0.5);
+  background: linear-gradient(160deg, rgba(30, 50, 18, 0.95), rgba(20, 34, 12, 0.95));
+  border: 1.5px solid rgba(255, 225, 53, 0.35);
   border-radius: 50%;
-  width: 40px;
-  height: 40px;
-  font-size: 18px;
+  width: 44px;
+  height: 44px;
+  font-size: 20px;
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -2817,9 +3106,9 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 8px 12px;
-  background: rgba(0, 0, 0, 0.15);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  padding: 10px 14px;
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.35), rgba(0, 0, 0, 0.15));
+  border-bottom: 1px solid rgba(255, 225, 53, 0.18);
   cursor: grab;
   user-select: none;
 }
@@ -2827,10 +3116,12 @@ body {
   cursor: grabbing;
 }
 .board-trade-deals-header-title {
-  font-size: 0.85em;
-  font-weight: 700;
+  font-size: 13px;
+  font-weight: 800;
   color: #ffe135;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
 }
 .board-trade-deals-close {
   background: none;
@@ -2966,13 +3257,13 @@ body {
   display: none;
 }
 .board-log-header {
-  padding: 6px 12px;
-  font-size: 11px;
-  font-weight: 700;
+  padding: 10px 14px;
+  font-size: 13px;
+  font-weight: 800;
   color: #ffe135;
-  background: rgba(0, 0, 0, 0.25);
-  border-bottom: 1px solid rgba(74, 107, 42, 0.35);
-  letter-spacing: 0.5px;
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.35), rgba(0, 0, 0, 0.15));
+  border-bottom: 1px solid rgba(255, 225, 53, 0.18);
+  letter-spacing: 0.8px;
   text-transform: uppercase;
   flex-shrink: 0;
   display: flex;
@@ -2980,6 +3271,7 @@ body {
   justify-content: space-between;
   cursor: grab;
   user-select: none;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
 }
 .board-log-header:active {
   cursor: grabbing;
@@ -3616,24 +3908,123 @@ body {
   transform: translate(-50%, -50%);
   z-index: 10002;
   font-family: "Baloo 2", "Fredoka", sans-serif;
-  font-size: 30px;
-  font-weight: 700;
-  color: #ffe135;
-  background: linear-gradient(135deg, #1e4a12 0%, #2d6a1e 50%, #1e5a14 100%);
-  border: 3px solid rgba(255, 225, 53, 0.7);
-  border-radius: 18px;
-  padding: 16px 36px;
+  color: #fff6cf;
+  background:
+    radial-gradient(ellipse at 50% 0%, rgba(255, 240, 130, 0.35) 0%, transparent 60%),
+    linear-gradient(135deg, #1e4a12 0%, #2d6a1e 50%, #1e5a14 100%);
+  border: 3px solid rgba(255, 225, 53, 0.85);
+  border-radius: 20px;
+  padding: 18px 56px;
   text-align: center;
   box-shadow:
-    0 0 40px rgba(255, 225, 53, 0.35),
-    0 0 80px rgba(255, 225, 53, 0.1),
-    inset 0 1px 0 rgba(255, 255, 255, 0.1);
+    0 0 48px rgba(255, 225, 53, 0.5),
+    0 0 96px rgba(255, 225, 53, 0.18),
+    inset 0 2px 0 rgba(255, 255, 255, 0.18),
+    inset 0 -2px 0 rgba(0, 0, 0, 0.25);
   pointer-events: none;
   backdrop-filter: blur(8px);
+  overflow: visible;
+}
+.turn-notif-text {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  vertical-align: middle;
+  line-height: 1;
+  padding: 0 8px;
+}
+.turn-notif-title {
+  font-size: 38px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  color: #ffe135;
+  text-shadow: 0 2px 0 rgba(0, 0, 0, 0.45);
+  background: linear-gradient(180deg, #fff89b 0%, #ffe135 55%, #d9a800 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: turnNotifTitleShimmer 1.6s ease-in-out infinite;
+}
+.turn-notif-sub {
+  font-size: 14px;
+  font-weight: 600;
+  color: rgba(255, 246, 207, 0.92);
+  letter-spacing: 1.4px;
+  text-transform: uppercase;
+  margin-top: 4px;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+}
+.turn-notif-banana {
+  display: inline-block;
+  font-size: 32px;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.4)) drop-shadow(0 0 8px rgba(255, 225, 53, 0.6));
+  vertical-align: middle;
+}
+.turn-notif-banana-l {
+  animation: turnNotifBananaSwingL 1.1s ease-in-out infinite;
+  transform-origin: 50% 80%;
+}
+.turn-notif-banana-r {
+  animation: turnNotifBananaSwingR 1.1s ease-in-out infinite;
+  transform-origin: 50% 80%;
+}
+.turn-notif-sparkle {
+  position: absolute;
+  font-size: 14px;
+  pointer-events: none;
+  opacity: 0;
+  animation: turnNotifSparkle 1.4s ease-in-out infinite;
+  filter: drop-shadow(0 0 6px rgba(255, 240, 130, 0.85));
+}
+.turn-notif-sparkle-1 { top: -8px; left: 18%; animation-delay: 0.0s; }
+.turn-notif-sparkle-2 { top: -4px; right: 22%; animation-delay: 0.35s; }
+.turn-notif-sparkle-3 { bottom: -6px; left: 30%; animation-delay: 0.7s; }
+.turn-notif-sparkle-4 { bottom: -10px; right: 26%; animation-delay: 1.05s; }
+@keyframes turnNotifBananaSwingL {
+  0%, 100% { transform: rotate(-18deg) translateY(0); }
+  50%      { transform: rotate(8deg)  translateY(-3px); }
+}
+@keyframes turnNotifBananaSwingR {
+  0%, 100% { transform: rotate(18deg)  translateY(0); }
+  50%      { transform: rotate(-8deg) translateY(-3px); }
+}
+@keyframes turnNotifTitleShimmer {
+  0%, 100% { filter: brightness(1)   drop-shadow(0 0 6px  rgba(255, 225, 53, 0.4)); }
+  50%      { filter: brightness(1.15) drop-shadow(0 0 14px rgba(255, 225, 53, 0.85)); }
+}
+@keyframes turnNotifSparkle {
+  0%   { opacity: 0; transform: scale(0.4) rotate(0deg); }
+  35%  { opacity: 1; transform: scale(1.15) rotate(120deg); }
+  70%  { opacity: 0.9; transform: scale(0.9) rotate(220deg); }
+  100% { opacity: 0; transform: scale(0.3) rotate(360deg); }
 }
 .turn-notification.show {
   display: block;
-  animation: notifSlideIn 0.45s cubic-bezier(0.22, 1, 0.36, 1);
+  animation:
+    turnNotifPop 0.55s cubic-bezier(0.34, 1.56, 0.64, 1),
+    turnNotifGlowPulse 1.2s ease-in-out 0.55s infinite;
+}
+@keyframes turnNotifPop {
+  0%   { opacity: 0; transform: translate(-50%, -50%) scale(0.4) rotate(-8deg); }
+  55%  { opacity: 1; transform: translate(-50%, -50%) scale(1.12) rotate(3deg); }
+  75%  { transform: translate(-50%, -50%) scale(0.96) rotate(-1deg); }
+  100% { opacity: 1; transform: translate(-50%, -50%) scale(1) rotate(0); }
+}
+@keyframes turnNotifGlowPulse {
+  0%, 100% {
+    box-shadow:
+      0 0 48px rgba(255, 225, 53, 0.5),
+      0 0 96px rgba(255, 225, 53, 0.18),
+      inset 0 2px 0 rgba(255, 255, 255, 0.18),
+      inset 0 -2px 0 rgba(0, 0, 0, 0.25);
+  }
+  50% {
+    box-shadow:
+      0 0 64px rgba(255, 225, 53, 0.72),
+      0 0 130px rgba(255, 225, 53, 0.3),
+      inset 0 2px 0 rgba(255, 255, 255, 0.25),
+      inset 0 -2px 0 rgba(0, 0, 0, 0.3);
+  }
 }
 .auction-won-notification {
   display: none;
@@ -4233,12 +4624,14 @@ body {
   border-color: rgba(255, 220, 50, 0.4);
   font-size: 1.1em;
 }
-/* Free Bananas tile triggers: a bright golden flash pulse when a player
-   crosses or lands on it. Fires once; the .freebananas-triggered class is
-   added in board.js exactly when the +25 / +500 floater is shown, so the
-   source of the bananas reads clearly on the board. */
+/* Free Bananas tile triggers: a bright golden flash plus a pronounced
+   multi-oscillation bounce when a player crosses or lands on it. Fires once;
+   the .freebananas-triggered class is added in board.js exactly when the
+   +25 / +500 floater is shown, so the source of the bananas reads clearly
+   on the board. ~1s total — bounce curve mirrors the farm-pile bobble so it
+   feels coherent with other growth feedback. */
 .space.type-freebananas.freebananas-triggered {
-  animation: freebananasTriggeredPulse 1.1s cubic-bezier(0.34, 1.56, 0.64, 1) 1;
+  animation: freebananasTriggeredPulse 1s ease-out 1;
   z-index: 8;
 }
 @keyframes freebananasTriggeredPulse {
@@ -4249,20 +4642,41 @@ body {
       0 0 0 0 rgba(255, 220, 60, 0.7),
       inset 0 0 0 0 rgba(255, 240, 120, 0);
   }
-  25% {
-    transform: scale(1.18);
-    filter: brightness(1.5) saturate(1.4);
+  18% {
+    transform: scale(1.32);
+    filter: brightness(1.6) saturate(1.5);
     box-shadow:
-      0 0 28px 10px rgba(255, 220, 60, 0.85),
-      0 0 60px 18px rgba(255, 200, 30, 0.45),
-      inset 0 0 18px 6px rgba(255, 245, 150, 0.55);
+      0 0 32px 12px rgba(255, 220, 60, 0.9),
+      0 0 64px 20px rgba(255, 200, 30, 0.5),
+      inset 0 0 22px 8px rgba(255, 245, 150, 0.6);
   }
-  60% {
-    transform: scale(1.05);
-    filter: brightness(1.25) saturate(1.2);
+  36% {
+    transform: scale(0.92);
+    filter: brightness(1.3) saturate(1.3);
     box-shadow:
-      0 0 22px 7px rgba(255, 220, 60, 0.55),
-      inset 0 0 12px 3px rgba(255, 240, 130, 0.3);
+      0 0 24px 8px rgba(255, 220, 60, 0.65),
+      inset 0 0 14px 4px rgba(255, 240, 130, 0.4);
+  }
+  54% {
+    transform: scale(1.14);
+    filter: brightness(1.35) saturate(1.3);
+    box-shadow:
+      0 0 26px 9px rgba(255, 220, 60, 0.7),
+      inset 0 0 16px 5px rgba(255, 240, 130, 0.45);
+  }
+  70% {
+    transform: scale(0.97);
+    filter: brightness(1.18) saturate(1.15);
+    box-shadow:
+      0 0 18px 6px rgba(255, 220, 60, 0.45),
+      inset 0 0 10px 3px rgba(255, 240, 130, 0.25);
+  }
+  84% {
+    transform: scale(1.05);
+    filter: brightness(1.1) saturate(1.08);
+    box-shadow:
+      0 0 14px 4px rgba(255, 220, 60, 0.3),
+      inset 0 0 8px 2px rgba(255, 240, 130, 0.18);
   }
   100% {
     transform: scale(1);
@@ -4728,6 +5142,40 @@ body.mode-simple .pile-red {
   }
 }
 
+/* Floating green positive text near banana total on money gain — mirror of
+   .money-deduction-float so gain and loss read as a matched pair. */
+.money-gain-float {
+  color: #33ff66;
+  font-size: 1.1em;
+  font-weight: 900;
+  white-space: nowrap;
+  pointer-events: none;
+  text-shadow:
+    0 0 8px rgba(68, 255, 102, 0.9),
+    0 0 16px rgba(0, 200, 50, 0.6),
+    0 1px 3px rgba(0, 0, 0, 0.8);
+  animation: money-gain-float 2.4s ease-out forwards;
+}
+
+@keyframes money-gain-float {
+  0% {
+    opacity: 1;
+    transform: translate(-50%, 0) scale(0.5);
+  }
+  15% {
+    opacity: 1;
+    transform: translate(-50%, 0) scale(1.3);
+  }
+  40% {
+    opacity: 1;
+    transform: translate(-50%, -30px) scale(1.1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -60px) scale(0.7);
+  }
+}
+
 /* Early Pickup floater (vibrant green text when picking up from current tile) */
 .early-pickup-floater {
   color: #22dd44;
@@ -4766,103 +5214,6 @@ body.mode-simple .pile-red {
   100% {
     opacity: 0;
     transform: translate(-50%, -240%) scale(1.0);
-  }
-}
-
-/* Free Bananas +500 popup */
-.free-bananas-popup {
-  position: absolute;
-  color: #ffe135;
-  font-size: 18px;
-  font-weight: 900;
-  z-index: 55;
-  pointer-events: none;
-  white-space: nowrap;
-  text-shadow:
-    0 0 8px rgba(255, 225, 53, 1),
-    0 0 16px rgba(255, 200, 0, 0.8),
-    0 1px 3px rgba(0, 0, 0, 0.8);
-  animation: free-bananas-float 2.4s ease-out forwards;
-}
-
-/* Free Bananas +500 popup at player money display */
-.free-bananas-popup-player {
-  color: #ffe135;
-  font-size: 18px;
-  font-weight: 900;
-  pointer-events: none;
-  white-space: nowrap;
-  text-shadow:
-    0 0 8px rgba(255, 225, 53, 1),
-    0 0 16px rgba(255, 200, 0, 0.8),
-    0 1px 3px rgba(0, 0, 0, 0.8);
-  animation: free-bananas-float-player 2.4s ease-out forwards;
-}
-
-@keyframes free-bananas-float {
-  0% {
-    opacity: 1;
-    transform: translate(-50%, -50%) scale(0.5);
-  }
-  15% {
-    opacity: 1;
-    transform: translate(-50%, -50%) scale(1.4);
-  }
-  40% {
-    opacity: 1;
-    transform: translate(-50%, -120%) scale(1.2);
-  }
-  100% {
-    opacity: 0;
-    transform: translate(-50%, -280%) scale(0.7);
-  }
-}
-
-@keyframes free-bananas-float-player {
-  0% {
-    opacity: 1;
-    transform: translate(-50%, -50%) scale(0.5);
-  }
-  15% {
-    opacity: 1;
-    transform: translate(-50%, -50%) scale(1.4);
-  }
-  40% {
-    opacity: 1;
-    transform: translate(-50%, -80px) scale(1.2);
-  }
-  100% {
-    opacity: 0;
-    transform: translate(-50%, -200px) scale(0.7);
-  }
-}
-
-/* Pile collection popup at Your Bananas box */
-.pile-collect-popup-player {
-  color: #ffe135;
-  font-size: 15px;
-  font-weight: 900;
-  pointer-events: none;
-  white-space: nowrap;
-  text-shadow:
-    0 0 6px rgba(255, 225, 53, 0.9),
-    0 0 12px rgba(255, 200, 0, 0.6),
-    0 1px 3px rgba(0, 0, 0, 0.7);
-  animation: pile-collect-player 1.2s ease-out forwards;
-}
-
-@keyframes pile-collect-player {
-  0% {
-    opacity: 1;
-    transform: translate(-50%, 0) scale(0.8);
-  }
-  20% {
-    opacity: 1;
-    transform: translate(-50%, -10px) scale(1.2);
-  }
-  100% {
-    opacity: 0;
-    transform: translate(-50%, -60px) scale(0.8);
   }
 }
 
@@ -5323,77 +5674,203 @@ body.mode-simple .owned-red {
 /* ── "Your Special Items" box (simple mode) ─────────────────────── */
 .special-items {
   margin-top: 8px;
-  padding: 8px 8px 10px;
-  border-radius: 12px;
-  background: linear-gradient(160deg, #241a3e 0%, #1a1530 100%);
-  border: 2px solid #6a4fae;
+  padding: 12px 10px 12px;
+  border-radius: 14px;
+  background:
+    radial-gradient(ellipse at 50% 0%, rgba(255, 225, 53, 0.12) 0%, transparent 60%),
+    linear-gradient(160deg, #2c1f4f 0%, #1c1635 100%);
+  border: 2px solid #7858c8;
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.08),
-    0 3px 10px rgba(0, 0, 0, 0.4);
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    inset 0 -2px 0 rgba(0, 0, 0, 0.25),
+    0 4px 14px rgba(0, 0, 0, 0.45),
+    0 0 20px rgba(120, 88, 200, 0.18);
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
+  position: relative;
+  overflow: hidden;
+}
+/* Subtle decorative sparkle in the top-right corner so the box reads as a
+   real item pouch rather than just a list. Animated to twinkle slowly. */
+.special-items::after {
+  content: "✨";
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  font-size: 14px;
+  opacity: 0.55;
+  animation: specialItemsSparkle 2.4s ease-in-out infinite;
+  pointer-events: none;
+  filter: drop-shadow(0 0 4px rgba(255, 225, 53, 0.5));
+}
+@keyframes specialItemsSparkle {
+  0%, 100% { opacity: 0.4; transform: scale(0.9) rotate(0deg); }
+  50%      { opacity: 0.85; transform: scale(1.08) rotate(18deg); }
 }
 .special-items-title {
   text-align: center;
   font-weight: 800;
-  font-size: 0.82em;
-  letter-spacing: 0.5px;
+  font-size: 0.98em;
+  letter-spacing: 1.2px;
   text-transform: uppercase;
   color: #ffe135;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+  text-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.65),
+    0 0 10px rgba(255, 225, 53, 0.35);
 }
 .special-items-sub {
   text-align: center;
-  font-size: 0.62em;
+  font-size: 0.7em;
   font-weight: 600;
-  letter-spacing: 0.3px;
+  letter-spacing: 0.6px;
   text-transform: uppercase;
-  color: #9b86cc;
-  margin-top: -2px;
+  color: #b8a4e2;
+  margin-top: -3px;
 }
 .special-item-row {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 8px;
-  border-radius: 9px;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(154, 122, 232, 0.35);
+  gap: 6px;
+  padding: 7px 8px;
+  border-radius: 10px;
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.025));
+  border: 1px solid rgba(154, 122, 232, 0.4);
+  position: relative;
+  transition:
+    transform 0.14s ease-out,
+    border-color 0.14s ease-out,
+    background 0.14s ease-out,
+    box-shadow 0.14s ease-out;
+  min-width: 0;
+}
+.special-item-row:hover {
+  border-color: rgba(255, 225, 53, 0.55);
+  background: linear-gradient(145deg, rgba(255, 225, 53, 0.12), rgba(255, 225, 53, 0.04));
+  transform: translateX(-2px);
+}
+/* Hover tooltip for each special item — describes what the item does. Pops
+   out to the LEFT (since the box lives in the right sidebar) with a chunky
+   banana-yellow border so it reads as game UI rather than a browser title. */
+.special-item-row[data-tip-title]::after {
+  content: attr(data-tip-title) "\A" attr(data-tip-body);
+  white-space: pre-line;
+  position: absolute;
+  right: calc(100% + 12px);
+  top: 50%;
+  transform: translateY(-50%) scale(0.94);
+  transform-origin: right center;
+  width: 240px;
+  background: linear-gradient(160deg, #2a1a45 0%, #1e1230 100%);
+  color: #fff6cf;
+  font-family: "Baloo 2", "Fredoka", sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.45;
+  text-align: left;
+  padding: 10px 14px;
+  border-radius: 12px;
+  border: 1.5px solid rgba(255, 225, 53, 0.55);
+  box-shadow:
+    0 8px 22px rgba(0, 0, 0, 0.55),
+    0 0 18px rgba(255, 225, 53, 0.2);
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  transition:
+    opacity 0.14s ease-out,
+    transform 0.14s ease-out;
+  z-index: 200;
+}
+/* The title (first line) reads in banana yellow + a touch bigger. Achieved by
+   making the data-tip-title content render at the top with a separate weight,
+   via a ::first-line pseudo on the tooltip itself. */
+.special-item-row[data-tip-title]::after {
+  background: linear-gradient(160deg, #2a1a45 0%, #1e1230 100%);
+}
+.special-item-row[data-tip-title]::after {
+  /* Pseudo decoration handled by the ::first-line below. */
+}
+.special-item-row[data-tip-title]:hover::after,
+.special-item-row[data-tip-title]:focus-within::after {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(-50%) scale(1);
+}
+/* Little arrow pointing into the item row from the tooltip. */
+.special-item-row[data-tip-title]::before {
+  content: "";
+  position: absolute;
+  right: calc(100% + 6px);
+  top: 50%;
+  transform: translateY(-50%);
+  width: 0;
+  height: 0;
+  border: 7px solid transparent;
+  border-left-color: rgba(255, 225, 53, 0.55);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.14s ease-out;
+  z-index: 201;
+}
+.special-item-row[data-tip-title]:hover::before,
+.special-item-row[data-tip-title]:focus-within::before {
+  opacity: 1;
 }
 .special-item-icon {
-  font-size: 1.1em;
+  font-size: 1.2em;
   line-height: 1;
   white-space: nowrap;
-  filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.5));
+  flex-shrink: 0;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.55));
 }
 .special-item-label {
   flex: 1;
+  min-width: 0;
   font-weight: 700;
-  font-size: 0.84em;
+  font-size: 0.9em;
+  letter-spacing: 0.2px;
   color: #efe8ff;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.4);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .special-item-count {
   font-weight: 800;
-  font-size: 0.84em;
+  font-size: 0.92em;
   color: #ffe135;
-  min-width: 26px;
+  min-width: 24px;
   text-align: right;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+  flex-shrink: 0;
 }
 .special-item-btn {
-  min-width: 76px;
+  /* Tightened so the row fits the right-sidebar width (≈170px content) with
+     Vine Swing's longer label. Was 76 / 4×12 / 0.84em — the Armed ✓ text
+     was running past the row's right edge. */
+  min-width: 62px;
   min-height: 32px;
-  padding: 4px 10px;
-  font-size: 0.8em;
+  padding: 3px 8px;
+  font-size: 0.78em;
   font-weight: 700;
+  letter-spacing: 0.3px;
   background: linear-gradient(145deg, #3a6a2e, #4a8a3e) !important;
   color: #fff !important;
   border: 2px solid #7aca5a !important;
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+  border-radius: 8px;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition:
+    transform 0.12s ease-out,
+    box-shadow 0.14s ease-out,
+    background 0.14s ease-out;
 }
 .special-item-btn:hover:not(:disabled) {
   background: linear-gradient(145deg, #468436, #5aa44a) !important;
-  box-shadow: 0 0 10px rgba(122, 202, 90, 0.45);
+  box-shadow: 0 0 12px rgba(122, 202, 90, 0.55);
+  transform: translateY(-1px);
 }
 .special-item-btn:disabled {
   opacity: 0.4;
@@ -5402,7 +5879,14 @@ body.mode-simple .owned-red {
 .special-item-btn.special-item-armed {
   background: linear-gradient(145deg, #b88a1e, #e0b020) !important;
   border-color: #ffe135 !important;
-  box-shadow: 0 0 10px rgba(255, 225, 53, 0.55);
+  box-shadow:
+    0 0 14px rgba(255, 225, 53, 0.65),
+    0 0 28px rgba(255, 225, 53, 0.25);
+  animation: specialItemArmedPulse 1.6s ease-in-out infinite;
+}
+@keyframes specialItemArmedPulse {
+  0%, 100% { box-shadow: 0 0 14px rgba(255, 225, 53, 0.55), 0 0 24px rgba(255, 225, 53, 0.2); }
+  50%      { box-shadow: 0 0 22px rgba(255, 225, 53, 0.85), 0 0 36px rgba(255, 225, 53, 0.35); }
 }
 .bomb-placement-banner {
   position: fixed;
@@ -5576,7 +6060,6 @@ body.mode-simple .owned-red {
    specificity) would otherwise hide the highlight underneath it. Specificity
    here (body.mode-simple .space.ability-target) beats body.mode-simple .owned-*. */
 body.mode-simple .space.ability-target {
-  position: relative;
   z-index: 13;
   outline: 3px solid #ffe135 !important;
   outline-offset: -3px !important;
@@ -5865,6 +6348,61 @@ body.mode-simple .space.ability-target:hover {
   }
 }
 
+/* Defuse poof — wisp of smoke that rises and fades when a bomb is defused. */
+.bomb-defuse-puff {
+  position: absolute;
+  z-index: 62;
+  pointer-events: none;
+  font-size: 22px;
+  transform: translate(-50%, -50%);
+  animation: bombDefusePuff 0.9s ease-out forwards;
+}
+@keyframes bombDefusePuff {
+  0% {
+    opacity: 0.95;
+    transform: translate(-50%, -50%) scale(0.6);
+  }
+  40% {
+    opacity: 0.9;
+    transform: translate(-50%, -80%) scale(1.2);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -130%) scale(1.6);
+  }
+}
+.bomb-defuse-floater {
+  position: absolute;
+  z-index: 63;
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+  font-weight: 800;
+  font-size: 14px;
+  color: #ffe488;
+  text-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.7),
+    0 0 8px rgba(120, 200, 80, 0.6);
+  animation: bombDefuseFloater 1.4s ease-out forwards;
+}
+@keyframes bombDefuseFloater {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -40%) scale(0.7);
+  }
+  20% {
+    opacity: 1;
+    transform: translate(-50%, -60%) scale(1.05);
+  }
+  80% {
+    opacity: 1;
+    transform: translate(-50%, -90%) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -120%) scale(0.95);
+  }
+}
+
 /* Board shake */
 .board-shake {
   animation: boardShake 0.6s ease-out;
@@ -5900,14 +6438,15 @@ body.mode-simple .space.ability-target:hover {
   }
 }
 
-/* ── Bomb chain pulse: fiery sweep through blast tiles ───────
-   Same shape as .grow-pulse-on (player-color glow via --pulse-color)
-   but with a fiery inner-burn so it reads as fire, not growth. */
+/* ── Bomb chain pulse: placer-coloured sweep through blast tiles ─
+   Tinted to the bomber's player colour via --pulse-color so a kill chain
+   reads as "X's bomb". Raised above player tokens (z-index 10/12) so the
+   glow isn't hidden under the monkey standing on the tile. */
 .space.bomb-chain-on {
-  z-index: 6;
+  z-index: 20;
   box-shadow:
     0 0 18px 6px var(--pulse-color, #ff7020),
-    inset 0 0 18px 5px rgba(255, 90, 0, 0.85);
+    inset 0 0 18px 5px var(--pulse-color, #ff7020);
   filter: brightness(1.32) saturate(1.45);
   transition:
     box-shadow 0.13s ease-out,
@@ -5920,17 +6459,20 @@ body.mode-simple .space.ability-target:hover {
   pointer-events: none;
   border-radius: inherit;
   background:
-    radial-gradient(ellipse at 50% 70%, rgba(255, 220, 80, 0.55) 0%, rgba(255, 120, 0, 0.45) 35%, transparent 70%),
-    radial-gradient(ellipse at 30% 40%, rgba(255, 60, 0, 0.35) 0%, transparent 60%);
+    radial-gradient(ellipse at 50% 70%, var(--pulse-color, #ff7020) 0%, transparent 70%),
+    radial-gradient(ellipse at 30% 40%, var(--pulse-color, #ff3300) 0%, transparent 60%);
+  opacity: 0.85;
   mix-blend-mode: screen;
   animation: bombChainFireFlicker 0.5s ease-out 1;
 }
 @keyframes bombChainFireFlicker {
   0% { opacity: 0; transform: scaleY(0.6); }
-  35% { opacity: 1; transform: scaleY(1.05); }
+  35% { opacity: 0.85; transform: scaleY(1.05); }
   100% { opacity: 0; transform: scaleY(0.85); }
 }
-/* Flame burst overlay placed on each tile as the chain reaches it. */
+/* Flame burst overlay placed on each tile as the chain reaches it.
+   Drop-shadow uses the placer's colour so the emoji glows in their team
+   tint. z-index sits above tokens so the flame never hides under a monkey. */
 .bomb-chain-flame {
   position: absolute;
   z-index: 61;
@@ -5939,7 +6481,9 @@ body.mode-simple .space.ability-target:hover {
   align-items: flex-end;
   justify-content: center;
   font-size: 26px;
-  filter: drop-shadow(0 0 8px rgba(255, 120, 0, 0.95));
+  filter:
+    drop-shadow(0 0 6px var(--pulse-color, rgba(255, 120, 0, 0.95)))
+    drop-shadow(0 0 12px var(--pulse-color, rgba(255, 120, 0, 0.5)));
   animation: bombChainFlame 0.55s ease-out forwards;
 }
 @keyframes bombChainFlame {
@@ -7832,6 +8376,41 @@ body.mode-simple .board-chat-mention.c-red {
   font-weight: 700;
   letter-spacing: 0.5px;
   margin-left: 6px;
+}
+.lobby-team-tag--a {
+  background: rgba(255, 100, 100, 0.22);
+  color: #ff9b9b;
+  border: 1px solid rgba(255, 100, 100, 0.4);
+}
+.lobby-team-tag--b {
+  background: rgba(100, 150, 255, 0.22);
+  color: #9bb6ff;
+  border: 1px solid rgba(100, 150, 255, 0.4);
+}
+.lobby-btn-switch-team {
+  appearance: none;
+  border: 1.5px solid rgba(255, 225, 53, 0.45);
+  background: linear-gradient(160deg, rgba(255, 225, 53, 0.15), rgba(255, 225, 53, 0.06));
+  color: #fff6cf;
+  font-family: "Baloo 2", "Fredoka", sans-serif;
+  font-weight: 700;
+  font-size: 12px;
+  letter-spacing: 0.4px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: transform 0.12s ease-out, background 0.12s ease-out, box-shadow 0.12s ease-out;
+  margin-left: auto;
+  white-space: nowrap;
+}
+.lobby-btn-switch-team:hover {
+  background: linear-gradient(160deg, rgba(255, 225, 53, 0.28), rgba(255, 225, 53, 0.12));
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(255, 225, 53, 0.25);
+}
+.lobby-btn-switch-team:active {
+  transform: translateY(0);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
 }
 .team-badge {
   display: inline-block;
@@ -9872,9 +10451,9 @@ body.mode-simple .board-chat-mention.c-red {
   to { opacity: 0; transform: scale(0.8); }
 }
 .prop-card-flip {
-  width: 160px;
-  height: 210px;
-  perspective: 600px;
+  width: 220px;
+  height: 280px;
+  perspective: 800px;
   position: relative;
   transform-style: preserve-3d;
   transition: transform 0.7s cubic-bezier(0.4, 0.0, 0.2, 1);
@@ -9919,11 +10498,14 @@ body.mode-simple .board-chat-mention.c-red {
   50% { transform: scale(1.1); }
 }
 .prop-card-back {
-  background: linear-gradient(145deg, #5a3d1e, #7a5a2e);
+  /* Neutral banana-yellow fallback for cards flipped without a known group
+     (e.g. MISSED cards from blind-bid auctions where the farm was hidden). */
+  background: linear-gradient(145deg, #e8d070, #b08820);
   transform: rotateY(180deg);
-  padding: 16px 12px;
-  gap: 6px;
+  padding: 0;
+  gap: 0;
   overflow: hidden;
+  justify-content: flex-start;
 }
 .prop-card-back.g-brown { background: linear-gradient(145deg, #a8834e, #7a5828); }
 .prop-card-back.g-lightblue { background: linear-gradient(145deg, #6cb8d8, #3c88a8); }
@@ -9936,48 +10518,128 @@ body.mode-simple .board-chat-mention.c-red {
 .prop-card-back.g-desert { background: linear-gradient(145deg, #c8b080, #a89060); }
 .prop-card-back.g-mushroom { background: linear-gradient(145deg, #9040d0, #6828a0); }
 .prop-card-back.g-simple { background: linear-gradient(145deg, #ffe14a, #d9a800); }
-.prop-card-stamp {
+/* Redesigned BOUGHT/MISSED card.
+   Layout (top → bottom):
+     .prop-card-header   — small "FARM" label band (darkened group colour)
+     .prop-card-name     — big farm name, the focal point
+     .prop-card-yield    — pill showing yield per grow
+     .prop-card-stamp    — diagonal sticker absolutely overlaid on top
+     .prop-card-time     — optional "(Xs)" footer for accept speed
+*/
+.prop-card-header {
+  width: 100%;
+  padding: 6px 8px;
   font-family: "Fredoka", sans-serif;
-  font-size: 32px;
+  font-size: 12px;
   font-weight: 700;
-  color: #ffe135;
-  transform: rotate(-12deg);
-  border: 3px solid #ffe135;
-  border-radius: 8px;
-  padding: 2px 14px;
-  text-shadow: 0 2px 4px rgba(0,0,0,0.4);
-  animation: propCardStamp 0.7s cubic-bezier(0.34, 1.56, 0.64, 1) 0.6s both;
-}
-.prop-card-stamp-miss {
-  color: #ff6b6b;
-  border-color: #ff6b6b;
-}
-@keyframes propCardStamp {
-  0% { transform: rotate(-12deg) scale(3.5); opacity: 0; }
-  50% { transform: rotate(-12deg) scale(0.85); opacity: 1; }
-  70% { transform: rotate(-12deg) scale(1.15); opacity: 1; }
-  100% { transform: rotate(-12deg) scale(1); opacity: 1; }
+  letter-spacing: 4px;
+  text-align: center;
+  color: rgba(255, 255, 255, 0.92);
+  background: rgba(0, 0, 0, 0.32);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.18);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.55);
+  box-sizing: border-box;
 }
 .prop-card-name {
   font-family: "Fredoka", sans-serif;
-  font-size: 16px;
-  font-weight: 600;
+  font-size: 56px;
+  font-weight: 700;
+  line-height: 1.05;
   color: #fff;
   text-align: center;
-  text-shadow: 0 1px 3px rgba(0,0,0,0.4);
-  margin-top: 4px;
+  text-shadow:
+    0 3px 0 rgba(0, 0, 0, 0.35),
+    0 0 14px rgba(0, 0, 0, 0.35);
+  margin: 28px 12px 12px;
+  padding: 0 4px;
+  letter-spacing: 1px;
+  word-break: break-word;
+  overflow-wrap: anywhere;
 }
-.prop-card-price {
+.prop-card-name-sm { font-size: 42px; }
+.prop-card-name-xs { font-size: 30px; }
+.prop-card-yield {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  background: rgba(0, 0, 0, 0.38);
+  border: 1.5px solid rgba(255, 255, 255, 0.22);
+  border-radius: 999px;
+  padding: 6px 18px;
+  margin: 6px auto 0;
+  box-shadow:
+    0 4px 12px rgba(0, 0, 0, 0.25),
+    inset 0 1px 0 rgba(255, 255, 255, 0.18);
+}
+.prop-card-yield-num {
   font-family: "Fredoka", sans-serif;
-  font-size: 13px;
-  color: rgba(255,255,255,0.85);
-  text-align: center;
+  font-size: 18px;
+  font-weight: 700;
+  color: #fff6cf;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.55);
+  line-height: 1;
+}
+.prop-card-yield-label {
+  font-family: "Fredoka", sans-serif;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 1.4px;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.7);
+  margin-top: 2px;
+}
+.prop-card-stamp {
+  /* Anchored to the bottom of the card (was centered) so it doesn't cover the
+     farm name + yield. The card layout is name → yield → stamp → time, with
+     the stamp tucked into the lower band where it's still prominent but no
+     longer obscures the "which farm?" answer. */
+  position: absolute;
+  left: 50%;
+  bottom: 16px;
+  font-family: "Fredoka", sans-serif;
+  font-size: 28px;
+  font-weight: 700;
+  color: #6ce05f;
+  transform: translateX(-50%) rotate(-10deg);
+  transform-origin: center center;
+  border: 3px solid #6ce05f;
+  border-radius: 9px;
+  padding: 3px 16px;
+  background: rgba(20, 50, 18, 0.78);
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.55);
+  box-shadow:
+    0 6px 18px rgba(0, 0, 0, 0.45),
+    0 0 22px rgba(108, 224, 95, 0.45);
+  animation: propCardStamp 0.7s cubic-bezier(0.34, 1.56, 0.64, 1) 0.6s both;
+  pointer-events: none;
+  letter-spacing: 1.8px;
+}
+.prop-card-stamp-miss {
+  color: #ff7a7a;
+  border-color: #ff7a7a;
+  background: rgba(70, 18, 18, 0.78);
+  box-shadow:
+    0 6px 18px rgba(0, 0, 0, 0.45),
+    0 0 22px rgba(255, 122, 122, 0.45);
+}
+@keyframes propCardStamp {
+  0%   { transform: translateX(-50%) rotate(-10deg) scale(3.5); opacity: 0; }
+  50%  { transform: translateX(-50%) rotate(-10deg) scale(0.85); opacity: 1; }
+  70%  { transform: translateX(-50%) rotate(-10deg) scale(1.15); opacity: 1; }
+  100% { transform: translateX(-50%) rotate(-10deg) scale(1); opacity: 1; }
 }
 .prop-card-time {
+  /* Pushed below the stamp's new bottom slot. */
+  position: absolute;
+  bottom: 4px;
+  left: 0;
+  right: 0;
   font-family: "Fredoka", sans-serif;
   font-size: 11px;
-  color: rgba(255,225,53,0.8);
+  font-weight: 600;
+  color: rgba(255, 246, 207, 0.85);
   text-align: center;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
 }
 .mushroom-notification.show {
   display: block;
@@ -10552,11 +11214,14 @@ body.mode-simple .board-chat-mention.c-red {
     min-width: 0;
   }
   .panel {
-    width: 200px;
+    width: 230px;
     padding: 12px 10px;
   }
   .panel-right {
     width: 210px;
+  }
+  .board-wrap {
+    padding: 8px 32px;
   }
   .board {
     min-width: 0;
@@ -11304,22 +11969,30 @@ body.mode-simple .board-chat-mention.c-red {
   right: auto;
   top: auto;
   z-index: 56;
-  background: rgba(20, 36, 12, 0.92);
-  border: 1px solid rgba(74, 107, 42, 0.5);
+  background: linear-gradient(160deg, rgba(30, 50, 18, 0.95), rgba(20, 34, 12, 0.95));
+  border: 1.5px solid rgba(255, 225, 53, 0.35);
   border-radius: 50%;
-  width: 40px;
-  height: 40px;
-  font-size: 18px;
+  width: 44px;
+  height: 44px;
+  font-size: 20px;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.4);
-  transition: transform 0.15s, box-shadow 0.15s;
+  box-shadow:
+    0 3px 14px rgba(0, 0, 0, 0.5),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  transition:
+    transform 0.15s,
+    box-shadow 0.15s,
+    border-color 0.15s;
 }
 .board-help-toggle:hover {
   transform: scale(1.12);
-  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.5);
+  border-color: rgba(255, 225, 53, 0.6);
+  box-shadow:
+    0 4px 18px rgba(0, 0, 0, 0.55),
+    0 0 14px rgba(255, 225, 53, 0.25);
 }
 
 /* ── How to Play Panel ────────────────────────────────────────── */
@@ -11729,18 +12402,23 @@ body.mode-simple .board-chat-mention.c-red {
   right: auto;
   top: auto;
   z-index: 56;
-  background: rgba(20, 36, 12, 0.92);
-  border: 1px solid rgba(74, 107, 42, 0.5);
+  background: linear-gradient(160deg, rgba(30, 50, 18, 0.95), rgba(20, 34, 12, 0.95));
+  border: 1.5px solid rgba(255, 225, 53, 0.35);
   border-radius: 50%;
-  width: 40px;
-  height: 40px;
-  font-size: 18px;
+  width: 44px;
+  height: 44px;
+  font-size: 20px;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.4);
-  transition: transform 0.15s, box-shadow 0.15s;
+  box-shadow:
+    0 3px 14px rgba(0, 0, 0, 0.5),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  transition:
+    transform 0.15s,
+    box-shadow 0.15s,
+    border-color 0.15s;
 }
 .board-emoji-toggle:hover {
   transform: scale(1.12);
@@ -11753,15 +12431,19 @@ body.mode-simple .board-chat-mention.c-red {
   left: calc(50% + 78px);
   bottom: calc(18% + 48px);
   z-index: 57;
-  background: rgba(20, 36, 12, 0.95);
-  border: 1px solid rgba(74, 107, 42, 0.5);
-  border-radius: 12px;
-  padding: 0 6px 6px;
+  background: linear-gradient(160deg, rgba(30, 50, 18, 0.97), rgba(20, 34, 12, 0.97));
+  border: 1.5px solid rgba(255, 225, 53, 0.32);
+  border-radius: 14px;
+  padding: 0 8px 8px;
   display: flex;
   flex-direction: column;
   gap: 2px;
-  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.5);
+  box-shadow:
+    0 6px 22px rgba(0, 0, 0, 0.55),
+    0 0 18px rgba(255, 225, 53, 0.15),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
   user-select: none;
+  backdrop-filter: blur(4px);
 }
 .emoji-picker-handle {
   display: flex;
@@ -12640,11 +13322,68 @@ body.mode-simple .board-chat-mention.c-red {
   padding: 2px 7px;
   color: #fff;
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9), 0 0 6px rgba(0, 0, 0, 0.6);
-  /* Re-enable hover so the native title tooltip (yield × count) shows. The base
-     .banana-pile is pointer-events:none; in simple mode these chips sit outside
-     the board ring, so accepting hover doesn't block any tile underneath. */
+  /* Re-enable hover so the styled data-tooltip (yield × count) shows. The base
+     .banana-pile is pointer-events:none; these chips sit outside the board
+     ring, so accepting hover doesn't block any tile underneath. */
   pointer-events: auto;
   cursor: help;
+}
+
+/* Styled hover tooltip on the ×N chip — replaces the native title popup. */
+.banana-pile[data-tooltip]::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: calc(100% + 10px);
+  left: 50%;
+  transform: translateX(-50%) scale(0.92);
+  transform-origin: center bottom;
+  background: linear-gradient(160deg, #1e3a10 0%, #162b0a 100%);
+  color: #fff6cf;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  font-family: "Baloo 2", "Fredoka", sans-serif;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+  white-space: nowrap;
+  text-align: center;
+  line-height: 1.45;
+  padding: 6px 12px;
+  border-radius: 10px;
+  border: 1.5px solid rgba(255, 225, 53, 0.45);
+  box-shadow:
+    0 6px 18px rgba(0, 0, 0, 0.55),
+    0 0 14px rgba(255, 225, 53, 0.18);
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  transition:
+    opacity 0.14s ease-out,
+    transform 0.14s ease-out;
+  z-index: 200;
+}
+/* Arrow that points down to the chip. */
+.banana-pile[data-tooltip]::before {
+  content: "";
+  position: absolute;
+  bottom: calc(100% + 4px);
+  left: 50%;
+  transform: translateX(-50%);
+  width: 0;
+  height: 0;
+  border: 6px solid transparent;
+  border-top-color: rgba(255, 225, 53, 0.45);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.14s ease-out;
+  z-index: 201;
+}
+.banana-pile[data-tooltip]:hover::after {
+  opacity: 1;
+  visibility: visible;
+  transform: translateX(-50%) scale(1);
+}
+.banana-pile[data-tooltip]:hover::before {
+  opacity: 1;
 }
 
 /* 2. Enlarge the player banana totals in simple mode (HUD + per-player list). */
