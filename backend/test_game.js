@@ -52,6 +52,23 @@ function createStartedGame(n = 2, opts = {}) {
   return { game, players };
 }
 
+// Park the roller one tile past the Super Banana — no roll sum (max 18 with
+// 3 dice) wraps the board back to it — and move everyone else out of landing
+// reach. Landing on the Super Banana wins the game (rich) or demands a
+// hideout pick (broke), blocking endTurn and changing money; landing on an
+// opponent fires poker. Tests doing REAL rolls call this first so the
+// landing stays effect-neutral on a shuffled board.
+function parkForNeutralRoll(game, roller) {
+  let sbPos = 0;
+  for (const [pos, prop] of game.properties) {
+    if (prop.group === "superBanana") { sbPos = pos; break; }
+  }
+  roller.position = (sbPos + 1) % game.boardSize;
+  for (const p of game.players) {
+    if (p.id !== roller.id) p.position = (sbPos + 25) % game.boardSize;
+  }
+}
+
 // ============================================================
 section("1. Game Creation & Player Management");
 // ============================================================
@@ -157,6 +174,7 @@ section("5. Paid Dice (1 or 3 dice)");
   const { game } = createStartedGame(2, { startingMoney: 5000 });
   const cur = game.getCurrentPlayer();
   cur.cards.rabbitDice = 1; // Turtle Dice (1 die)
+  parkForNeutralRoll(game, cur);
 
   const moneyBefore = cur.money;
   const result = game.rollDice(cur.id, 1);
@@ -170,6 +188,7 @@ section("5. Paid Dice (1 or 3 dice)");
   const { game } = createStartedGame(2, { startingMoney: 5000 });
   const cur = game.getCurrentPlayer();
   cur.cards.cheetahDice = 1; // Rabbit Dice (3 dice)
+  parkForNeutralRoll(game, cur);
 
   const moneyBefore = cur.money;
   const result = game.rollDice(cur.id, 3);
@@ -190,6 +209,7 @@ section("6. End Turn");
   // Can't end turn before rolling
   assert(!game.endTurn(firstPlayer), "Can't end turn before rolling");
 
+  parkForNeutralRoll(game, game.getCurrentPlayer());
   game.rollDice(firstPlayer);
 
   // Cancel auto-end timer for testing
