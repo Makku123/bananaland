@@ -3469,9 +3469,4 @@ console.log(`\n${"=".repeat(50)}`);
 console.log(`TEST RESULTS: ${passed} passed, ${failed} failed`);
 console.log(`${"=".repeat(50)}`);
 
-if (failures.length > 0) {
-  console.log("\nFailed tests:");
-  failures.forEach((f, i) => console.log(`  ${i + 1}. ${f}`));
-}
-
-process.exit(failed > 0 ? 1 : 0);
+if (failures.lengt
