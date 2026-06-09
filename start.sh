@@ -1,18 +1,24 @@
 #!/bin/bash
+# Monkey Business - Mac/Linux startup script
+set -e
 
-# Monopoly Game - Unix/Mac Startup Script
+cd "$(dirname "$0")/backend"
 
-echo "Starting Monopoly Game..."
-echo ""
+if ! command -v node >/dev/null 2>&1; then
+    echo "Node.js is required but was not found. Install it from https://nodejs.org"
+    exit 1
+fi
 
-cd backend
+if [ ! -d node_modules ]; then
+    echo "Installing dependencies..."
+    npm install
+fi
 
-echo "Installing dependencies..."
-npm install
+PORT="${PORT:-3000}"
+URL="http://localhost:$PORT"
 
-echo ""
-echo "Starting server on http://localhost:3000"
-echo "Open your browser and navigate to http://localhost:3000"
-echo ""
+echo "Starting Monkey Business on $URL"
+# Open the browser once the server is up
+(sleep 2 && { command -v open >/dev/null && open "$URL" || { command -v xdg-open >/dev/null && xdg-open "$URL"; }; }) >/dev/null 2>&1 &
 
-npm start
+PORT="$PORT" npm start
