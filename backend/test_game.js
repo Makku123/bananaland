@@ -816,6 +816,61 @@ section("21. GROW Mechanics");
 }
 
 // ============================================================
+section("21b. Grow grows every owned farm in range, any owner (rules.md)");
+// ============================================================
+
+{
+  const { game } = createStartedGame(2, { startingMoney: 5000 });
+  const cur = game.getCurrentPlayer();
+  const other = game.players.find((p) => p.id !== cur.id);
+
+  let growPos = -1;
+  for (let i = 0; i < game.board.length; i++) {
+    if (game.board[i].type === "grow") {
+      growPos = i;
+      break;
+    }
+  }
+  const farms = [];
+  for (let i = 0; i < game.boardSize && farms.length < 3; i++) {
+    const prop = game.properties.get(i);
+    if (prop && prop.group === "farm") farms.push(i);
+  }
+  const [minePos, theirsPos, nobodysPos] = farms;
+  const mine = game.properties.get(minePos);
+  const theirs = game.properties.get(theirsPos);
+  const nobodys = game.properties.get(nobodysPos);
+  mine.owner = cur.id;
+  cur.properties.push(minePos);
+  theirs.owner = other.id;
+  other.properties.push(theirsPos);
+  nobodys.owner = null;
+  mine.bananaPile = 0;
+  theirs.bananaPile = 0;
+  nobodys.bananaPile = 0;
+  cur.position = growPos;
+  other.position = growPos;
+  cur.startPickPending = false;
+  other.startPickPending = false;
+
+  game._fireGrowAt(cur, growPos, "land");
+  assert(mine.bananaPile === mine.price, "Firing player's farm grew by its full yield");
+  assert(theirs.bananaPile === theirs.price, "Opponent's farm in range grew by its full yield too");
+  assert(nobodys.bananaPile === 0, "Unowned farm did not grow");
+
+  // Early pickup applies to a NON-firing owner standing on their own farm.
+  theirs.bananaPile = 10;
+  const otherMoney = other.money;
+  other.position = theirsPos;
+  game._fireGrowAt(cur, growPos, "land");
+  assert(
+    other.money === otherMoney + theirs.price + 10,
+    "Non-firing owner standing on their farm pocketed fresh growth + existing pile",
+  );
+  assert(theirs.bananaPile === 0, "Early pickup swept the non-firing owner's pile");
+}
+
+// ============================================================
 section("23. Banana Pile Collection");
 // ============================================================
 
