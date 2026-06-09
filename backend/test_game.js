@@ -1,5 +1,5 @@
 // Comprehensive game mechanics test suite
-const { MonopolyGame, BOARD_SIMPLE, PET_TYPES } = require("./gameLogic");
+const { MonkeyBusinessGame, PET_TYPES } = require("./gameLogic");
 
 let passed = 0;
 let failed = 0;
@@ -21,7 +21,7 @@ function section(name) {
 
 // Helper: create a game with N players, all with strong pet, and start it
 function createStartedGame(n = 2, opts = {}) {
-  const game = new MonopolyGame(
+  const game = new MonkeyBusinessGame(
     "TEST",
     opts.maxPlayers || n,
     opts.startingMoney || 5000,
@@ -57,7 +57,7 @@ section("1. Game Creation & Player Management");
 // ============================================================
 
 {
-  const game = new MonopolyGame("G1", 4, 2222, "classic", true, true, true);
+  const game = new MonkeyBusinessGame("G1", 4, 2222, "classic", true, true, true);
   assert(game.state === "waiting", "Game starts in waiting state");
   assert(game.maxPlayers === 4, "Max players set correctly");
   assert(game.startingMoney === 2222, "Starting money set correctly");
@@ -91,7 +91,7 @@ section("2. Settings Update");
 // ============================================================
 
 {
-  const game = new MonopolyGame("G2", 4, 2222, "classic", false, true, true);
+  const game = new MonkeyBusinessGame("G2", 4, 2222, "classic", false, true, true);
   game.addPlayer("s1", "Alice");
   game.addPlayer("s2", "Bob");
 
@@ -101,7 +101,7 @@ section("2. Settings Update");
 
   assert(!game.updateSettings("s2", { startingMoney: 9999 }), "Non-admin cannot update settings");
 
-  assert(game.updateSettings("s1", { gameMode: "2v2" }), "Can switch to simple_teams mode");
+  assert(game.updateSettings("s1", { gameMode: "2v2" }), "Can switch to 2v2 mode");
   assert(game.maxPlayers === 4, "Teams mode forces 4 players");
 }
 
@@ -110,7 +110,7 @@ section("3. Pet Selection & Game Start");
 // ============================================================
 
 {
-  const game = new MonopolyGame("G3", 2, 2222, "classic", true, true, true);
+  const game = new MonkeyBusinessGame("G3", 2, 2222, "classic", true, true, true);
   const p1 = game.addPlayer("s1", "Alice");
   const p2 = game.addPlayer("s2", "Bob");
 
@@ -301,7 +301,7 @@ section("9. Auction - Pass Mechanics");
 }
 
 // ============================================================
-section("10. Simple Auction - Accept with multiple players");
+section("10. Auction - Accept with multiple players");
 // ============================================================
 
 {
@@ -974,7 +974,7 @@ section("30. Team Mode - Game Setup");
 // ============================================================
 
 {
-  const game = new MonopolyGame("T1", 4, 5000, "2v2", "cooldown", false, true, true);
+  const game = new MonkeyBusinessGame("T1", 4, 5000, "2v2", "cooldown", false, true, true);
 
   for (let i = 0; i < 4; i++) {
     game.addPlayer(`t${i}`, `Team${i}`);
@@ -1054,7 +1054,7 @@ section("34. Reveal Phase");
 // ============================================================
 
 {
-  const game = new MonopolyGame("R1", 2, 2222, "classic", "cooldown", false, true, true);
+  const game = new MonkeyBusinessGame("R1", 2, 2222, "classic", "cooldown", false, true, true);
   game.addPlayer("r0", "R0");
   game.addPlayer("r1", "R1");
   game.selectPet("r0", "strong");
@@ -1826,7 +1826,7 @@ section("54. Auction - Price Cap");
 }
 
 // ============================================================
-section("55. Solo Simple - No Trading");
+section("55. Classic - No Trading");
 // ============================================================
 
 {
@@ -1950,7 +1950,7 @@ section("59. Pet Hidden in Lobby");
 // ============================================================
 
 {
-  const game = new MonopolyGame("H1", 2, 2222, "classic", "cooldown", false, true, true);
+  const game = new MonkeyBusinessGame("H1", 2, 2222, "classic", "cooldown", false, true, true);
   game.addPlayer("h0", "H0");
   game.addPlayer("h1", "H1");
   game.selectPet("h0", "strong");
@@ -1989,7 +1989,7 @@ section("61. Classic - Early Pickup on own farm");
 
 // Helper: set up a game with the current player owning a farm,
 // a known grow tile, and the whole board in grow-range. Returns the pieces.
-function setupSimpleGrow(opts = {}) {
+function setupGrow(opts = {}) {
   const { game } = createStartedGame(2, { gameMode: "classic", startingMoney: 5000 });
   // Clear reveals so the grow range spans the whole board (only the fired
   // grow tile gets revealed inside _fireGrowAt).
@@ -2012,7 +2012,7 @@ function setupSimpleGrow(opts = {}) {
 }
 
 {
-  const { game, p0, growPos, farmPos } = setupSimpleGrow();
+  const { game, p0, growPos, farmPos } = setupGrow();
   if (growPos >= 0 && farmPos >= 0) {
     const prop = game.properties.get(farmPos);
     prop.owner = p0.id;
@@ -2040,7 +2040,7 @@ section("62. Classic - No early pickup when standing elsewhere");
 // ============================================================
 
 {
-  const { game, p0, growPos, farmPos } = setupSimpleGrow();
+  const { game, p0, growPos, farmPos } = setupGrow();
   if (growPos >= 0 && farmPos >= 0) {
     const prop = game.properties.get(farmPos);
     prop.owner = p0.id;
@@ -2067,7 +2067,7 @@ section("63. Classic - Early pickup beats a squatting opponent");
 // ============================================================
 
 {
-  const { game, p0, p1, growPos, farmPos } = setupSimpleGrow();
+  const { game, p0, p1, growPos, farmPos } = setupGrow();
   if (growPos >= 0 && farmPos >= 0) {
     const prop = game.properties.get(farmPos);
     prop.owner = p0.id;
@@ -2174,7 +2174,7 @@ section("65. Classic - Squatter collects growth only on LEAVING (TODO line 56)")
 // ============================================================
 
 {
-  const { game, p0, p1, growPos, farmPos } = setupSimpleGrow();
+  const { game, p0, p1, growPos, farmPos } = setupGrow();
   if (growPos >= 0 && farmPos >= 0) {
     const prop = game.properties.get(farmPos);
     prop.owner = p0.id;
@@ -2211,7 +2211,7 @@ section("65b. Classic - Owner reclaims a grown pile by crossing before the squat
 // ============================================================
 
 {
-  const { game, p0, p1, growPos, farmPos } = setupSimpleGrow();
+  const { game, p0, p1, growPos, farmPos } = setupGrow();
   if (growPos >= 0 && farmPos >= 0) {
     const prop = game.properties.get(farmPos);
     prop.owner = p0.id;
@@ -2245,7 +2245,7 @@ section("65c. Classic - Landing on an opponent's pile defers the steal until you
 // ============================================================
 
 {
-  const { game, p0, p1, farmPos } = setupSimpleGrow();
+  const { game, p0, p1, farmPos } = setupGrow();
   if (farmPos >= 0) {
     const prop = game.properties.get(farmPos);
     prop.owner = p0.id;     // p0 owns the farm
@@ -2273,7 +2273,7 @@ section("65d. Classic - Merely crossing an opponent's pile never collects it");
 // ============================================================
 
 {
-  const { game, p0, p1, farmPos } = setupSimpleGrow();
+  const { game, p0, p1, farmPos } = setupGrow();
   if (farmPos >= 0) {
     const prop = game.properties.get(farmPos);
     prop.owner = p0.id;
@@ -2295,7 +2295,7 @@ section("65e. Classic - Vine Swing off a squatted farm steals its pile on the wa
 // ============================================================
 
 {
-  const { game, p0, p1, growPos, farmPos } = setupSimpleGrow();
+  const { game, p0, p1, growPos, farmPos } = setupGrow();
   // Find a farm p1 can swing TO (their own), distinct from the squatted farm.
   let destPos = -1;
   for (let i = 0; i < game.boardSize; i++) {
@@ -2331,8 +2331,8 @@ section("66. Classic - Cornerless 48-tile board");
 {
   const { game } = createStartedGame(2, { gameMode: "classic", startingMoney: 5000 });
 
-  assert(game.board.length === 48, "Simple board has 48 tiles");
-  assert(game.boardSize === 48, "boardSize is 48 in simple mode");
+  assert(game.board.length === 48, "Board has 48 tiles");
+  assert(game.boardSize === 48, "boardSize is 48");
 
   const counts = { grow: 0, bus: 0, special: 0, tax10: 0, desert: 0, farm: 0 };
   for (let i = 0; i < game.board.length; i++) {
@@ -2344,12 +2344,12 @@ section("66. Classic - Cornerless 48-tile board");
     else if (t.type === "desert") counts.desert++;
     else if (t.buyable && t.buyable.group === "farm") counts.farm++;
   }
-  assert(counts.grow === 6, "Simple board has 6 GROW tiles");
-  assert(counts.farm === 40, "Simple board has 40 farm tiles");
-  assert(counts.bus === 0, "Simple board has no Vine Swing tile (now an ability)");
-  assert(counts.special === 1, "Simple board has 1 Super Banana tile");
-  assert(counts.tax10 === 0, "Simple board has no -10% tax tile");
-  assert(counts.desert === 1, "Simple board has 1 Desert tile");
+  assert(counts.grow === 6, "Board has 6 GROW tiles");
+  assert(counts.farm === 40, "Board has 40 farm tiles");
+  assert(counts.bus === 0, "Board has no Vine Swing tile (now an ability)");
+  assert(counts.special === 1, "Board has 1 Super Banana tile");
+  assert(counts.tax10 === 0, "Board has no -10% tax tile");
+  assert(counts.desert === 1, "Board has 1 Desert tile");
 
   // Grow tiles are labelled 1..6 (no 0, no 7).
   const labels = [...game.growTileLabels.values()].sort((a, b) => a - b);
@@ -2388,7 +2388,7 @@ section("67. Classic - Roll One item (guaranteed move of 1)");
   game.diceRolled = false;
   game.petResolving = false;
 
-  // Players start with one of each special item in simple mode.
+  // Players start with one of each special item.
   assert(cur.cards.magicDice === 1, "Players start with one Roll One item");
   // With no item held, Roll One is unusable.
   cur.cards.magicDice = 0;

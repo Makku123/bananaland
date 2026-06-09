@@ -4,7 +4,7 @@ const http = require("http");
 const { Server } = require("socket.io");
 const cors = require("cors");
 const path = require("path");
-const { MonopolyGame } = require("./gameLogic");
+const { MonkeyBusinessGame } = require("./gameLogic");
 const auth = require("./auth");
 const oauth = require("./oauth");
 const email = require("./email");
@@ -220,7 +220,7 @@ io.on("connection", (socket) => {
   // ── Create game (creates + joins creator as admin) ───────────
   socket.on("create_game", (data) => {
     const code = generateCode();
-    const game = new MonopolyGame(
+    const game = new MonkeyBusinessGame(
       code,
       data.maxPlayers,
       data.startingMoney,
@@ -464,7 +464,7 @@ io.on("connection", (socket) => {
     }
   });
 
-  // ── Simple mode: pick starting tile (first turn only) ────────
+  // ── Pick starting tile (first turn only) ─────────────────────
   socket.on("pick_start_tile", (data) => {
     const game = games.get(data.gameId);
     if (!game) return;
@@ -490,7 +490,7 @@ io.on("connection", (socket) => {
     }
   });
 
-  // ── Simple mode: hide the Super Banana on a chosen tile ──────
+  // ── Hide the Super Banana on a chosen tile ───────────────────
   // When a player can't afford the Super Banana, they pick which hidden tile
   // to hide it under (instead of a random swap). Only the landing player may
   // pick; the swap completes immediately and the rainbow hint is set for them.
@@ -502,7 +502,7 @@ io.on("connection", (socket) => {
     }
   });
 
-  // ── Simple mode: Magic Dice (replaces dice roll) ─────────────
+  // ── Magic Dice (replaces dice roll) ──────────────────────────
   socket.on("use_magic_dice", (data) => {
     const game = games.get(data.gameId);
     if (!game) return;
@@ -526,7 +526,7 @@ io.on("connection", (socket) => {
     }
   });
 
-  // ── Simple mode: upgrade Magic Dice (+1 step, 1000🍌) ────────
+  // ── Upgrade Magic Dice (+1 step, 1000🍌) ─────────────────────
   socket.on("upgrade_magic_dice", (data) => {
     const game = games.get(data.gameId);
     if (!game) return;
@@ -535,7 +535,7 @@ io.on("connection", (socket) => {
     }
   });
 
-  // ── Simple mode shop: buy a card (500🍌) ─────────────────────
+  // ── Buy a card (500🍌) ───────────────────────────────────────
   socket.on("buy_card", (data) => {
     const game = games.get(data.gameId);
     if (!game) return;
@@ -544,7 +544,7 @@ io.on("connection", (socket) => {
     }
   });
 
-  // ── Simple mode: arm a special item for your next turn ──────────
+  // ── Arm a special item for your next turn ───────────────────────
   socket.on("arm_ability", (data) => {
     const game = games.get(data.gameId);
     if (!game) return;
@@ -554,7 +554,7 @@ io.on("connection", (socket) => {
     }
   });
 
-  // ── Simple mode: use an ability card (refresh/swap/scout/teleport) ──
+  // ── Use an ability card (refresh/swap/scout/teleport) ───────────────
   socket.on("use_card", (data) => {
     const game = games.get(data.gameId);
     if (!game) return;
@@ -985,5 +985,5 @@ setInterval(() => {
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, "0.0.0.0", () =>
-  console.log(`Monopoly server running on port ${PORT}`),
+  console.log(`Monkey Business server running on port ${PORT}`),
 );

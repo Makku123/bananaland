@@ -1,4 +1,4 @@
-// --- Monkey Bidniz Board Game Logic ----------------------------
+// --- Monkey Business Board Game Logic ---------------------------
 // 48 spaces, cornerless square (12 per side)
 
 const START_POSITION = 0;
@@ -118,7 +118,7 @@ function bestHand(sevenCards) {
 // --- Board ---------------------------------------------------------
 // 48 tiles arranged as a CORNERLESS square (12 tiles per side, no corner
 // slots):
-//   40 farm tiles (yields 10..400 in steps of 10, all in the "farm" group),
+//   40 farm tiles (yields 1..40, equal to the F-number, all in the "farm" group),
 //   6 grow tiles (all 100%, labelled 1..6 in play),
 //   1 Super Banana tile, 1 Desert tile (a buyable "0 farm" — a cactus that
 //   grows nothing but still goes to auction when landed on).
@@ -216,7 +216,7 @@ const CARD_LABELS = {
   rabbitDice: "🐢 Turtle Dice", // roll 1 die
   cheetahDice: "🐇 Rabbit Dice", // roll 3 dice
   magicDice: "1️⃣ Roll One", // guaranteed move of 1
-  // Internal key stays "teleport"; displayed as Vine Swing in classic mode.
+  // Internal key stays "teleport"; displayed as Vine Swing.
   teleport: "🌿 Vine Swing",
 };
 
@@ -245,7 +245,7 @@ const PET_TYPES = {
 
 // --- Game Class ----------------------------------------------------
 
-class MonopolyGame {
+class MonkeyBusinessGame {
   constructor(
     gameId,
     maxPlayers,
@@ -5755,5 +5755,5 @@ class MonopolyGame {
   }
 }
 
-module.exports = { MonopolyGame, BOARD, PET_TYPES };
+module.exports = { MonkeyBusinessGame, BOARD, PET_TYPES };
 

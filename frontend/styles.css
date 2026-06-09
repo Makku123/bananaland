@@ -2021,17 +2021,17 @@ body {
   transition: width 1s linear;
 }
 
-/* ——— Simple-mode reveal overrides ————————————————————————————————— */
+/* ——— Reveal overrides ————————————————————————————————— */
 
-/* Roomier on the simple-mode reveal: 40 farm chips need horizontal space. */
-.reveal-content--simple {
+/* Roomier reveal: 40 farm chips need horizontal space. */
+.reveal-content--farms {
   max-width: 820px;
 }
 
-.reveal-grid--simple {
+.reveal-grid--farms {
   gap: 16px;
 }
-.reveal-grid--simple .reveal-group-tiles {
+.reveal-grid--farms .reveal-group-tiles {
   gap: 5px;
 }
 
@@ -2153,9 +2153,9 @@ body {
   50%      { box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.4),  0 0 28px rgba(255, 255, 255, 0.45), 0 2px 12px rgba(0, 0, 0, 0.45); }
 }
 
-/* Slightly brighter subtitle in simple mode so the polished sections read as
+/* Slightly brighter subtitle so the polished sections read as
    one composed screen rather than a debug list. */
-.reveal-content--simple .reveal-subtitle {
+.reveal-content--farms .reveal-subtitle {
   color: #b5d68f;
 }
 
@@ -2285,7 +2285,7 @@ body {
 .owner-prop-dot.g-yellow {
   background: #f1c40f;
 }
-.owner-prop-dot.g-simple {
+.owner-prop-dot.g-farm {
   background: #ffd633;
 }
 .owner-prop-dot.g-lightblue {
@@ -2477,7 +2477,7 @@ body {
 .chart-group-dot.g-yellow {
   background: #f1c40f;
 }
-.chart-group-dot.g-simple {
+.chart-group-dot.g-farm {
   background: #ffd633;
 }
 .chart-group-dot.g-green {
@@ -2571,7 +2571,7 @@ body {
   transform: rotate(-90deg);
 }
 
-/* Grow Chart (simple mode): discovery tracker for the 8 GROW tiles */
+/* Grow Chart: discovery tracker for the 6 grow tiles */
 .grow-chart-count {
   font-size: 0.72em;
   font-weight: 700;
@@ -3670,7 +3670,7 @@ body {
   line-height: 1.2;
   text-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
 }
-/* Simple-mode grow tiles: just the number, shown large in white. */
+/* Grow tiles: just the number, shown large in white. */
 .space.corner .grow-yield {
   font-family: "Baloo 2", "Fredoka", sans-serif;
   font-weight: 900;
@@ -3724,7 +3724,7 @@ body {
     filter: brightness(1);
   }
 }
-/* ── Simple-mode GROW pulse ─────────────────────────────────────────
+/* ── GROW pulse ─────────────────────────────────────────
    A travelling glow in the ROLLER's colour (--pulse-color) sweeps tile-by-tile
    from a fired grow along its range. The steady glow fades in/out via the
    transition (walkStepUpdate doesn't rebuild tiles, so it animates smoothly),
@@ -4681,16 +4681,16 @@ body {
     0 0 5px rgba(0, 0, 0, 0.7),
     inset 0 0 3px rgba(0, 0, 0, 0.3) !important;
 }
-/* Simple mode re-skins player colours (brown→red, golden→blue, silver→green,
+/* Player colours are re-skinned (brown→red, golden→blue, silver→green,
    red→black) — match each banana pile to its owner's colour. */
-body.mode-simple .pile-brown {
+body.mode-standard .pile-brown {
   background: rgba(226, 59, 59, 0.85);
   border-color: #e23b3b;
   box-shadow:
     0 0 5px rgba(226, 59, 59, 0.7),
     inset 0 0 3px rgba(226, 59, 59, 0.3) !important;
 }
-body.mode-simple .pile-golden {
+body.mode-standard .pile-golden {
   background: rgba(46, 127, 224, 0.85);
   color: #fff;
   border-color: #2e7fe0;
@@ -4698,14 +4698,14 @@ body.mode-simple .pile-golden {
     0 0 5px rgba(46, 127, 224, 0.7),
     inset 0 0 3px rgba(46, 127, 224, 0.3) !important;
 }
-body.mode-simple .pile-silver {
+body.mode-standard .pile-silver {
   background: rgba(39, 174, 96, 0.85);
   border-color: #27ae60;
   box-shadow:
     0 0 5px rgba(39, 174, 96, 0.7),
     inset 0 0 3px rgba(39, 174, 96, 0.3) !important;
 }
-body.mode-simple .pile-red {
+body.mode-standard .pile-red {
   background: rgba(26, 26, 26, 0.9);
   border-color: #1a1a1a;
   box-shadow:
@@ -4769,7 +4769,7 @@ body.mode-simple .pile-red {
     pile-glow 2s ease-in-out infinite alternate 0.8s;
   box-shadow: 0 0 12px rgba(127, 255, 0, 0.9);
 }
-/* Simple-mode grow: when the chain reaches a farm its count box does a
+/* Grow: when the chain reaches a farm its count box does a
    pronounced ~1s bounce — a big pop that settles with two decaying rebounds.
    animation-delay is set inline (negative ms) by board.js so the bounce RESUMES
    at the right frame after walkStepUpdate rebuilds the chip mid-pulse, instead
@@ -5232,58 +5232,58 @@ body.mode-simple .pile-red {
   to   { box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.5), 0 2px 8px rgba(0, 0, 0, 0.6), 0 0 12px rgba(0, 0, 0, 0.5); }
 }
 
-/* Simple mode re-skins the four player colours (brown→red, golden→blue,
+/* The four player colours are re-skinned (brown→red, golden→blue,
    silver→green, red→black). Match the farm ownership borders + glow to the
    tokens so each monkey's border is its own colour. */
-body.mode-simple .owned-brown {
+body.mode-standard .owned-brown {
   border-color: #e23b3b !important;
   outline-color: rgba(226, 59, 59, 0.4);
   box-shadow:
     inset 0 0 6px rgba(226, 59, 59, 0.3),
     0 2px 6px rgba(0, 0, 0, 0.5),
     0 0 8px rgba(226, 59, 59, 0.35) !important;
-  animation: ownGlowSimpleRed 3s ease-in-out infinite alternate;
+  animation: ownGlowStdRed 3s ease-in-out infinite alternate;
 }
-body.mode-simple .owned-golden {
+body.mode-standard .owned-golden {
   border-color: #2e7fe0 !important;
   outline-color: rgba(46, 127, 224, 0.4);
   box-shadow:
     inset 0 0 6px rgba(46, 127, 224, 0.3),
     0 2px 6px rgba(0, 0, 0, 0.5),
     0 0 8px rgba(46, 127, 224, 0.35) !important;
-  animation: ownGlowSimpleBlue 3s ease-in-out infinite alternate;
+  animation: ownGlowStdBlue 3s ease-in-out infinite alternate;
 }
-body.mode-simple .owned-silver {
+body.mode-standard .owned-silver {
   border-color: #27ae60 !important;
   outline-color: rgba(39, 174, 96, 0.4);
   box-shadow:
     inset 0 0 6px rgba(39, 174, 96, 0.3),
     0 2px 6px rgba(0, 0, 0, 0.5),
     0 0 8px rgba(39, 174, 96, 0.35) !important;
-  animation: ownGlowSimpleGreen 3s ease-in-out infinite alternate;
+  animation: ownGlowStdGreen 3s ease-in-out infinite alternate;
 }
-body.mode-simple .owned-red {
+body.mode-standard .owned-red {
   border-color: #1a1a1a !important;
   outline-color: rgba(26, 26, 26, 0.5);
   box-shadow:
     inset 0 0 6px rgba(26, 26, 26, 0.3),
     0 2px 6px rgba(0, 0, 0, 0.6),
     0 0 8px rgba(26, 26, 26, 0.4) !important;
-  animation: ownGlowSimpleBlack 3s ease-in-out infinite alternate;
+  animation: ownGlowStdBlack 3s ease-in-out infinite alternate;
 }
-@keyframes ownGlowSimpleRed {
+@keyframes ownGlowStdRed {
   from { box-shadow: inset 0 0 6px rgba(226, 59, 59, 0.3), 0 2px 6px rgba(0, 0, 0, 0.5), 0 0 8px rgba(226, 59, 59, 0.35); }
   to   { box-shadow: inset 0 0 10px rgba(226, 59, 59, 0.5), 0 2px 8px rgba(0, 0, 0, 0.55), 0 0 12px rgba(226, 59, 59, 0.5); }
 }
-@keyframes ownGlowSimpleBlue {
+@keyframes ownGlowStdBlue {
   from { box-shadow: inset 0 0 6px rgba(46, 127, 224, 0.3), 0 2px 6px rgba(0, 0, 0, 0.5), 0 0 8px rgba(46, 127, 224, 0.35); }
   to   { box-shadow: inset 0 0 10px rgba(46, 127, 224, 0.5), 0 2px 8px rgba(0, 0, 0, 0.55), 0 0 12px rgba(46, 127, 224, 0.5); }
 }
-@keyframes ownGlowSimpleGreen {
+@keyframes ownGlowStdGreen {
   from { box-shadow: inset 0 0 6px rgba(39, 174, 96, 0.3), 0 2px 6px rgba(0, 0, 0, 0.5), 0 0 8px rgba(39, 174, 96, 0.35); }
   to   { box-shadow: inset 0 0 10px rgba(39, 174, 96, 0.5), 0 2px 8px rgba(0, 0, 0, 0.55), 0 0 12px rgba(39, 174, 96, 0.5); }
 }
-@keyframes ownGlowSimpleBlack {
+@keyframes ownGlowStdBlack {
   from { box-shadow: inset 0 0 6px rgba(26, 26, 26, 0.3), 0 2px 6px rgba(0, 0, 0, 0.5), 0 0 8px rgba(26, 26, 26, 0.35); }
   to   { box-shadow: inset 0 0 10px rgba(26, 26, 26, 0.5), 0 2px 8px rgba(0, 0, 0, 0.6), 0 0 12px rgba(26, 26, 26, 0.5); }
 }
@@ -5559,66 +5559,7 @@ body.mode-simple .owned-red {
   cursor: not-allowed;
 }
 
-/* Simple Mode Shop */
-.simple-shop {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  margin-top: 6px;
-}
-.simple-shop-row {
-  display: flex;
-  gap: 4px;
-  align-items: stretch;
-}
-.simple-shop-main {
-  flex: 1;
-  min-height: 36px;
-  font-weight: 600;
-  text-align: center;
-}
-.btn-shop {
-  background: linear-gradient(145deg, #2a3a6a, #3a4a8a) !important;
-  color: #fff !important;
-  border: 2px solid #6a82d4 !important;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
-}
-.btn-shop:hover:not(:disabled) {
-  background: linear-gradient(145deg, #344484, #4a5aa4) !important;
-  box-shadow: 0 0 10px rgba(106, 130, 212, 0.45);
-}
-.btn-shop:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-.btn-shop.shop-use {
-  background: linear-gradient(145deg, #3a6a2e, #4a8a3e) !important;
-  border-color: #7aca5a !important;
-}
-.btn-shop.shop-use:hover:not(:disabled) {
-  background: linear-gradient(145deg, #468436, #5aa44a) !important;
-  box-shadow: 0 0 10px rgba(122, 202, 90, 0.45);
-}
-.btn-shop-plus {
-  width: 36px;
-  min-width: 36px;
-  padding: 0;
-  font-size: 18px;
-  font-weight: 700;
-  background: linear-gradient(145deg, #2a3a6a, #3a4a8a) !important;
-  color: #fff !important;
-  border: 2px solid #6a82d4 !important;
-}
-.btn-shop-plus:hover:not(:disabled) {
-  background: linear-gradient(145deg, #344484, #4a5aa4) !important;
-  box-shadow: 0 0 8px rgba(106, 130, 212, 0.4);
-}
-.btn-shop-plus:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
-/* ── "Your Special Items" box (simple mode) ─────────────────────── */
+/* ── "Your Special Items" box ─────────────────────── */
 .special-items {
   margin-top: 8px;
   padding: 12px 10px 12px;
@@ -5971,7 +5912,7 @@ body.mode-simple .owned-red {
   }
 }
 
-/* ── Simple-mode ability tile targeting (swap / scout / teleport) ─── */
+/* ── Ability tile targeting (swap / scout / teleport) ─── */
 .ability-target {
   cursor: pointer !important;
   box-shadow:
@@ -6001,19 +5942,19 @@ body.mode-simple .owned-red {
   font-size: 14px;
   pointer-events: none;
 }
-/* Simple mode: Vine Swing choosable farms use the GOLDEN first-pick highlight
+/* Vine Swing choosable farms use the GOLDEN first-pick highlight
    (gold outline + pickGlow) instead of the blue ability glow, and are lifted
    ABOVE the coloured ownership border — whose !important box-shadow (higher
    specificity) would otherwise hide the highlight underneath it. Specificity
-   here (body.mode-simple .space.ability-target) beats body.mode-simple .owned-*. */
-body.mode-simple .space.ability-target {
+   here (body.mode-standard .space.ability-target) beats body.mode-standard .owned-*. */
+body.mode-standard .space.ability-target {
   z-index: 13;
   outline: 3px solid #ffe135 !important;
   outline-offset: -3px !important;
   box-shadow: 0 0 16px rgba(255, 225, 53, 0.7) !important;
   animation: pickGlow 1.2s ease-in-out infinite alternate !important;
 }
-body.mode-simple .space.ability-target:hover {
+body.mode-standard .space.ability-target:hover {
   outline-color: #fff3a0 !important;
   box-shadow:
     0 0 26px rgba(255, 225, 53, 0.95),
@@ -7058,7 +6999,7 @@ body.mode-simple .space.ability-target:hover {
   color: #ff6b6b !important;
 }
 
-/* Per-digit slot-machine wheel used in simple modes. Each .money-digit-reel
+/* Per-digit slot-machine wheel. Each .money-digit-reel
    is a 1-em-tall window; its inner .money-digit-strip is a column of digits
    that slides through that window. Direction-flip and target digit are
    computed in _animateMoneyWheel (game.js). Children inherit the parent
@@ -7443,14 +7384,14 @@ body.mode-simple .space.ability-target:hover {
 .bid-toast.show {
   display: block;
 }
-.simple-auction-controls {
+.auction-respond-controls {
   display: flex;
   gap: 14px;
   justify-content: center;
   margin: 14px 0;
 }
-.simple-auction-controls .btn-accept,
-.simple-auction-controls .btn-decline {
+.auction-respond-controls .btn-accept,
+.auction-respond-controls .btn-decline {
   color: #fff;
   font-weight: 800;
   padding: 14px 32px;
@@ -7465,7 +7406,7 @@ body.mode-simple .space.ability-target:hover {
   position: relative;
   overflow: hidden;
 }
-.simple-auction-controls .btn-accept {
+.auction-respond-controls .btn-accept {
   background: linear-gradient(135deg, #2ecc71, #27ae60);
   box-shadow:
     0 4px 16px rgba(46, 204, 113, 0.4),
@@ -7473,31 +7414,31 @@ body.mode-simple .space.ability-target:hover {
   border-color: rgba(46, 204, 113, 0.6);
   animation: accept-glow 1.5s ease-in-out infinite alternate;
 }
-.simple-auction-controls .btn-accept:hover {
+.auction-respond-controls .btn-accept:hover {
   transform: scale(1.08);
   box-shadow:
     0 6px 24px rgba(46, 204, 113, 0.6),
     inset 0 1px 0 rgba(255, 255, 255, 0.3);
   border-color: rgba(255, 255, 255, 0.4);
 }
-.simple-auction-controls .btn-accept:active {
+.auction-respond-controls .btn-accept:active {
   transform: scale(0.95);
 }
-.simple-auction-controls .btn-decline {
+.auction-respond-controls .btn-decline {
   background: linear-gradient(135deg, #e74c3c, #c0392b);
   box-shadow:
     0 4px 16px rgba(231, 76, 60, 0.35),
     inset 0 1px 0 rgba(255, 255, 255, 0.15);
   border-color: rgba(231, 76, 60, 0.5);
 }
-.simple-auction-controls .btn-decline:hover {
+.auction-respond-controls .btn-decline:hover {
   transform: scale(1.08);
   box-shadow:
     0 6px 24px rgba(231, 76, 60, 0.5),
     inset 0 1px 0 rgba(255, 255, 255, 0.25);
   border-color: rgba(255, 255, 255, 0.3);
 }
-.simple-auction-controls .btn-decline:active {
+.auction-respond-controls .btn-decline:active {
   transform: scale(0.95);
 }
 @keyframes accept-glow {
@@ -8196,7 +8137,7 @@ body.mode-simple .space.ability-target:hover {
   background: linear-gradient(160deg, #808080 0%, #686868 50%, #505050 100%);
   color: #fff;
 }
-.space.g-simple {
+.space.g-farm {
   background: linear-gradient(160deg, #ffe14a 0%, #f5c726 50%, #d9a800 100%);
   color: #fff;
   display: flex;
@@ -8204,7 +8145,7 @@ body.mode-simple .space.ability-target:hover {
   justify-content: center;
   padding: 0;
 }
-.space.g-simple .simple-yield {
+.space.g-farm .farm-yield {
   font-family: "Baloo 2", "Fredoka", sans-serif;
   font-weight: 900;
   font-size: clamp(10px, 2.4cqw, 26px);
@@ -8267,63 +8208,63 @@ body.mode-simple .space.ability-target:hover {
   background-color: #000000;
 }
 
-/* ── Simple mode: player colours are Red / Green / Blue / Black ──────────
+/* ── Player colours: Red / Green / Blue / Black ──────────
    The colour identifiers (brown/golden/silver/red) are just slot labels.
-   In simple mode we re-skin all four slots wherever a player colour shows:
+   We re-skin all four slots wherever a player colour shows:
      brown → red, golden → blue, silver → green, red → black.            */
-body.mode-simple .c-brown {
+body.mode-standard .c-brown {
   background-color: #e23b3b;
 }
-body.mode-simple .c-golden {
+body.mode-standard .c-golden {
   background-color: #2e7fe0;
 }
-body.mode-simple .c-silver {
+body.mode-standard .c-silver {
   background-color: #27ae60;
 }
-body.mode-simple .c-red {
+body.mode-standard .c-red {
   background-color: #1a1a1a;
 }
 /* Lobby avatar ring */
-body.mode-simple .lobby-player-avatar.c-brown {
+body.mode-standard .lobby-player-avatar.c-brown {
   border-color: #e23b3b;
 }
-body.mode-simple .lobby-player-avatar.c-golden {
+body.mode-standard .lobby-player-avatar.c-golden {
   border-color: #2e7fe0;
 }
-body.mode-simple .lobby-player-avatar.c-silver {
+body.mode-standard .lobby-player-avatar.c-silver {
   border-color: #27ae60;
 }
-body.mode-simple .lobby-player-avatar.c-red {
+body.mode-standard .lobby-player-avatar.c-red {
   border-color: #1a1a1a;
 }
 /* Chat dots */
-body.mode-simple .board-chat-dot.c-brown {
+body.mode-standard .board-chat-dot.c-brown {
   background: #e23b3b;
 }
-body.mode-simple .board-chat-dot.c-golden {
+body.mode-standard .board-chat-dot.c-golden {
   background: #2e7fe0;
 }
-body.mode-simple .board-chat-dot.c-silver {
+body.mode-standard .board-chat-dot.c-silver {
   background: #27ae60;
 }
-body.mode-simple .board-chat-dot.c-red {
+body.mode-standard .board-chat-dot.c-red {
   background: #888888;
 }
 /* Chat names + @mentions (kept legible on the dark chat background) */
-body.mode-simple .board-chat-name.c-brown,
-body.mode-simple .board-chat-mention.c-brown {
+body.mode-standard .board-chat-name.c-brown,
+body.mode-standard .board-chat-mention.c-brown {
   color: #ef6b6b;
 }
-body.mode-simple .board-chat-name.c-golden,
-body.mode-simple .board-chat-mention.c-golden {
+body.mode-standard .board-chat-name.c-golden,
+body.mode-standard .board-chat-mention.c-golden {
   color: #5b9fe8;
 }
-body.mode-simple .board-chat-name.c-silver,
-body.mode-simple .board-chat-mention.c-silver {
+body.mode-standard .board-chat-name.c-silver,
+body.mode-standard .board-chat-mention.c-silver {
   color: #58d68d;
 }
-body.mode-simple .board-chat-name.c-red,
-body.mode-simple .board-chat-mention.c-red {
+body.mode-standard .board-chat-name.c-red,
+body.mode-standard .board-chat-mention.c-red {
   color: #aaaaaa;
 }
 
@@ -8541,8 +8482,8 @@ body.mode-simple .board-chat-mention.c-red {
   border-radius: 10px;
 }
 
-/* Simple-mode Magic Dice replaces the pet box */
-/* ── Simple-mode Magic Dice (mystical arcane panel) ──────────────── */
+
+/* ── Magic Dice (mystical arcane panel) ──────────────── */
 .magic-dice-box {
   position: relative;
   display: flex;
@@ -8973,7 +8914,7 @@ body.mode-simple .board-chat-mention.c-red {
   margin: 4px 0 0;
   letter-spacing: 0.3px;
 }
-/* Classic | Simple toggle */
+/* Classic | 2v2 mode toggle */
 .bp-mode-toggle {
   display: inline-flex;
   margin-top: 10px;
@@ -9006,7 +8947,7 @@ body.mode-simple .board-chat-mention.c-red {
   background: #ffe135;
   border-color: #ffe135;
 }
-/* Compact yield/label chips for the simple-mode tile list */
+/* Compact yield/label chips for the tile list */
 .bp-yield-grid {
   display: flex;
   flex-wrap: wrap;
@@ -10503,7 +10444,7 @@ body.mode-simple .board-chat-mention.c-red {
 .prop-card-back.g-darkblue { background: linear-gradient(145deg, #c8c8c8, #8a8a8a); }
 .prop-card-back.g-desert { background: linear-gradient(145deg, #c8b080, #a89060); }
 .prop-card-back.g-super-banana { background: linear-gradient(145deg, #9040d0, #6828a0); }
-.prop-card-back.g-simple { background: linear-gradient(145deg, #ffe14a, #d9a800); }
+.prop-card-back.g-farm { background: linear-gradient(145deg, #ffe14a, #d9a800); }
 /* Redesigned BOUGHT/MISSED card.
    Layout (top → bottom):
      .prop-card-header   — small "FARM" label band (darkened group colour)
@@ -12571,7 +12512,7 @@ body.mode-simple .board-chat-mention.c-red {
   }
 }
 
-/* ── Simple-mode item-auction counter (center of board) ────────────── */
+/* ── Item-auction counter (center of board) ────────────── */
 .board-center-title.with-auction-counter {
   opacity: 1;
   pointer-events: none;
@@ -12640,7 +12581,7 @@ body.mode-simple .board-chat-mention.c-red {
   text-transform: uppercase;
 }
 
-/* ── Item-ability reference popover (board center, simple mode) ─────── */
+/* ── Item-ability reference popover (board center) ─────── */
 .abilities-popover {
   position: absolute;
   top: 50%;
@@ -13367,75 +13308,74 @@ body.mode-simple .board-chat-mention.c-red {
   opacity: 1;
 }
 
-/* 2. Enlarge the player banana totals in simple mode (HUD + per-player list). */
-body.mode-simple .info-box #info-money {
+/* 2. Enlarge the player banana totals (HUD + per-player list). */
+body.mode-standard .info-box #info-money {
   font-size: 1.7em;
 }
-body.mode-simple .pstat-money {
+body.mode-standard .pstat-money {
   font-size: 1.2em;
 }
-body.mode-simple .pstat-me .pstat-money {
+body.mode-standard .pstat-me .pstat-money {
   font-size: 1.28em;
 }
 
 /* 3a. Green slot → ORANGE (#ff8c00). */
-body.mode-simple .pile-silver {
+body.mode-standard .pile-silver {
   background: rgba(255, 140, 0, 0.85);
   border-color: #ffae42;
   box-shadow:
     0 0 5px rgba(255, 140, 0, 0.7),
     inset 0 0 3px rgba(255, 140, 0, 0.3) !important;
 }
-body.mode-simple .owned-silver {
+body.mode-standard .owned-silver {
   border-color: #ff8c00 !important;
   outline-color: rgba(255, 140, 0, 0.4);
   box-shadow:
     inset 0 0 6px rgba(255, 140, 0, 0.3),
     0 2px 6px rgba(0, 0, 0, 0.5),
     0 0 8px rgba(255, 140, 0, 0.35) !important;
-  animation: ownGlowSimpleOrange 3s ease-in-out infinite alternate;
+  animation: ownGlowStdOrange 3s ease-in-out infinite alternate;
 }
-@keyframes ownGlowSimpleOrange {
+@keyframes ownGlowStdOrange {
   from { box-shadow: inset 0 0 6px rgba(255, 140, 0, 0.3), 0 2px 6px rgba(0, 0, 0, 0.5), 0 0 8px rgba(255, 140, 0, 0.35); }
   to   { box-shadow: inset 0 0 10px rgba(255, 140, 0, 0.5), 0 2px 8px rgba(0, 0, 0, 0.55), 0 0 12px rgba(255, 140, 0, 0.5); }
 }
-body.mode-simple .c-silver { background-color: #ff8c00; }
-body.mode-simple .lobby-player-avatar.c-silver { border-color: #ff8c00; }
-body.mode-simple .board-chat-dot.c-silver { background: #ff8c00; }
-body.mode-simple .board-chat-name.c-silver,
-body.mode-simple .board-chat-mention.c-silver { color: #ffb366; }
-body.mode-simple .bomb-kill-glow.glow-c-silver { --glow-core: 255, 180, 80; --glow-halo: 230, 110, 20; }
+body.mode-standard .c-silver { background-color: #ff8c00; }
+body.mode-standard .lobby-player-avatar.c-silver { border-color: #ff8c00; }
+body.mode-standard .board-chat-dot.c-silver { background: #ff8c00; }
+body.mode-standard .board-chat-name.c-silver,
+body.mode-standard .board-chat-mention.c-silver { color: #ffb366; }
+body.mode-standard .bomb-kill-glow.glow-c-silver { --glow-core: 255, 180, 80; --glow-halo: 230, 110, 20; }
 
 /* 3b. Black slot → PURPLE (#8e44ad). */
-body.mode-simple .pile-red {
+body.mode-standard .pile-red {
   background: rgba(142, 68, 173, 0.85);
   border-color: #a569c4;
   box-shadow:
     0 0 5px rgba(142, 68, 173, 0.7),
     inset 0 0 3px rgba(142, 68, 173, 0.3) !important;
 }
-body.mode-simple .owned-red {
+body.mode-standard .owned-red {
   border-color: #8e44ad !important;
   outline-color: rgba(142, 68, 173, 0.45);
   box-shadow:
     inset 0 0 6px rgba(142, 68, 173, 0.3),
     0 2px 6px rgba(0, 0, 0, 0.5),
     0 0 8px rgba(142, 68, 173, 0.35) !important;
-  animation: ownGlowSimplePurple 3s ease-in-out infinite alternate;
+  animation: ownGlowStdPurple 3s ease-in-out infinite alternate;
 }
-@keyframes ownGlowSimplePurple {
+@keyframes ownGlowStdPurple {
   from { box-shadow: inset 0 0 6px rgba(142, 68, 173, 0.3), 0 2px 6px rgba(0, 0, 0, 0.5), 0 0 8px rgba(142, 68, 173, 0.35); }
   to   { box-shadow: inset 0 0 10px rgba(142, 68, 173, 0.5), 0 2px 8px rgba(0, 0, 0, 0.55), 0 0 12px rgba(142, 68, 173, 0.5); }
 }
-body.mode-simple .c-red { background-color: #8e44ad; }
-body.mode-simple .lobby-player-avatar.c-red { border-color: #8e44ad; }
-body.mode-simple .board-chat-dot.c-red { background: #8e44ad; }
-body.mode-simple .board-chat-name.c-red,
-body.mode-simple .board-chat-mention.c-red { color: #c79be0; }
+body.mode-standard .c-red { background-color: #8e44ad; }
+body.mode-standard .lobby-player-avatar.c-red { border-color: #8e44ad; }
+body.mode-standard .board-chat-dot.c-red { background: #8e44ad; }
+body.mode-standard .board-chat-name.c-red,
+body.mode-standard .board-chat-mention.c-red { color: #c79be0; }
 
-/* ——— Simple-mode tile colour overrides ———————————————————————————————
-   Scoped to .board-mode-simple (set on #board and #board-preview when the
-   simple-mode layout is active) so classic-mode styling is untouched. */
+/* ——— Tile colour overrides ———————————————————————————————————————————
+   Scoped to .board-mode-standard (set on #board and #board-preview). */
 
 /* Hidden / unrevealed tiles: dark green with a bushy/grassy texture and
    bright white text. Layered gradients build the look:
@@ -13443,7 +13383,7 @@ body.mode-simple .board-chat-mention.c-red { color: #c79be0; }
    - A repeating diagonal gradient suggests grass-blade strokes.
    - A repeating conic-gradient adds finer leafy noise.
    - A base linear-gradient gives top-down lighting on a deep-green field. */
-.board-mode-simple .space.space-hidden {
+.board-mode-standard .space.space-hidden {
   background:
     radial-gradient(
       ellipse 60% 55% at 28% 32%,
@@ -13488,7 +13428,7 @@ body.mode-simple .board-chat-mention.c-red { color: #c79be0; }
     inset 0 0 14px rgba(0, 0, 0, 0.18),
     0 2px 6px rgba(0, 0, 0, 0.35);
 }
-.board-mode-simple .space.space-hidden .sname {
+.board-mode-standard .space.space-hidden .sname {
   color: #fff;
 }
 
@@ -13496,9 +13436,9 @@ body.mode-simple .board-chat-mention.c-red { color: #c79be0; }
    outer glow, which gets buried by the dark hidden-tile background and reads
    as a faint white halo. Override here with a strong colour wash so the chain
    animation visibly tints the cover in the activating player's colour as it
-   sweeps. Higher specificity than .board-mode-simple .space.space-hidden so
+   sweeps. Higher specificity than .board-mode-standard .space.space-hidden so
    the pulse styling wins. */
-.board-mode-simple .space.space-hidden.grow-pulse-on {
+.board-mode-standard .space.space-hidden.grow-pulse-on {
   border-color: var(--pulse-color, #ffe135);
   box-shadow:
     0 0 18px 6px var(--pulse-color, #ffe135),
@@ -13508,7 +13448,7 @@ body.mode-simple .board-chat-mention.c-red { color: #c79be0; }
 /* Tint the leafy texture itself with the pulse colour via a translucent
    ::before overlay set to mix-blend-mode: color so the bushy detail still
    shows through. */
-.board-mode-simple .space.space-hidden.grow-pulse-on::before {
+.board-mode-standard .space.space-hidden.grow-pulse-on::before {
   content: "";
   position: absolute;
   inset: 0;
@@ -13520,27 +13460,27 @@ body.mode-simple .board-chat-mention.c-red { color: #c79be0; }
   z-index: 1;
 }
 /* Make sure the hidden-tile label sits above the colour overlay. */
-.board-mode-simple .space.space-hidden.grow-pulse-on .sname {
+.board-mode-standard .space.space-hidden.grow-pulse-on .sname {
   position: relative;
   z-index: 2;
 }
 
-/* Simple-mode farm tiles: black text on the yellow farm background, instead
+/* Farm tiles: black text on the yellow farm background, instead
    of white. Both the tile's base colour and the F-number yield. */
-.board-mode-simple .space.g-simple,
-.board-mode-simple .space.g-simple .simple-yield {
+.board-mode-standard .space.g-farm,
+.board-mode-standard .space.g-farm .farm-yield {
   color: #000;
   text-shadow: none;
 }
 
-/* Simple-mode grow tiles: yellow text on the green corner background. The
-   .grow-yield span is only emitted for simple-mode grow tiles, so this rule
-   targets exactly those without leaking into classic. */
-.board-mode-simple .space.corner,
-.board-mode-simple .space.corner .grow-yield {
+/* Grow tiles: yellow text on the green corner background. The
+   .grow-yield span is only emitted for grow tiles, so this rule
+   targets exactly those. */
+.board-mode-standard .space.corner,
+.board-mode-standard .space.corner .grow-yield {
   color: #ffe135;
   text-shadow:
     0 1px 2px rgba(0, 0, 0, 0.55),
     0 0 4px rgba(0, 0, 0, 0.35);
 }
-body.mode-simple .bomb-kill-glow.glow-c-red { --glow-core: 210, 140, 255; --glow-halo: 140, 60, 220; }
+body.mode-standard .bomb-kill-glow.glow-c-red { --glow-core: 210, 140, 255; --glow-halo: 140, 60, 220; }

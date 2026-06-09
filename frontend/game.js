@@ -613,10 +613,10 @@ function initSocket() {
     gs = state;
     gameId = state.gameId;
     myId = socket.id;
-    // Simple mode re-skins the four player colours to Red/Green/Blue/Black
+    // Player colours are skinned Red/Green/Blue/Black
     // (scoped CSS overrides hang off this body class).
     document.body.classList.toggle(
-      "mode-simple",
+      "mode-standard",
       state.gameMode === "classic" || state.gameMode === "2v2",
     );
     // Sync no-timer toggle with server state
@@ -987,7 +987,7 @@ function showReveal() {
   overlay.innerHTML = "";
 
   const content = document.createElement("div");
-  content.className = "reveal-content reveal-content--simple";
+  content.className = "reveal-content reveal-content--farms";
 
   const title = document.createElement("div");
   title.className = "reveal-title";
@@ -999,7 +999,7 @@ function showReveal() {
   subtitle.textContent = "Here's every tile in this run \u2014 shuffled fresh.";
   content.appendChild(subtitle);
 
-  _renderSimpleReveal(content);
+  _renderRevealContent(content);
   _attachRevealCountdown(content, overlay);
 }
 
@@ -1041,9 +1041,9 @@ function _attachRevealCountdown(content, overlay) {
 
 // Reveal: 40 farms (F1\u2013F40), 6 grow tiles (G1\u2013G6), and 2 special tiles
 // (Super Banana, Desert).
-function _renderSimpleReveal(content) {
+function _renderRevealContent(content) {
   const tilesGrid = document.createElement("div");
-  tilesGrid.className = "reveal-grid reveal-grid--simple";
+  tilesGrid.className = "reveal-grid reveal-grid--farms";
 
   const farms = [];
   const grows = [];
@@ -1456,7 +1456,7 @@ const PET_NAMES = {
   magic: "Magic Pet",
 };
 
-// Simple mode renames the strong pet to "Magic Dice" everywhere it shows up.
+// The strong pet is displayed as "Magic Dice" everywhere it shows up.
 function petDisplayName(petType) {
   if (
     gs &&
@@ -1851,7 +1851,7 @@ function updateMagicDiceBox(me, isMyTurn) {
 function updateLobbyPets() {
   const petSection = document.getElementById("lobby-pet-section");
   if (!petSection || !gs) return;
-  // Simple modes auto-assign Magic Dice — hide the picker entirely.
+  // Magic Dice is auto-assigned — hide the picker entirely.
   if (gs.gameMode === "classic" || gs.gameMode === "2v2") {
     petSection.style.display = "none";
     return;
@@ -1870,7 +1870,7 @@ function updateLobbyPets() {
 
 function updatePetAbilityBox(me, isMyTurn) {
   const box = document.getElementById("pet-ability-box");
-  // Simple mode has no pet/cooldown UI here — Magic Dice is a won item shown in
+  // No pet/cooldown UI here — Magic Dice is a won item shown in
   // the "Your Special Items" box (see updateSpecialItems). Hide both panels.
   if (gs && (gs.gameMode === "classic" || gs.gameMode === "2v2")) {
     if (box) box.style.display = "none";
@@ -2153,7 +2153,7 @@ function _animateMoneyEl(el, targetVal, suffix) {
   el._moneyAnimFrame = requestAnimationFrame(tick);
 }
 
-// ── Slot-machine money wheel (simple modes) ───────────────────────
+// ── Slot-machine money wheel ───────────────────────
 //
 // Each digit position is its own reel: a vertical strip of digits that
 // slides through the visible 1-em-tall window. Gains spin the reels
@@ -2756,8 +2756,8 @@ function showGame() {
           const walkBackward = forwardDist > BSZ / 2 && backwardDist <= 3;
           const steps = walkBackward ? backwardDist : forwardDist || total;
           // Delay walk start when dice-match animation needs to play, and when
-          // an early-pickup floater is shown (including simple mode, which has
-          // no dice-match animation) so the pickup is visible before the walk.
+          // an early-pickup floater is shown, so the pickup is visible before
+          // the walk.
           // With a grow pulse in play the pulse drives the timing (grown piles
           // are gated until it sweeps; landing-grow piles reveal after arrival),
           // so skip the dice-match pre-walk pause.
@@ -3649,7 +3649,7 @@ function showGame() {
       const isMe = p.id === myId;
       div.className = "pstat" + (isMe ? " pstat-me" : "") + (p.ghost ? " pstat-ghost" : "");
       div.setAttribute("data-player-id", p.id);
-      // Simple mode has no cooldown pet (Magic Dice is a won consumable shown in
+      // No cooldown-pet badge (Magic Dice is a won consumable shown in
       // the Your Special Items box), so no pet badge is rendered there.
       const petCd = p.petCooldown > 0 ? p.petCooldown : "✓";
       const petTag =
@@ -3785,7 +3785,7 @@ function updateOwnerPanel() {
 // Groups sort by grow label (1-6); farms within a group sort by yield desc.
 function buildGrowGroupedProps(player) {
   const ownedIds = player.properties || [];
-  const N = (gs.boardLayout && gs.boardLayout.length) || 52;
+  const N = (gs.boardLayout && gs.boardLayout.length) || 48;
 
   // Current banana pile sitting on each tile (by board position), so each farm
   // row can show its to-be-collected bananas — like the monkeys-section pile.
@@ -4190,7 +4190,7 @@ function startGame() {
 function rollDice(diceCount) {
   const meNow = _gsPlayerMap[myId];
   const armed = (meNow && meNow.armedAbility) || null;
-  // Simple mode: a manual Roll with Roll One / Vine Swing armed triggers that
+  // A manual Roll with Roll One / Vine Swing armed triggers that
   // item instead of a normal roll. (Legacy key magicDice = Roll One.)
   if (
     diceCount === undefined &&
@@ -4567,7 +4567,7 @@ function updateAuctionPanel() {
     titleEl.textContent = a.sealedBid ? "🤫 SEALED BID 🤫" : "🏷️ PRICE IT 🏷️";
   box.style.display = "block";
 
-  // Only the lander sees the farm; in 2v2 simple the teammate also sees
+  // Only the lander sees the farm; in 2v2 the teammate also sees
   // it (the backend sets propName=null for opponents). Anyone who can see
   // propName here is allowed to — the backend already gated visibility per
   // viewer.
@@ -4586,8 +4586,8 @@ function updateAuctionPanel() {
   }
 
   const highEl = document.getElementById("auction-high");
-  const simpleControls = document.getElementById("simple-auction-controls");
-  if (simpleControls) simpleControls.style.display = "none";
+  const respondControls = document.getElementById("auction-respond-controls");
+  if (respondControls) respondControls.style.display = "none";
   const controls = document.getElementById("auction-controls");
   const timerWrap = document.getElementById("auction-timer-wrap");
   if (timerWrap) timerWrap.style.display = "none";
@@ -4626,9 +4626,9 @@ function updateAuctionPanel() {
         ? Math.max(0, a.respondStartTime + 5000 - Date.now())
         : 0;
       highEl.textContent = `Priced at ${a.landerOpenBid}🍌 — accept or reject. Your choice stays hidden.`;
-      if (simpleControls) {
-        simpleControls.style.display = "flex";
-        const acceptBtn = simpleControls.querySelector(".btn-accept");
+      if (respondControls) {
+        respondControls.style.display = "flex";
+        const acceptBtn = respondControls.querySelector(".btn-accept");
         if (acceptBtn) {
           if (teammateDelay > 0) {
             acceptBtn.disabled = true;
@@ -5588,7 +5588,7 @@ function toggleModeSettings() {
     bananasEl.value = 333;
     if (bananasDisp) bananasDisp.textContent = bananasEl.value;
   }
-  // 2v2 simple bumps bomb cost to 1000 by default; solo simple stays 666.
+  // 2v2 bumps bomb cost to 1000 by default; classic stays 666.
   const bombCostEl = document.getElementById("create-bomb-cost");
   if (bombCostEl) {
     bombCostEl.value = isTeams ? 1000 : 666;
@@ -5735,7 +5735,7 @@ function hideAbilityTargetBanner() {
   if (banner) banner.style.display = "none";
 }
 
-// Item-ability reference popover (simple mode), opened by clicking the
+// Item-ability reference popover, opened by clicking the
 // board-center auction counter. Pass `false` to force-close, or the click
 // event to toggle. Closes on outside click or Escape.
 function toggleAbilitiesPopover(arg) {
@@ -7551,7 +7551,7 @@ function closeBoardPreview() {
 
 function shuffleBoardPreview() {
   playShuffleSound();
-  _previewLayout = buildSimplePreviewLayout();
+  _previewLayout = buildPreviewLayout();
   renderPreviewBoard(_previewLayout);
 }
 
@@ -7729,12 +7729,12 @@ const TUTORIAL_STEPS = [
       return `
         <div class="tut-icon">🍍💣</div>
         <h2>Pineapple Bombs</h2>
-        <p>Buy a bomb for <span class="tut-highlight">666 bananas</span> (or 1000 in 2v2 simple teams) and plant it on any tile.</p>
+        <p>Buy a bomb for <span class="tut-highlight">666 bananas</span> (or 1000 in 2v2) and plant it on any tile.</p>
         <p>An enemy landing on it triggers a <strong>BOOM!</strong> across the entire 12-tile side — everyone on that side <span style="color:#e74c3c;font-weight:700;">goes down</span>.</p>
         <div style="text-align:center;font-size:2em;margin:10px 0;animation:pulse 1.5s infinite;">🍍💥🐒</div>
         <p>Key bomb rules:</p>
         <p>💣 You're <span class="tut-highlight">immune</span> to your own bomb — walking back onto it defuses it</p>
-        <p>💣 In 2v2 simple teams, your teammate can also defuse it</p>
+        <p>💣 In 2v2, your teammate can also defuse it</p>
         <p>💣 Bombs expire after 8 turns if nobody triggers them</p>
         <p>💣 Successful enemy kills transfer their farms + bananas to the bomber</p>
         <div class="tut-tip"><strong>Strategy:</strong> Place bombs on sides loaded with enemy farms to maximize collateral damage.</div>`;

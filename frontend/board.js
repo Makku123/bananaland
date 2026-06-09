@@ -241,16 +241,12 @@ let _wasTokenWalking = false; // tracks previous walk state to detect walk-start
 
 // ——— Dice-match grow: track which tile set has already been animated ——
 
-// ——— Chain multiplier cache ——————————————————————————————————————————
-let _chainCache = null;     // { multipliers: {pos: mult}, key: string }
-
 // ——— Reset all between-game animation state (call when returning to lobby) ———
 function resetBoardAnimationState() {
   _prevBananaPiles = {};
   _stealShown = new Set();
   _collectShown = new Set();
   _wasTokenWalking = false;
-  _chainCache = null;
   window._lastGrowFiredKey = null;
   // sale_completed sets _pendingSaleFlash and the next renderBoard consumes
   // it; if the player bounces to the lobby before that render, the flag would
@@ -289,7 +285,7 @@ function _setupBoardDelegation() {
     if (isNaN(i)) return;
     const gs = window._gs;
     if (!gs) return;
-    // Simple mode: pick starting tile on first turn
+    // Pick starting tile on first turn
     if (
       (gs.gameMode === "classic" || gs.gameMode === "2v2") &&
       gs.currentPlayer &&
@@ -413,14 +409,14 @@ function walkStepUpdate(gs) {
         } else if (window._tokenVisitedTiles && window._tokenVisitedTiles.has(i)) {
           const isOwn = prop && prop.owner === window._walkingPlayerId;
           const isLanding = i === window._walkingLandingPos;
-          // Simple mode: landing on an OPPONENT's farm no longer collects its
+          // Landing on an OPPONENT's farm no longer collects its
           // pile — the steal is deferred until you LEAVE. Keep the pile
           // visible on arrival instead of clearing it and snapping it back
           // at walk-end.
-          const simpleDeferLanding =
+          const deferLandingSteal =
             gs && (gs.gameMode === "classic" || gs.gameMode === "2v2") && isLanding &&
             prop && prop.owner && prop.owner !== window._walkingPlayerId;
-          if ((isOwn || isLanding) && !simpleDeferLanding) {
+          if ((isOwn || isLanding) && !deferLandingSteal) {
             pileAmount = 0;
           } else {
             pileAmount = frozenVal;
@@ -652,7 +648,7 @@ function renderBoard(gs) {
   const _bombWasPendingThisFrame =
     !!(gs && gs.lastExplosion && !window._explosionShown);
   const board = document.getElementById("board");
-  if (board) board.classList.add("board-mode-simple");
+  if (board) board.classList.add("board-mode-standard");
   _setupBoardDelegation();
   // Preserve overlays across re-renders
   const chat = document.getElementById("board-chat");
@@ -749,56 +745,7 @@ function renderBoard(gs) {
     }
   }
 
-  // Compute chain multipliers (cached — only recompute when ownership changes)
-  // Build a key from owned tile positions to detect changes
-  let _chainMultipliers;
-  const _isSimpleMode = gs && (gs.gameMode === "classic" || gs.gameMode === "2v2");
-  if (gs && gs.properties && !_isSimpleMode) {
-    let chainKey = "";
-    for (const prop of gs.properties) {
-      if (prop.owner) chainKey += prop.id + ":" + prop.owner + ",";
-    }
-    if (_chainCache && _chainCache.key === chainKey) {
-      _chainMultipliers = _chainCache.multipliers;
-    } else {
-      _chainMultipliers = {};
-      const ownerPositions = {};
-      for (const prop of gs.properties) {
-        if (prop.owner && prop.group && prop.group !== "desert" && prop.group !== "superBanana") {
-          if (!ownerPositions[prop.owner]) ownerPositions[prop.owner] = [];
-          ownerPositions[prop.owner].push(prop);
-        }
-      }
-      for (const ownerId of Object.keys(ownerPositions)) {
-        const props = ownerPositions[ownerId];
-        const posSet = new Set(props.map((p) => p.id));
-        const visited = new Set();
-        for (const prop of props) {
-          if (visited.has(prop.id)) continue;
-          const chain = [];
-          const queue = [prop.id];
-          visited.add(prop.id);
-          while (queue.length > 0) {
-            const cur = queue.shift();
-            chain.push(cur);
-            const prev = (cur - 1 + 52) % 52;
-            const next = (cur + 1) % 52;
-            for (const n of [prev, next]) {
-              if (visited.has(n) || !posSet.has(n)) continue;
-              const nProp = _propById[n];
-              if (!nProp || nProp.group !== prop.group) continue;
-              visited.add(n);
-              queue.push(n);
-            }
-          }
-          for (const c of chain) _chainMultipliers[c] = chain.length;
-        }
-      }
-      _chainCache = { multipliers: _chainMultipliers, key: chainKey };
-    }
-  } else {
-    _chainMultipliers = {};
-  }
+  const _chainMultipliers = {};
 
   // start pick: tiles already occupied by another player can't be picked.
   const _occupiedPositions = new Set();
@@ -840,7 +787,7 @@ function renderBoard(gs) {
   let growGlowSet = null;
   if (
     gs &&
-    // Simple mode: the grow PULSE lights the grow tile itself, at the right
+    // The grow PULSE lights the grow tile itself, at the right
     // moment (when its chain fires / when you land on it), so don't auto-glow
     // it here — that made a grow you're about to land on glow during the walk.
     gs.gameMode !== "classic" &&
@@ -878,7 +825,7 @@ function renderBoard(gs) {
         myRevealed.has(i) ||
         (typeof revealAll !== "undefined" && revealAll));
 
-    // Simple mode start-pick: current player can click ANY tile to land there.
+    // Start pick: current player can click ANY tile to land there.
     const startPickActive =
       gs &&
       (gs.gameMode === "classic" || gs.gameMode === "2v2") &&
@@ -955,7 +902,7 @@ function renderBoard(gs) {
 
       if (isCorner) {
         el.classList.add("corner");
-        // Simple mode: grow tiles show only their number (0-7), not "GROW N".
+        // Grow tiles show only their number (0-7), not "GROW N".
         if (gs && (gs.gameMode === "classic" || gs.gameMode === "2v2") && tile.growLabel != null) {
           el.innerHTML = `<span class="grow-yield">G${tile.growLabel}</span>`;
         } else {
@@ -974,9 +921,9 @@ function renderBoard(gs) {
         // Buyable tile (property, railroad, utility)
         const label = tile.tileLabel || tile.tileName;
         if (tile.group === "farm") {
-          // Simple mode: each farm tile shows its own yield in large white text.
-          el.classList.add("g-simple");
-          el.innerHTML = `<span class="simple-yield">F${tile.price}</span>`;
+          // Each farm tile shows its own yield in large white text.
+          el.classList.add("g-farm");
+          el.innerHTML = `<span class="farm-yield">F${tile.price}</span>`;
         } else if (tile.group === "desert") {
           el.classList.add("type-desert");
           el.innerHTML = `<span class="sname desert-icon">${tile.tileName}</span>`;
@@ -1079,14 +1026,14 @@ function renderBoard(gs) {
           // Token walked past this tile — collect visually (overrides dice-match display)
           const isOwn = prop && prop.owner === window._walkingPlayerId;
           const isLanding = i === window._walkingLandingPos;
-          // Simple mode: landing on an OPPONENT's farm no longer collects its
+          // Landing on an OPPONENT's farm no longer collects its
           // pile — the steal is deferred until you LEAVE. Keep the pile
           // visible on arrival instead of clearing it and snapping it back
           // at walk-end.
-          const simpleDeferLanding =
+          const deferLandingSteal =
             gs && (gs.gameMode === "classic" || gs.gameMode === "2v2") && isLanding &&
             prop && prop.owner && prop.owner !== window._walkingPlayerId;
-          if ((isOwn || isLanding) && !simpleDeferLanding) {
+          if ((isOwn || isLanding) && !deferLandingSteal) {
             pileAmount = 0;
           } else {
             pileAmount = frozenVal;
@@ -1826,7 +1773,7 @@ function renderBoard(gs) {
     gs.players.forEach((p) => {
       const chainHeld = heldByChain && heldByChain.has(p.id);
       if (p.bankrupt && !bombPendingExplosion && !chainHeld) return;
-      // Simple mode: hide tokens for players who haven't taken their start pick yet.
+      // Hide tokens for players who haven't taken their start pick yet.
       if (p.startPickPending) return;
       const pos =
         frozenPos && frozenPos[p.id] != null ? frozenPos[p.id] : p.position;
@@ -1984,7 +1931,7 @@ function updateSellHighlights() {
 // 40 farms with yields 1..40 (shown as F1..F40), 6 GROW tiles (labelled 1-6
 // like in play), 1 Super Banana (777🍌), and 1 Desert (an inert cactus tile).
 // No tax, no Vine Swing tile (it's an ability now), no corners. All shuffled.
-function buildSimplePreviewLayout() {
+function buildPreviewLayout() {
   const allTiles = [];
   for (let i = 0; i < 40; i++) {
     allTiles.push({
@@ -2035,7 +1982,7 @@ function renderPreviewTileList(layout) {
 
   // The board has a single "farm" group.
   if (layout.some((t) => t.group === "farm")) {
-    renderSimplePreviewTileList(layout, panel);
+    renderPreviewTileList(layout, panel);
     return;
   }
 
@@ -2196,7 +2143,7 @@ function renderPreviewTileList(layout) {
 
 // Tile list panel for the board variation: 40 farms (compact yield
 // grid), 6 GROW tiles (1-6), and the 2 special tiles.
-function renderSimplePreviewTileList(layout, panel) {
+function renderPreviewTileList(layout, panel) {
   const farms = layout
     .filter((t) => t.group === "farm")
     .sort((a, b) => a.price - b.price);
@@ -2288,7 +2235,7 @@ function renderPreviewBoard(layout) {
 
   // Mirror the live board: tag the preview with the mode class so the
   // tile colour rules apply here too (hidden cover, farm/grow text).
-  board.classList.add("board-mode-simple");
+  board.classList.add("board-mode-standard");
   for (let i = 0; i < layout.length; i++) {
     const el = document.createElement("div");
     el.className = "space";
@@ -2312,8 +2259,8 @@ function renderPreviewBoard(layout) {
     } else if (tile.tileName) {
       const label = tile.tileLabel || tile.tileName;
       if (tile.group === "farm") {
-        el.classList.add("g-simple");
-        el.innerHTML = `<span class="simple-yield">F${tile.price}</span>`;
+        el.classList.add("g-farm");
+        el.innerHTML = `<span class="farm-yield">F${tile.price}</span>`;
       } else if (tile.group === "desert") {
         el.classList.add("type-desert");
         el.innerHTML =

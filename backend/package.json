@@ -1,7 +1,7 @@
 {
-  "name": "monopoly-server",
+  "name": "monkey-business-server",
   "version": "1.0.0",
-  "description": "Online multiplayer Monopoly game server",
+  "description": "Monkey Business — online multiplayer board game server",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
