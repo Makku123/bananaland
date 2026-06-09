@@ -520,6 +520,14 @@ function initSocket() {
   socket = io();
   myId = socket.id; // will be set after connect
 
+  socket.on("server_info", (info) => {
+    if (!info || info.debugTools !== false) return;
+    const t = document.getElementById("debug-toggle");
+    const w = document.getElementById("debug-window");
+    if (t) t.style.display = "none";
+    if (w) w.classList.add("debug-window-hidden");
+  });
+
   socket.on("connect", () => {
     myId = socket.id;
     // Authenticate socket if user is logged in
@@ -4220,7 +4228,8 @@ function rollDice(diceCount) {
 
 function debugMove() {
   const pos = parseInt(document.getElementById("debug-tile").value);
-  if (isNaN(pos) || pos < 0 || pos > 51) return;
+  const max = ((gs && gs.boardLayout) || []).length || 48;
+  if (isNaN(pos) || pos < 0 || pos >= max) return;
   socket.emit("debug_move", { gameId, position: pos });
 }
 

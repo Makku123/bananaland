@@ -2106,12 +2106,6 @@ class MonkeyBusinessGame {
     });
   }
 
-  // Special items are won via the item auction only — there is no shop. Kept as
-  // a no-op so the legacy buy_card socket event does nothing.
-  buyCard() {
-    return false;
-  }
-
   // Arm a special item so it fires when the next roll happens. Allowed at any
   // point in the game EXCEPT during the first-pick phase. If armed mid-turn
   // after the player has already rolled, the item just persists across endTurn

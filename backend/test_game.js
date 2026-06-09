@@ -3319,11 +3319,6 @@ section("78. Classic - Dice never cost money; shop & item-pool are item-only");
   assert(game._resolveDiceCount(p, 1) === 1 && p.money === 5000, "Turtle roll (1 die) never charges money");
   assert(game._resolveDiceCount(p, 3) === 3 && p.money === 5000, "Rabbit roll (3 dice) never charges money");
   assert(game._resolveDiceCount(p, undefined) === 2 && p.money === 5000, "Default 2d6 is free");
-  // The shop is gone — buyCard is a no-op and never grants an item or spends money.
-  p.money = 5000;
-  p.cards.rabbitDice = 0;
-  assert(game.buyCard(p.id, "rabbitDice") === false, "buyCard is a no-op (no shop)");
-  assert(p.cards.rabbitDice === 0 && p.money === 5000, "buyCard grants nothing and charges nothing");
   // The item-auction pool only spins the four current items.
   game._itemAuctionStarterId = p.id;
   game._startItemAuction();
@@ -3469,4 +3464,9 @@ console.log(`\n${"=".repeat(50)}`);
 console.log(`TEST RESULTS: ${passed} passed, ${failed} failed`);
 console.log(`${"=".repeat(50)}`);
 
-if (failures.lengt
+if (failures.length > 0) {
+  console.log("\nFailed tests:");
+  failures.forEach((f, i) => console.log(`  ${i + 1}. ${f}`));
+}
+
+process.exit(failed > 0 ? 1 : 0);

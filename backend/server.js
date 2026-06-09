@@ -203,7 +203,11 @@ function emitGameUpdate(gameId, game) {
   }
 }
 
+// Debug socket events are only wired up outside production.
+const DEBUG_TOOLS = process.env.NODE_ENV !== "production";
+
 io.on("connection", (socket) => {
+  socket.emit("server_info", { debugTools: DEBUG_TOOLS });
   let currentGameId = null;
 
   // ── Authenticate socket (optional — guests skip this) ────────
@@ -535,15 +539,6 @@ io.on("connection", (socket) => {
     }
   });
 
-  // ── Buy a card (500🍌) ───────────────────────────────────────
-  socket.on("buy_card", (data) => {
-    const game = games.get(data.gameId);
-    if (!game) return;
-    if (game.buyCard(socket.id, data.cardType)) {
-      emitGameUpdate(data.gameId, game);
-    }
-  });
-
   // ── Arm a special item for your next turn ───────────────────────
   socket.on("arm_ability", (data) => {
     const game = games.get(data.gameId);
@@ -606,56 +601,58 @@ io.on("connection", (socket) => {
     }
   });
 
-  // ── Debug: teleport to tile ──────────────────────────────────
-  socket.on("debug_move", (data) => {
-    const game = games.get(data.gameId);
-    if (!game) return;
-    const result = game.debugMove(socket.id, data.position);
-    if (result) {
-      emitGameUpdate(data.gameId, game);
-      if (game.superBananaPending) {
-        // Only this exact pending may be auto-resolved (avoid a stale timer
-        // force-hiding a later, different Super Banana relocation).
-        const pendingRef = game.superBananaPending;
-        setTimeout(() => {
-          if (
-            game.superBananaPending === pendingRef &&
-            game.superBananaPending.awaitingPick
-          ) {
-            game.forceSuperBananaSwap();
-            emitGameUpdate(data.gameId, game);
-          }
-        }, 30000);
+  if (DEBUG_TOOLS) {
+    // ── Debug: teleport to tile ──────────────────────────────────
+    socket.on("debug_move", (data) => {
+      const game = games.get(data.gameId);
+      if (!game) return;
+      const result = game.debugMove(socket.id, data.position);
+      if (result) {
+        emitGameUpdate(data.gameId, game);
+        if (game.superBananaPending) {
+          // Only this exact pending may be auto-resolved (avoid a stale timer
+          // force-hiding a later, different Super Banana relocation).
+          const pendingRef = game.superBananaPending;
+          setTimeout(() => {
+            if (
+              game.superBananaPending === pendingRef &&
+              game.superBananaPending.awaitingPick
+            ) {
+              game.forceSuperBananaSwap();
+              emitGameUpdate(data.gameId, game);
+            }
+          }, 30000);
+        }
       }
-    }
-  });
+    });
 
-  // ── Debug: reshuffle board ─────────────────────────────────
-  socket.on("debug_shuffle", (data) => {
-    const game = games.get(data.gameId);
-    if (!game) return;
-    if (game.debugShuffle()) {
-      emitGameUpdate(data.gameId, game);
-    }
-  });
+    // ── Debug: reshuffle board ─────────────────────────────────
+    socket.on("debug_shuffle", (data) => {
+      const game = games.get(data.gameId);
+      if (!game) return;
+      if (game.debugShuffle()) {
+        emitGameUpdate(data.gameId, game);
+      }
+    });
 
-  // ── Debug: reset pet cooldown ──────────────────────────────
-  socket.on("debug_reset_pet", (data) => {
-    const game = games.get(data.gameId);
-    if (!game) return;
-    if (game.debugResetPetCooldown(socket.id)) {
-      emitGameUpdate(data.gameId, game);
-    }
-  });
+    // ── Debug: reset pet cooldown ──────────────────────────────
+    socket.on("debug_reset_pet", (data) => {
+      const game = games.get(data.gameId);
+      if (!game) return;
+      if (game.debugResetPetCooldown(socket.id)) {
+        emitGameUpdate(data.gameId, game);
+      }
+    });
 
-  // ── Debug: add bananas ─────────────────────────────────────────
-  socket.on("debug_add_bananas", (data) => {
-    const game = games.get(data.gameId);
-    if (!game) return;
-    if (game.debugAddBananas(socket.id)) {
-      emitGameUpdate(data.gameId, game);
-    }
-  });
+    // ── Debug: add bananas ─────────────────────────────────────────
+    socket.on("debug_add_bananas", (data) => {
+      const game = games.get(data.gameId);
+      if (!game) return;
+      if (game.debugAddBananas(socket.id)) {
+        emitGameUpdate(data.gameId, game);
+      }
+    });
+  }
 
   // ── Start Auction ─────────────────────────────────────────────
   socket.on("start_auction", (data) => {
