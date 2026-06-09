@@ -1284,15 +1284,12 @@ section("44. Bomb Timer Ticking");
   game.bombs.push({ placedBy: "p0", position: 10, turnsLeft: 3 });
 
   const cur = game.getCurrentPlayer();
-  game.rollDice(cur.id);
-  game._cancelAutoEnd();
+  // No real roll: a random roll can land on the (shuffled) Super Banana and
+  // win, blocking endTurn. Ticking only needs a legal endTurn.
+  game.diceRolled = true;
   game.endTurn(cur.id);
 
-  // The bomb may detonate or be defused during the roll/endTurn cycle; only
-  // assert the timer if it's still on the board.
-  if (game.bombs[0]) {
-    assert(game.bombs[0].turnsLeft === 2, "Bomb timer ticks down on end turn");
-  }
+  assert(game.bombs[0].turnsLeft === 2, "Bomb timer ticks down on end turn");
 }
 
 // ============================================================
@@ -3191,7 +3188,10 @@ section("77b. Classic - Grow fires on the dice SUM, not the faces");
     }
     const fp = game.properties.get(farmPos);
     fp.owner = cur.id; cur.properties = [farmPos];
-    cur.position = (growPos + 2) % game.boardSize;
+    // Stand on the grow tile itself — (growPos + 2) can be the farm when the
+    // shuffle puts a non-farm at growPos + 1, and standing on your own farm
+    // early-picks the growth, leaving the pile at 0.
+    cur.position = growPos;
     for (const p of game.players) if (p.id !== cur.id) p.position = (growPos + 24) % game.boardSize;
 
     // A SUM of 5 fires G5.
