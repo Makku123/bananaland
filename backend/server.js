@@ -247,12 +247,6 @@ io.on("connection", (socket) => {
         99999,
       );
     }
-    if (data.freeBananasAmount != null) {
-      game.freeBananasAmount = Math.min(
-        Math.max(Math.floor(data.freeBananasAmount) || 25, 1),
-        9999,
-      );
-    }
     if (data.farmAuctionTimer != null) {
       game.farmAuctionTimer = Math.min(
         Math.max(Math.floor(data.farmAuctionTimer) || 15, 5),
@@ -260,7 +254,7 @@ io.on("connection", (socket) => {
       );
     }
 
-    const player = game.addPlayer(socket.id, data.playerName);
+    const player = game.addPlayer(socket.id, data.playerName, data.clientId);
     if (!player || player.error)
       return socket.emit("game_error", { message: "Failed to create game." });
 
@@ -274,8 +268,19 @@ io.on("connection", (socket) => {
     const game = games.get(data.gameId);
     if (!game) return socket.emit("game_error", { message: "Game not found." });
 
-    const player = game.addPlayer(socket.id, data.playerName);
+    const player = game.addPlayer(socket.id, data.playerName, data.clientId);
     if (player && player.error) {
+      // Game already in progress: this may be a reconnect — if their device id
+      // matches a ghost, hand them back control of it instead of erroring.
+      if (player.error === "already_started" && data.clientId) {
+        const rejoined = game.reconnectByClientId(socket.id, data.clientId);
+        if (rejoined) {
+          currentGameId = data.gameId;
+          socket.join(data.gameId);
+          emitGameUpdate(data.gameId, game);
+          return;
+        }
+      }
       const msg = player.error === "full"
         ? "This game is full. Please try joining another game or create your own!"
         : "This game has already started. Please try joining another game or create your own!";
@@ -466,16 +471,34 @@ io.on("connection", (socket) => {
     if (game.pickStartTile(socket.id, data.position)) {
       emitGameUpdate(data.gameId, game);
       // First-turn pick can land on the Super Banana; if the player can't
-      // afford it a swap is queued. Complete it like every other handler,
-      // otherwise the turn never ends and the game hangs.
-      if (game.mushroomPending) {
+      // afford it they must hide it on a tile of their choice. Arm the AFK
+      // fallback so the turn never hangs if they don't pick.
+      if (game.superBananaPending) {
+        // Only this exact pending may be auto-resolved (avoid a stale timer
+        // force-hiding a later, different Super Banana relocation).
+        const pendingRef = game.superBananaPending;
         setTimeout(() => {
-          if (game.mushroomPending) {
-            game.completeMushroomSwap();
+          if (
+            game.superBananaPending === pendingRef &&
+            game.superBananaPending.awaitingPick
+          ) {
+            game.forceSuperBananaSwap();
             emitGameUpdate(data.gameId, game);
           }
-        }, 7000);
+        }, 30000);
       }
+    }
+  });
+
+  // ── Simple mode: hide the Super Banana on a chosen tile ──────
+  // When a player can't afford the Super Banana, they pick which hidden tile
+  // to hide it under (instead of a random swap). Only the landing player may
+  // pick; the swap completes immediately and the rainbow hint is set for them.
+  socket.on("pick_super_banana_swap", (data) => {
+    const game = games.get(data.gameId);
+    if (!game) return;
+    if (game.pickSuperBananaSwap(socket.id, data.position)) {
+      emitGameUpdate(data.gameId, game);
     }
   });
 
@@ -486,13 +509,19 @@ io.on("connection", (socket) => {
     const result = game.useMagicDice(socket.id, data.steps);
     if (result) {
       emitGameUpdate(data.gameId, game);
-      if (game.mushroomPending) {
+      if (game.superBananaPending) {
+        // Only this exact pending may be auto-resolved (avoid a stale timer
+        // force-hiding a later, different Super Banana relocation).
+        const pendingRef = game.superBananaPending;
         setTimeout(() => {
-          if (game.mushroomPending) {
-            game.completeMushroomSwap();
+          if (
+            game.superBananaPending === pendingRef &&
+            game.superBananaPending.awaitingPick
+          ) {
+            game.forceSuperBananaSwap();
             emitGameUpdate(data.gameId, game);
           }
-        }, 7000);
+        }, 30000);
       }
     }
   });
@@ -532,13 +561,19 @@ io.on("connection", (socket) => {
     const result = game.useCard(socket.id, data.cardType, data);
     if (result) {
       emitGameUpdate(data.gameId, game);
-      if (game.mushroomPending) {
+      if (game.superBananaPending) {
+        // Only this exact pending may be auto-resolved (avoid a stale timer
+        // force-hiding a later, different Super Banana relocation).
+        const pendingRef = game.superBananaPending;
         setTimeout(() => {
-          if (game.mushroomPending) {
-            game.completeMushroomSwap();
+          if (
+            game.superBananaPending === pendingRef &&
+            game.superBananaPending.awaitingPick
+          ) {
+            game.forceSuperBananaSwap();
             emitGameUpdate(data.gameId, game);
           }
-        }, 7000);
+        }, 30000);
       }
     }
   });
@@ -554,13 +589,19 @@ io.on("connection", (socket) => {
     );
     if (result) {
       emitGameUpdate(data.gameId, game);
-      if (game.mushroomPending) {
+      if (game.superBananaPending) {
+        // Only this exact pending may be auto-resolved (avoid a stale timer
+        // force-hiding a later, different Super Banana relocation).
+        const pendingRef = game.superBananaPending;
         setTimeout(() => {
-          if (game.mushroomPending) {
-            game.completeMushroomSwap();
+          if (
+            game.superBananaPending === pendingRef &&
+            game.superBananaPending.awaitingPick
+          ) {
+            game.forceSuperBananaSwap();
             emitGameUpdate(data.gameId, game);
           }
-        }, 7000);
+        }, 30000);
       }
     }
   });
@@ -572,13 +613,19 @@ io.on("connection", (socket) => {
     const result = game.debugMove(socket.id, data.position);
     if (result) {
       emitGameUpdate(data.gameId, game);
-      if (game.mushroomPending) {
+      if (game.superBananaPending) {
+        // Only this exact pending may be auto-resolved (avoid a stale timer
+        // force-hiding a later, different Super Banana relocation).
+        const pendingRef = game.superBananaPending;
         setTimeout(() => {
-          if (game.mushroomPending) {
-            game.completeMushroomSwap();
+          if (
+            game.superBananaPending === pendingRef &&
+            game.superBananaPending.awaitingPick
+          ) {
+            game.forceSuperBananaSwap();
             emitGameUpdate(data.gameId, game);
           }
-        }, 7000);
+        }, 30000);
       }
     }
   });
@@ -624,6 +671,15 @@ io.on("connection", (socket) => {
     const game = games.get(data.gameId);
     if (!game) return;
     if (game.placeBid(socket.id, data.amount)) {
+      emitGameUpdate(data.gameId, game);
+    }
+  });
+
+  // ── Buy Now (richest lander skips the auction) ───────────────
+  socket.on("auction_buy_now", (data) => {
+    const game = games.get(data.gameId);
+    if (!game) return;
+    if (game.auctionBuyNow(socket.id)) {
       emitGameUpdate(data.gameId, game);
     }
   });
@@ -831,7 +887,7 @@ io.on("connection", (socket) => {
           !gme.bananaLoser &&
           player.properties.some((pos) => {
             const prop = gme.properties.get(pos);
-            return prop && prop.group === "mushroom" && prop.owner === sid;
+            return prop && prop.group === "superBanana" && prop.owner === sid;
           })));
     auth.updateStats(userId, {
       gamesPlayed: 1,
@@ -849,36 +905,44 @@ io.on("connection", (socket) => {
     }
   });
 
+  // A mid-game departure (leave or disconnect) turns the player into a GHOST —
+  // the server keeps their monkey and auto-plays until they reconnect. Only a
+  // lobby (pre-game) departure removes them outright.
+  function departGame(game, sid, gameId) {
+    if (!game) return;
+    if (game.state === "playing" || game.state === "revealing") {
+      // Record stats once per player per game (a flaky connection can ghost +
+      // reconnect repeatedly — don't double-count).
+      const p = game.players.find((pl) => pl.id === sid);
+      if (p && !p._statsRecorded) {
+        trackPlayerStats(game, sid);
+        p._statsRecorded = true;
+      }
+      game.makeGhost(sid);
+      emitGameUpdate(gameId, game);
+      return;
+    }
+    if (game.state !== "waiting") trackPlayerStats(game, sid);
+    game.removePlayer(sid);
+    if (game.players.length === 0) {
+      if (typeof game.cleanup === "function") game.cleanup();
+      games.delete(gameId);
+    } else {
+      emitGameUpdate(gameId, game);
+    }
+  }
+
   socket.on("leave_game", (data) => {
     const game = games.get(data.gameId);
-    if (game) {
-      if (game.state !== "waiting") trackPlayerStats(game, socket.id);
-      game.removePlayer(socket.id);
-      socket.leave(data.gameId);
-      if (game.players.length === 0) {
-        if (typeof game.cleanup === "function") game.cleanup();
-        games.delete(data.gameId);
-      } else {
-        emitGameUpdate(data.gameId, game);
-      }
-    }
+    departGame(game, socket.id, data.gameId);
+    if (game) socket.leave(data.gameId);
     currentGameId = null;
   });
 
   socket.on("disconnect", () => {
     socketUserMap.delete(socket.id);
     if (!currentGameId) return;
-    const game = games.get(currentGameId);
-    if (game) {
-      if (game.state !== "waiting") trackPlayerStats(game, socket.id);
-      game.removePlayer(socket.id);
-      if (game.players.length === 0) {
-        if (typeof game.cleanup === "function") game.cleanup();
-        games.delete(currentGameId);
-      } else {
-        emitGameUpdate(currentGameId, game);
-      }
-    }
+    departGame(games.get(currentGameId), socket.id, currentGameId);
   });
 });
 

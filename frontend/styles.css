@@ -1962,7 +1962,7 @@ body {
   border-color: rgba(90, 138, 60, 0.35);
 }
 
-.reveal-tile-mushroom {
+.reveal-tile-super-banana {
   background: linear-gradient(160deg, #ffffff 0%, #e8e8e8 100%);
   border-color: rgba(255, 255, 255, 0.5);
   box-shadow:
@@ -2080,12 +2080,14 @@ body {
     0 0 4px rgba(0, 0, 0, 0.35);
 }
 
-/* Special tile rows: pill-shaped cards (icon + name) instead of square chips,
-   so +25 Free Bananas and Super Banana read clearly as their own category. */
-.reveal-group-tiles--specials {
+/* Pill-shaped tile rows (icon + name) instead of square chips. Shared by the
+   Super Banana (Special Tiles) and the Desert, which is its own category. */
+.reveal-group-tiles--specials,
+.reveal-group-tiles--desert {
   gap: 8px;
 }
-.reveal-tile--special {
+.reveal-tile--special,
+.reveal-tile--desert {
   width: auto;
   height: auto;
   flex-direction: row;
@@ -2094,11 +2096,13 @@ body {
   padding: 7px 14px;
   border-radius: 12px;
 }
-.reveal-tile--special .reveal-tile-icon {
+.reveal-tile--special .reveal-tile-icon,
+.reveal-tile--desert .reveal-tile-icon {
   font-size: 1.4em;
   line-height: 1;
 }
-.reveal-tile--special .reveal-tile-name {
+.reveal-tile--special .reveal-tile-name,
+.reveal-tile--desert .reveal-tile-name {
   font-family: "Baloo 2", "Fredoka", sans-serif;
   font-size: 0.92em;
   font-weight: 800;
@@ -2106,19 +2110,19 @@ body {
   color: #f4f0e0;
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.55);
 }
-.reveal-tile--freebananas {
+.reveal-tile--desert {
   background:
-    radial-gradient(ellipse at 30% 30%, rgba(255, 235, 100, 0.45), transparent 60%),
-    linear-gradient(135deg, #ffd633 0%, #d9a800 100%);
-  border-color: rgba(120, 80, 0, 0.5);
+    radial-gradient(ellipse at 30% 30%, rgba(255, 235, 180, 0.35), transparent 60%),
+    linear-gradient(135deg, #c4a468 0%, #8a7030 100%);
+  border-color: rgba(120, 95, 40, 0.5);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.35),
-    0 0 14px rgba(255, 214, 51, 0.25),
+    inset 0 1px 0 rgba(255, 255, 255, 0.25),
+    0 0 14px rgba(180, 140, 70, 0.2),
     0 2px 8px rgba(0, 0, 0, 0.35);
 }
-.reveal-tile--freebananas .reveal-tile-name {
-  color: #1a1a1a;
-  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.3);
+.reveal-tile--desert .reveal-tile-name {
+  color: #2a200c;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.25);
 }
 .reveal-tile--super {
   background:
@@ -2299,7 +2303,7 @@ body {
 .owner-prop-dot.g-darkblue {
   background: #a0a0a0;
 }
-.owner-prop-dot.g-mushroom {
+.owner-prop-dot.g-super-banana {
   background: linear-gradient(
     90deg,
     #ff6b6b,
@@ -3587,38 +3591,56 @@ body {
     filter: brightness(1.2) saturate(1.25);
   }
 }
-/* Scouted (peeked) tile: the real content shows through a translucent leafy
-   veil, so it reads as "seen but not truly discovered" — distinct from a fully
-   revealed tile (no veil) and a hidden tile (opaque .space-hidden cover). The
-   veil mirrors the hidden-cover gradient at ~half opacity. */
-.space.space-scouted::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  pointer-events: none;
-  z-index: 6;
+/* Super Banana hideout hint: shown ONLY to the player who last hid the Super
+   Banana (the server sends superBananaHintPos privately to that viewer). A
+   shimmering rainbow cover marks the hidden tile so they remember where they
+   stashed it, across turns, until it's found or hidden again. */
+.space.space-hidden.superbanana-hint {
   background:
-    radial-gradient(
-      circle at 35% 30%,
-      rgba(80, 160, 50, 0.18) 0%,
-      transparent 50%
-    ),
-    repeating-conic-gradient(
-      from 0deg at 50% 50%,
-      rgba(50, 120, 30, 0.10) 0deg 10deg,
-      transparent 10deg 20deg
-    ),
     linear-gradient(
-      160deg,
-      rgba(42, 122, 32, 0.52) 0%,
-      rgba(30, 96, 24, 0.48) 40%,
-      rgba(21, 74, 16, 0.48) 70%,
-      rgba(14, 52, 10, 0.5) 100%
-    );
+      115deg,
+      #ff5b5b 0%,
+      #ffac4d 16%,
+      #ffe24d 33%,
+      #5bd66e 50%,
+      #4db8ff 67%,
+      #b06bff 84%,
+      #ff5b5b 100%
+    ) !important;
+  background-size: 220% 220% !important;
+  color: rgba(255, 255, 255, 0.95);
+  border: 2px solid rgba(255, 255, 255, 0.85);
   box-shadow:
-    inset 0 0 12px rgba(0, 0, 0, 0.2),
-    inset 0 0 0 1px rgba(120, 200, 70, 0.25);
+    inset 0 0 14px rgba(255, 255, 255, 0.4),
+    0 0 16px 3px rgba(255, 255, 255, 0.4);
+  animation: superBananaHintShimmer 3s linear infinite;
+  z-index: 7;
+}
+.space.space-hidden.superbanana-hint .sname {
+  color: rgba(255, 255, 255, 0.95);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
+}
+@keyframes superBananaHintShimmer {
+  0% {
+    background-position: 0% 50%;
+  }
+  100% {
+    background-position: 220% 50%;
+  }
+}
+/* Hideout-pick targets get a purple Super-Banana-themed glow so the broke
+   lander can tell the "choose where to hide it" tiles apart from other picks. */
+.space.space-pickable.super-banana-pick-target {
+  outline-color: #e08bff;
+  animation: superBananaPickGlow 1.1s ease-in-out infinite alternate;
+}
+@keyframes superBananaPickGlow {
+  from {
+    outline-color: #e08bff;
+  }
+  to {
+    outline-color: #7a2d9b;
+  }
 }
 .space.corner {
   background:
@@ -4047,7 +4069,7 @@ body {
   backdrop-filter: blur(6px);
 }
 
-.mushroom-notification {
+.super-banana-notification {
   display: none;
   position: absolute;
   top: 50%;
@@ -4344,31 +4366,6 @@ body {
   backdrop-filter: blur(4px);
 }
 
-.bomb-self-notification {
-  display: none;
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  z-index: 103;
-  font-family: "Baloo 2", "Fredoka", sans-serif;
-  font-size: 26px;
-  font-weight: 700;
-  color: #ff4444;
-  background: linear-gradient(135deg, #1a0a0a 0%, #3a1515 50%, #2a0e0e 100%);
-  border: 3px solid rgba(255, 68, 68, 0.7);
-  border-radius: 18px;
-  padding: 16px 36px;
-  text-align: center;
-  box-shadow:
-    0 0 40px rgba(255, 68, 68, 0.35),
-    0 0 80px rgba(255, 68, 68, 0.1),
-    inset 0 1px 0 rgba(255, 255, 255, 0.1);
-  animation: turnPulse 0.6s ease-out;
-  pointer-events: none;
-  backdrop-filter: blur(4px);
-}
-
 .bomb-win-notification {
   display: none;
   position: absolute;
@@ -4611,80 +4608,6 @@ body {
     linear-gradient(160deg, #4a4030 0%, #302820 100%);
   color: #fff;
   border-color: rgba(100, 80, 40, 0.3);
-}
-.space.type-freebananas {
-  background:
-    radial-gradient(
-      circle at 50% 50%,
-      rgba(255, 220, 50, 0.25) 0%,
-      transparent 70%
-    ),
-    linear-gradient(160deg, #4a3a10 0%, #2a2008 100%);
-  color: #ffe066;
-  border-color: rgba(255, 220, 50, 0.4);
-  font-size: 1.1em;
-}
-/* Free Bananas tile triggers: a bright golden flash plus a pronounced
-   multi-oscillation bounce when a player crosses or lands on it. Fires once;
-   the .freebananas-triggered class is added in board.js exactly when the
-   +25 / +500 floater is shown, so the source of the bananas reads clearly
-   on the board. ~1s total — bounce curve mirrors the farm-pile bobble so it
-   feels coherent with other growth feedback. */
-.space.type-freebananas.freebananas-triggered {
-  animation: freebananasTriggeredPulse 1s ease-out 1;
-  z-index: 8;
-}
-@keyframes freebananasTriggeredPulse {
-  0% {
-    transform: scale(1);
-    filter: brightness(1);
-    box-shadow:
-      0 0 0 0 rgba(255, 220, 60, 0.7),
-      inset 0 0 0 0 rgba(255, 240, 120, 0);
-  }
-  18% {
-    transform: scale(1.32);
-    filter: brightness(1.6) saturate(1.5);
-    box-shadow:
-      0 0 32px 12px rgba(255, 220, 60, 0.9),
-      0 0 64px 20px rgba(255, 200, 30, 0.5),
-      inset 0 0 22px 8px rgba(255, 245, 150, 0.6);
-  }
-  36% {
-    transform: scale(0.92);
-    filter: brightness(1.3) saturate(1.3);
-    box-shadow:
-      0 0 24px 8px rgba(255, 220, 60, 0.65),
-      inset 0 0 14px 4px rgba(255, 240, 130, 0.4);
-  }
-  54% {
-    transform: scale(1.14);
-    filter: brightness(1.35) saturate(1.3);
-    box-shadow:
-      0 0 26px 9px rgba(255, 220, 60, 0.7),
-      inset 0 0 16px 5px rgba(255, 240, 130, 0.45);
-  }
-  70% {
-    transform: scale(0.97);
-    filter: brightness(1.18) saturate(1.15);
-    box-shadow:
-      0 0 18px 6px rgba(255, 220, 60, 0.45),
-      inset 0 0 10px 3px rgba(255, 240, 130, 0.25);
-  }
-  84% {
-    transform: scale(1.05);
-    filter: brightness(1.1) saturate(1.08);
-    box-shadow:
-      0 0 14px 4px rgba(255, 220, 60, 0.3),
-      inset 0 0 8px 2px rgba(255, 240, 130, 0.18);
-  }
-  100% {
-    transform: scale(1);
-    filter: brightness(1);
-    box-shadow:
-      0 0 0 0 rgba(255, 220, 60, 0),
-      inset 0 0 0 0 rgba(255, 240, 120, 0);
-  }
 }
 .space.type-auction {
   background:
@@ -4977,6 +4900,19 @@ body.mode-simple .pile-red {
   }
 }
 /* Steal floater (red "Steal!" text near stolen pile) */
+/* Ghost players (left/disconnected mid-game; the server auto-plays them). The
+   piece reads as translucent and desaturated until they reconnect. */
+.token.token-ghost {
+  opacity: 0.72;
+  filter: grayscale(0.35) drop-shadow(0 0 4px rgba(180, 200, 255, 0.6));
+}
+.pstat.pstat-ghost {
+  opacity: 0.7;
+}
+.pstat.pstat-ghost .pstat-monkey {
+  filter: grayscale(0.3);
+}
+
 .steal-floater {
   position: absolute;
   color: #ff2222;
@@ -4994,6 +4930,17 @@ body.mode-simple .pile-red {
     0 2px 4px rgba(0, 0, 0, 0.9);
   -webkit-text-stroke: 0.5px rgba(180, 0, 0, 0.6);
   animation: steal-float 2.4s ease-out forwards;
+}
+/* Friendly steal (2v2): same animation, green palette — you stole off your own
+   teammate's farm. */
+.steal-floater.steal-floater-friendly {
+  color: #38e06a;
+  text-shadow:
+    0 0 12px rgba(56, 224, 106, 1),
+    0 0 24px rgba(40, 200, 90, 0.8),
+    0 0 40px rgba(0, 200, 60, 0.5),
+    0 2px 4px rgba(0, 0, 0, 0.9);
+  -webkit-text-stroke: 0.5px rgba(0, 130, 50, 0.6);
 }
 @keyframes steal-float {
   0% {
@@ -7445,6 +7392,30 @@ body.mode-simple .space.ability-target:hover {
   padding: 4px 10px;
   font-size: 0.75em;
 }
+/* Buy Now: the richest lander's instant-win shortcut, sits below the keypad
+   button row and reads as a distinct gold call-to-action. */
+.btn-buynow {
+  display: block;
+  width: 100%;
+  margin-top: 10px;
+  padding: 8px 14px;
+  background: linear-gradient(135deg, #f0c200, #c89000);
+  color: #2a1f00;
+  border: 1px solid rgba(255, 240, 150, 0.6);
+  border-radius: 7px;
+  cursor: pointer;
+  font-weight: 800;
+  letter-spacing: 0.3px;
+  box-shadow: 0 0 12px rgba(240, 194, 0, 0.35);
+  transition: all 0.15s;
+}
+.btn-buynow:hover {
+  background: linear-gradient(135deg, #ffd633, #e0a800);
+  box-shadow: 0 0 18px rgba(255, 214, 51, 0.55);
+}
+.btn-buynow:active {
+  transform: translateY(1px);
+}
 .auction-bids {
   font-size: 0.85em;
   color: #aaa;
@@ -7919,10 +7890,20 @@ body.mode-simple .space.ability-target:hover {
   width: 100%;
   justify-content: center;
 }
-.poker-raise-row input[type="range"] {
+.poker-raise-row input[type="number"] {
   width: 80px;
-  height: 6px;
-  accent-color: #f39c12;
+  padding: 4px 6px;
+  border-radius: 8px;
+  border: 2px solid #f39c12;
+  background: rgba(0, 0, 0, 0.35);
+  color: #ffe680;
+  font-family: "Fredoka", sans-serif;
+  font-weight: 600;
+  font-size: 0.9em;
+  text-align: center;
+}
+.poker-raise-row input[type="number"]:disabled {
+  opacity: 0.5;
 }
 .poker-raise-display {
   font-family: "Fredoka", sans-serif;
@@ -8234,7 +8215,7 @@ body.mode-simple .space.ability-target:hover {
   line-height: 1;
   letter-spacing: 0.5px;
 }
-.space.g-mushroom {
+.space.g-super-banana {
   background:
     linear-gradient(
       160deg,
@@ -9060,6 +9041,11 @@ body.mode-simple .board-chat-mention.c-red {
 /* Special-tile rows: subtle highlight so they read as a distinct category. */
 .bp-tile.bp-tile--special {
   background: rgba(255, 214, 51, 0.06);
+  border-radius: 6px;
+  padding: 4px 6px;
+}
+.bp-tile.bp-tile--desert {
+  background: rgba(168, 136, 72, 0.1);
   border-radius: 6px;
   padding: 4px 6px;
 }
@@ -10516,7 +10502,7 @@ body.mode-simple .board-chat-mention.c-red {
 .prop-card-back.g-green { background: linear-gradient(145deg, #4caf50, #2e7d32); }
 .prop-card-back.g-darkblue { background: linear-gradient(145deg, #c8c8c8, #8a8a8a); }
 .prop-card-back.g-desert { background: linear-gradient(145deg, #c8b080, #a89060); }
-.prop-card-back.g-mushroom { background: linear-gradient(145deg, #9040d0, #6828a0); }
+.prop-card-back.g-super-banana { background: linear-gradient(145deg, #9040d0, #6828a0); }
 .prop-card-back.g-simple { background: linear-gradient(145deg, #ffe14a, #d9a800); }
 /* Redesigned BOUGHT/MISSED card.
    Layout (top → bottom):
@@ -10641,7 +10627,7 @@ body.mode-simple .board-chat-mention.c-red {
   text-align: center;
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
 }
-.mushroom-notification.show {
+.super-banana-notification.show {
   display: block;
   animation: notifSlideIn 0.5s cubic-bezier(0.22, 1, 0.36, 1);
 }
@@ -10657,11 +10643,6 @@ body.mode-simple .board-chat-mention.c-red {
   display: block;
   animation: notifSlideInX 0.35s cubic-bezier(0.22, 1, 0.36, 1);
 }
-.bomb-self-notification.show {
-  display: block;
-  animation: notifSlideIn 0.4s cubic-bezier(0.22, 1, 0.36, 1);
-}
-
 /* ── Poker Announcement Notification ─────────────────────────── */
 .poker-announce-notification {
   display: none;

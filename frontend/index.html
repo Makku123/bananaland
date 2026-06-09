@@ -660,16 +660,6 @@
                   />
                 </label>
                 <label class="number-field">
-                  <span class="number-field-label">🍌 Free Bananas</span>
-                  <input
-                    type="number"
-                    id="create-free-bananas"
-                    min="1"
-                    max="9999"
-                    value="25"
-                  />
-                </label>
-                <label class="number-field">
                   <span class="number-field-label">⏱️ Farm Bid Timer (sec)</span>
                   <input
                     type="number"
@@ -858,17 +848,6 @@
                   min="100"
                   max="99999"
                   value="777"
-                  style="width: 80px"
-                  onchange="updateLobbySettings()"
-                />
-              </label>
-              <label>Free Bananas 🍌
-                <input
-                  type="number"
-                  id="lobby-free-bananas"
-                  min="1"
-                  max="9999"
-                  value="25"
                   style="width: 80px"
                   onchange="updateLobbySettings()"
                 />
@@ -1157,8 +1136,8 @@
             <div id="auction-won-notification" class="auction-won-notification">
               🎉 You Won the Auction! 🍌
             </div>
-            <div id="mushroom-notification" class="mushroom-notification">
-              <div id="mushroom-notif-text">⭐ Super Banana Found! ⭐</div>
+            <div id="super-banana-notification" class="super-banana-notification">
+              <div id="super-banana-notif-text">⭐ Super Banana Found! ⭐</div>
             </div>
             <div id="pet-coin-notification" class="pet-coin-notification">
               <div id="pet-coin-text" class="pet-coin-text"></div>
@@ -1173,9 +1152,6 @@
                 </div>
               </div>
               <div id="pet-coin-result" class="pet-coin-result"></div>
-            </div>
-            <div id="bomb-self-notification" class="bomb-self-notification">
-              🍍 You got caught in your own pineapple bomb! 💥
             </div>
             <div id="bomb-win-notification" class="bomb-win-notification">
               💥 You have eliminated the last player and won the game! 👑
@@ -1304,6 +1280,14 @@
                       Pass
                     </button>
                   </div>
+                  <button
+                    class="btn btn-sm btn-buynow"
+                    id="btn-buynow"
+                    onclick="auctionBuyNow()"
+                    style="display: none"
+                  >
+                    Buy Now
+                  </button>
                 </div>
                 <div
                   id="simple-auction-controls"
@@ -1562,9 +1546,11 @@
                         <b>Fold</b> — Give up your hand (you lose your bets)<br />
                         <b>Check</b> — Pass without betting (only if no one
                         bet)<br />
-                        <b>Call</b> — Match the current bet<br />
-                        <b>Raise</b> — Increase the bet<br />
-                        <b>All In</b> — Bet everything you have
+                        <b>Call</b> — Match the current bet (if you can't
+                        afford it, you go all-in for what you have)<br />
+                        <b>Raise</b> — Bet any amount of 🍌 (no-limit); a raise
+                        must be at least the size of the previous bet/raise<br />
+                        <b>All In</b> — Shove everything you have
                       </div>
                     </div>
                     <div class="poker-guide-section">
@@ -1579,8 +1565,12 @@
                         or a Full House<br />
                         • Bluffing (raising with a weak hand) can work — but be
                         careful!<br />
-                        • SB (Small Blind) acts first after the flop; BB (Big
-                        Blind) has position advantage
+                        • Stakes: only the defender (the player landed on) puts
+                        up 10% of their bananas — the challenger risks nothing
+                        until they call or raise<br />
+                        • The challenger acts first before the flop (call the
+                        stake, fold for free, or raise); the defender acts first
+                        after the flop
                       </div>
                     </div>
                   </div>
@@ -1631,23 +1621,19 @@
                   </button>
                   <div class="poker-raise-row">
                     <input
-                      type="range"
-                      id="poker-raise-slider"
-                      min="0"
-                      max="1000"
-                      value="0"
-                      oninput="
-                        document.getElementById(
-                          'poker-raise-display',
-                        ).textContent = this.value
-                      "
+                      type="number"
+                      id="poker-raise-input"
+                      min="1"
+                      step="1"
+                      placeholder="amount"
+                      oninput="updatePokerRaiseDisplay()"
                     />
                     <span id="poker-raise-wrap"
                       ><span
                         id="poker-raise-display"
                         class="poker-raise-display"
-                        >0</span
-                      >🍌</span
+                        ></span
+                      ></span
                     >
                     <button
                       class="btn btn-sm poker-btn-raise"
@@ -1790,7 +1776,7 @@
                 <div class="board-help-body">
                   <!-- Quick Reference Banner -->
                   <div class="help-quickref" id="help-sec-quickref">
-                    <div class="help-qr-row"><span class="help-qr-icon">🎯</span><span><b>Win:</b> Buy ⭐ Magic Banana (7,777🍌) — or bomb an opponent (Bomb Mode)</span></div>
+                    <div class="help-qr-row"><span class="help-qr-icon">🎯</span><span><b>Win:</b> Buy ⭐ Super Banana (777🍌) — or bomb an opponent (Bomb Mode)</span></div>
                     <div class="help-qr-row"><span class="help-qr-icon">🎲</span><span><b>Roll:</b> 2 dice (2–12). Pay 300🍌 for 1 or 3 dice</span></div>
                     <div class="help-qr-row"><span class="help-qr-icon">💰</span><span><b>Start:</b> 2,222🍌 · 52 tiles, 48 shuffled each game</span></div>
                     <div class="help-qr-row"><span class="help-qr-icon">🌽</span><span><b>Income:</b> Auto-collect from your farms as you pass; land on opponent's farm to <b>steal</b></span></div>
@@ -1833,7 +1819,7 @@
                     <div class="help-tile-list">
                       <div class="help-tile-row"><span class="help-tile-icon">⭐</span><b>Super Banana</b> — buy for 777🍌 to win</div>
                       <div class="help-tile-row"><span class="help-tile-icon">🌿</span><b>Vine Swing</b> — won item; teleport to any tile</div>
-                      <div class="help-tile-row"><span class="help-tile-icon">💵</span><b>Free Bananas</b> — +25🍌</div>
+                      <div class="help-tile-row"><span class="help-tile-icon">🌵</span><b>Desert</b> — won at auction like a farm, but grows nothing</div>
                       <div class="help-tile-row"><span class="help-tile-icon">🌴</span><b>GROW (1–6)</b> — fires when you land here, or the die face matches its label</div>
                     </div>
                   </div>
@@ -1855,8 +1841,8 @@
                     </div>
                     <div class="help-tile-list">
                       <div class="help-tile-row"><span class="help-tile-icon">🃏</span><b>Poker</b> — 2 non-teammates share a tile</div>
-                      <div class="help-tile-row"><span class="help-tile-icon">🍍</span><b>Bomb</b> — 666🍌 (1000🍌 in 2v2) · 8-turn fuse · blasts the whole side · opponent = elim</div>
-                      <div class="help-tile-row"><span class="help-tile-icon">💥</span><b>Self-blast</b> — placer/teammate stepping on it defuses (no damage)</div>
+                      <div class="help-tile-row"><span class="help-tile-icon">🍍</span><b>Bomb</b> — 666🍌 (1000🍌 in 2v2) · spawns when your next turn ends · 3-turn fuse · blasts corner-to-corner · opponent = elim</div>
+                      <div class="help-tile-row"><span class="help-tile-icon">💥</span><b>Self/teammate</b> — immune; stepping on the placer's bomb defuses it (no damage)</div>
                     </div>
                   </div>
 
@@ -1882,7 +1868,7 @@
                     </div>
                     <div class="help-tile-list">
                       <div class="help-tile-row"><span class="help-tile-icon">🏷️</span><b>Sell Listings</b> — list a farm at any price, first to buy wins</div>
-                      <div class="help-tile-row"><span class="help-tile-icon">🤝</span><b>2v2</b> — send 🍌 to teammate (50🍌 fee, cap = half your bananas)</div>
+                      <div class="help-tile-row"><span class="help-tile-icon">🤝</span><b>2v2</b> — send 🍌 to teammate (fee = 5% of starting 🍌, cap = half your bananas)</div>
                     </div>
                   </div>
                 </div>
@@ -2203,7 +2189,7 @@
                   </button>
                 </div>
                 <div class="trade-section">
-                  <div class="trade-fee-notice" id="send-banana-fee-notice">Transfer fee: 150🍌</div>
+                  <div class="trade-fee-notice" id="send-banana-fee-notice">Transfer fee: 5% of starting 🍌</div>
                   <div class="sell-price-header">Amount to Send</div>
                   <div class="sell-price-display" id="send-banana-display">
                     0🍌

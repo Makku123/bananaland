@@ -225,7 +225,7 @@ section("8. Auction System - Standard (Lander-Challenger)");
   let propPos = -1;
   for (let i = 1; i < 48; i++) {
     const prop = game.properties.get(i);
-    if (prop && !prop.owner && prop.group !== "mushroom") {
+    if (prop && !prop.owner && prop.group !== "superBanana") {
       propPos = i;
       break;
     }
@@ -270,7 +270,7 @@ section("9. Auction - Pass Mechanics");
   let propPos = -1;
   for (let i = 1; i < 48; i++) {
     const prop = game.properties.get(i);
-    if (prop && !prop.owner && prop.group !== "mushroom") {
+    if (prop && !prop.owner && prop.group !== "superBanana") {
       propPos = i;
       break;
     }
@@ -310,7 +310,7 @@ section("10. Simple Auction - Accept with multiple players");
   let propPos = -1;
   for (let i = 1; i < 48; i++) {
     const prop = game.properties.get(i);
-    if (prop && !prop.owner && prop.group !== "mushroom") {
+    if (prop && !prop.owner && prop.group !== "superBanana") {
       propPos = i;
       break;
     }
@@ -350,6 +350,214 @@ section("10. Simple Auction - Accept with multiple players");
 }
 
 // ============================================================
+section("10b. Auction - 0-banana players are excluded");
+// ============================================================
+
+function _findUnownedFarm(game) {
+  for (let i = 0; i < game.boardSize; i++) {
+    const prop = game.properties.get(i);
+    if (prop && !prop.owner && prop.group === "farm") return i;
+  }
+  return -1;
+}
+
+function _setupItemAuction(game, starterId) {
+  game.itemAuction = {
+    phase: "wheel", item: "teleport", startedBy: starterId,
+    wheelStartedAt: 0, wheelEndsAt: 0, listPrice: null,
+    respondDeadline: null, respondStartTime: null,
+    silentDeadline: null, silentStartTime: null,
+    bids: {}, participantIds: [], excludedIds: [], acceptorIds: [], result: null,
+  };
+}
+
+// 2 players, broke lander, moneyed opponent → opponent gets the farm immediately.
+{
+  const { game } = createStartedGame(2, { startingMoney: 5000 });
+  const [p0, p1] = game.players;
+  const farm = _findUnownedFarm(game);
+  p0.money = 0; p1.money = 5000;
+  p0.position = farm;
+  const created = game._createAuctionForLander(p0.id);
+  const prop = game.properties.get(farm);
+  assert(created === false, "2p broke lander: no auction opened");
+  assert(!game.auction, "2p broke lander: no auction object");
+  assert(prop && prop.owner === p1.id, "2p broke lander: moneyed opponent gets the farm free");
+}
+
+// 2 players, moneyed lander, broke opponent → lander gets it immediately.
+{
+  const { game } = createStartedGame(2, { startingMoney: 5000 });
+  const [p0, p1] = game.players;
+  const farm = _findUnownedFarm(game);
+  p0.money = 5000; p1.money = 0;
+  p0.position = farm;
+  const created = game._createAuctionForLander(p0.id);
+  const prop = game.properties.get(farm);
+  assert(created === false, "2p broke opponent: no auction opened");
+  assert(prop && prop.owner === p0.id, "2p broke opponent: lander gets the farm free");
+}
+
+// 3 players, moneyed lander + 1 moneyed opp + 1 broke opp → pitch, broke excluded.
+{
+  const { game } = createStartedGame(3, { startingMoney: 5000 });
+  const [p0, p1, p2] = game.players;
+  const farm = _findUnownedFarm(game);
+  p0.money = 5000; p1.money = 5000; p2.money = 0;
+  p0.position = farm;
+  const created = game._createAuctionForLander(p0.id);
+  const a = game.auction;
+  assert(created === true, "3p one broke: auction opened");
+  assert(a && a.phase === "pitch", "3p one broke: normal pitch auction");
+  assert(a.landingPlayer === p0.id, "3p one broke: moneyed lander pitches");
+  assert(a.bidders.includes(p0.id) && a.bidders.includes(p1.id), "moneyed players are bidders");
+  assert(!a.bidders.includes(p2.id), "broke player excluded from bidders");
+}
+
+// 3 players, broke lander + 2 moneyed opps → sealed bid; highest wins.
+{
+  const { game } = createStartedGame(3, { startingMoney: 5000 });
+  const [p0, p1, p2] = game.players;
+  const farm = _findUnownedFarm(game);
+  p0.money = 0; p1.money = 5000; p2.money = 3000;
+  p0.position = farm;
+  game.noAuctionTimer = true;
+  const created = game._createAuctionForLander(p0.id);
+  const a = game.auction;
+  assert(created === true, "3p broke lander: auction opened");
+  assert(a && a.phase === "silentbid" && a.sealedBid === true, "3p broke lander: sealed bid");
+  assert(a.landingPlayer === null, "sealed bid has no leader");
+  assert(
+    a.acceptorIds.includes(p1.id) && a.acceptorIds.includes(p2.id) && !a.acceptorIds.includes(p0.id),
+    "only the moneyed players bid in a sealed bid",
+  );
+  assert(game.submitSilentBid(p1.id, 100), "p1 submits a sealed bid");
+  assert(game.submitSilentBid(p2.id, 250), "p2 submits a sealed bid");
+  const prop = game.properties.get(farm);
+  assert(prop && prop.owner === p2.id, "highest sealed bid wins the farm");
+  assert(p2.money === 3000 - 250, "sealed-bid winner pays their bid");
+}
+
+// Everyone broke → lander gets it for free.
+{
+  const { game } = createStartedGame(2, { startingMoney: 5000 });
+  const [p0, p1] = game.players;
+  const farm = _findUnownedFarm(game);
+  p0.money = 0; p1.money = 0;
+  p0.position = farm;
+  const created = game._createAuctionForLander(p0.id);
+  const prop = game.properties.get(farm);
+  assert(created === false, "everyone broke: no auction opened");
+  assert(prop && prop.owner === p0.id, "everyone broke: lander gets the farm free");
+}
+
+// Item auction: broke spinner, moneyed opponent → opponent gets the item free.
+{
+  const { game } = createStartedGame(2, { startingMoney: 5000 });
+  const [p0, p1] = game.players;
+  p0.money = 0; p1.money = 5000;
+  _setupItemAuction(game, p0.id);
+  game._beginItemAuctionPitch();
+  const a = game.itemAuction;
+  assert(a && a.result && a.result.winnerId === p1.id, "item: broke spinner -> moneyed opponent gets the item free");
+  assert(a.result.pricePaid === 0, "item awarded free");
+  if (game._itemAuctionTimer) clearTimeout(game._itemAuctionTimer);
+  game.itemAuction = null;
+}
+
+// Item auction: moneyed spinner, all others broke → spinner keeps it free.
+{
+  const { game } = createStartedGame(3, { startingMoney: 5000 });
+  const [p0, p1, p2] = game.players;
+  p0.money = 5000; p1.money = 0; p2.money = 0;
+  _setupItemAuction(game, p0.id);
+  game._beginItemAuctionPitch();
+  const a = game.itemAuction;
+  assert(a && a.result && a.result.winnerId === p0.id, "item: moneyed spinner, others broke -> spinner keeps item free");
+  if (game._itemAuctionTimer) clearTimeout(game._itemAuctionTimer);
+  game.itemAuction = null;
+}
+
+// Item auction: broke spinner + 2 moneyed → sealed item bid; highest wins.
+{
+  const { game } = createStartedGame(3, { startingMoney: 5000 });
+  const [p0, p1, p2] = game.players;
+  p0.money = 0; p1.money = 5000; p2.money = 2000;
+  _setupItemAuction(game, p0.id);
+  game._beginItemAuctionPitch();
+  const a = game.itemAuction;
+  assert(a && a.phase === "silentbid" && a.sealedBid === true, "item: broke spinner + 2 moneyed -> sealed item bid");
+  assert(
+    a.acceptorIds.includes(p1.id) && a.acceptorIds.includes(p2.id) && !a.acceptorIds.includes(p0.id),
+    "only moneyed players bid on the item",
+  );
+  assert(game.submitItemBid(p1.id, 300), "p1 submits a sealed item bid");
+  assert(game.submitItemBid(p2.id, 150), "p2 submits a sealed item bid");
+  const res = game.itemAuction && game.itemAuction.result;
+  assert(res && res.winnerId === p1.id, "highest sealed item bid wins");
+  assert(res.pricePaid === 300, "sealed item-bid winner pays their bid");
+  assert(p1.cards && p1.cards.teleport >= 1, "winner receives the item");
+  if (game._itemAuctionTimer) clearTimeout(game._itemAuctionTimer);
+  game.itemAuction = null;
+}
+
+// ============================================================
+section("10c. Auction - Buy Now (richest lander)");
+// ============================================================
+
+// Richest lander can instantly buy for second-highest + 1, skipping the auction.
+{
+  const { game } = createStartedGame(3, { startingMoney: 5000 });
+  const [p0, p1, p2] = game.players;
+  const farm = _findUnownedFarm(game);
+  p0.money = 5000; p1.money = 3000; p2.money = 2000;
+  p0.position = farm;
+  game.noAuctionTimer = true;
+  game._createAuctionForLander(p0.id);
+  assert(game.auction && game.auction.phase === "pitch", "Buy Now: a pitch auction started");
+  assert(game._buyNowPrice(p0.id) === 3001, "Buy Now price = second-highest banana score + 1");
+  assert(game._buyNowPrice(p1.id) === null, "Buy Now is only offered to the lander");
+  const ok = game.auctionBuyNow(p0.id);
+  assert(ok === true, "Richest lander can Buy Now");
+  const prop = game.properties.get(farm);
+  assert(prop && prop.owner === p0.id, "Buy Now: lander owns the farm");
+  assert(p0.money === 5000 - 3001, "Buy Now: lander pays second-highest + 1");
+  assert(!game.auction, "Buy Now: the auction resolved immediately");
+  game._cancelAutoEnd();
+}
+
+// Lander tied for richest -> no Buy Now (can't afford second-highest + 1).
+{
+  const { game } = createStartedGame(2, { startingMoney: 5000 });
+  const [p0, p1] = game.players;
+  const farm = _findUnownedFarm(game);
+  p0.money = 3000; p1.money = 3000;
+  p0.position = farm;
+  game.noAuctionTimer = true;
+  game._createAuctionForLander(p0.id);
+  assert(game._buyNowPrice(p0.id) === null, "Tied-for-richest lander: no Buy Now");
+  assert(game.auctionBuyNow(p0.id) === false, "Tied-for-richest lander: Buy Now rejected");
+  assert(game.auction && game.auction.phase === "pitch", "Tied lander: auction continues normally");
+}
+
+// Non-lander can't Buy Now; it's unavailable outside the pitch phase.
+{
+  const { game } = createStartedGame(2, { startingMoney: 5000 });
+  const [p0, p1] = game.players;
+  const farm = _findUnownedFarm(game);
+  p0.money = 5000; p1.money = 1000;
+  p0.position = farm;
+  game.noAuctionTimer = true;
+  game._createAuctionForLander(p0.id);
+  assert(game.auctionBuyNow(p1.id) === false, "Non-lander can't Buy Now");
+  game.placeBid(p0.id, 1); // normal pitch advances to the respond phase
+  assert(game.auction.phase === "respond", "advanced to respond phase");
+  assert(game._buyNowPrice(p0.id) === null, "Buy Now unavailable outside the pitch phase");
+  assert(game.auctionBuyNow(p0.id) === false, "Buy Now rejected outside the pitch phase");
+  game._cancelAutoEnd();
+}
+
+// ============================================================
 section("11. Poker - Monkey Poker");
 // ============================================================
 
@@ -369,25 +577,15 @@ section("11. Poker - Monkey Poker");
 
   if (game.poker) {
     assert(game.poker.monkeyPoker === true, "Monkey poker mode active");
-    assert(game.poker.bbPlayer === cur.id, "Landing player is BB");
-    assert(game.poker.sbPlayer === other.id, "Other player is SB");
+    // The challenger (landing player) posts the small blind; opponent the big.
+    assert(game.poker.sbPlayer === cur.id, "Challenger (lander) is SB");
+    assert(game.poker.bbPlayer === other.id, "Opponent is BB");
     assert(game.poker.pot > 0, "Pot has blinds");
 
-    // SB acts first in preflop
-    const sbPlayer = game.poker.currentTurn;
-    assert(sbPlayer === other.id, "SB acts first preflop");
+    // SB (challenger) acts first preflop
+    assert(game.poker.currentTurn === cur.id, "SB (challenger) acts first preflop");
 
-    // SB calls
-    assert(game.pokerAction(other.id, "call"), "SB can call");
-
-    // If game continues...
-    if (game.poker && !game.poker.resolved) {
-      // BB checks
-      game.pokerAction(cur.id, "check");
-    }
-
-    // Should eventually resolve
-    // Let it play through remaining rounds
+    // Play it out via the current turn (SB calls, BB checks, etc.)
     let safety = 0;
     while (game.poker && !game.poker.resolved && safety < 20) {
       const turn = game.poker.currentTurn;
@@ -449,9 +647,18 @@ section("13. Poker - Raise");
     const sbId = game.poker.currentTurn;
     const bbId = sbId === cur.id ? other.id : cur.id;
 
-    // SB raises
-    assert(game.pokerAction(sbId, "raise"), "SB can raise");
-    assert(game.poker.currentTurn === bbId, "Turn passes to BB after raise");
+    // No-limit static raises: amount = total to raise TO this round.
+    // Opening stake is 10% of the defender's 5000 = 500, so min raise-to is
+    // 1000 (current bet + previous bet size).
+    const stake = game.poker.currentBet;
+    assert(!game.pokerAction(sbId, "raise", stake + 1), "Rejects raise below NL minimum");
+    assert(!game.pokerAction(sbId, "raise", 0), "Rejects 0 raise");
+    assert(game.pokerAction(sbId, "raise", stake * 2), "Challenger can raise to 2x stake");
+    assert(game.poker.currentBet === stake * 2, "Current bet updated to raise-to amount");
+    assert(game.poker.currentTurn === bbId, "Turn passes to defender after raise");
+    // Defender re-raise must add at least the previous raise size again.
+    assert(!game.pokerAction(bbId, "raise", stake * 2 + 1), "Rejects under-sized re-raise");
+    assert(game.pokerAction(bbId, "raise", stake * 3), "Defender can re-raise");
   }
 }
 
@@ -600,7 +807,7 @@ section("23. Banana Pile Collection");
   let farmPos = -1;
   for (let i = 1; i < 48; i++) {
     const prop = game.properties.get(i);
-    if (prop && prop.group !== "mushroom") {
+    if (prop && prop.group !== "superBanana") {
       farmPos = i;
       break;
     }
@@ -631,7 +838,7 @@ section("24. Stealing Banana Piles");
   let farmPos = -1;
   for (let i = 1; i < 48; i++) {
     const prop = game.properties.get(i);
-    if (prop && prop.group !== "mushroom") {
+    if (prop && prop.group !== "superBanana") {
       farmPos = i;
       break;
     }
@@ -666,8 +873,11 @@ section("25. Trading (2v2) - cap + fee");
     const moneyBefore0 = p0.money;
     const moneyBefore1 = p1.money;
 
+    // Fee = 5% of starting bananas (5000 here) = 250
+    const fee = Math.max(1, Math.floor(game.startingMoney * 0.05));
+    assert(fee === 250, "Fee is 5% of starting bananas");
     assert(game.tradeBananas(p0.id, p1.id, 1000), "Teammates can trade bananas");
-    assert(p0.money === moneyBefore0 - 1000 - 50, "Sender loses amount + 50 fee");
+    assert(p0.money === moneyBefore0 - 1000 - fee, "Sender loses amount + 5% fee");
     assert(p1.money === moneyBefore1 + 1000, "Recipient gets full amount");
   }
 }
@@ -697,7 +907,7 @@ section("27. Sell Property");
   let farmPos = -1;
   for (let i = 1; i < 48; i++) {
     const prop = game.properties.get(i);
-    if (prop && prop.group !== "mushroom") {
+    if (prop && prop.group !== "superBanana") {
       farmPos = i;
       break;
     }
@@ -735,7 +945,7 @@ section("28. Cancel Sale");
   let farmPos = -1;
   for (let i = 1; i < 48; i++) {
     const prop = game.properties.get(i);
-    if (prop && prop.group !== "mushroom") {
+    if (prop && prop.group !== "superBanana") {
       farmPos = i;
       break;
     }
@@ -946,30 +1156,48 @@ section("39. Tax Tile");
 }
 
 // ============================================================
-section("40. Free Bananas Tile");
+section("40. Desert Tile");
 // ============================================================
 
 {
   const { game } = createStartedGame(2, { startingMoney: 5000 });
   const cur = game.getCurrentPlayer();
 
-  // Find free bananas tile
-  let freePos = -1;
-  for (let i = 0; i < 48; i++) {
-    if (game.board[i].type === "freebananas") {
-      freePos = i;
+  // Find the desert tile
+  let desertPos = -1;
+  for (let i = 0; i < game.boardSize; i++) {
+    if (game.board[i].type === "desert") {
+      desertPos = i;
       break;
     }
   }
 
-  if (freePos >= 0) {
-    cur.position = freePos;
-    cur.revealedTiles.add(freePos); // Already revealed
+  if (desertPos >= 0) {
+    const prop = game.properties.get(desertPos);
+    assert(
+      prop && prop.group === "desert",
+      "Desert is a buyable property (group desert)",
+    );
+    assert(prop && prop.price === 0, "Desert has yield/price 0");
+    assert(prop && !prop.owner, "Desert starts unowned");
+
+    // Keep opponents off the desert so landing auctions it (not poker).
+    for (const p of game.players) {
+      if (p.id !== cur.id) p.position = (desertPos + 1) % game.boardSize;
+    }
+    cur.position = desertPos;
     const before = cur.money;
     game._processLanding(cur);
-    assert(cur.money === before + 25, "Free bananas +25 awarded");
+    assert(
+      cur.money === before,
+      "Landing on the desert costs nothing immediately (it grows nothing)",
+    );
+    assert(
+      game.auction && game.auction.position === desertPos,
+      "Landing on an unowned desert starts a banana-bid auction",
+    );
   } else {
-    console.log("  (No free bananas tile found)");
+    console.log("  (No desert tile found)");
   }
 }
 
@@ -1006,7 +1234,7 @@ section("42. Broke Player - Property Goes to Opponent");
   let propPos = -1;
   for (let i = 1; i < 48; i++) {
     const prop = game.properties.get(i);
-    if (prop && !prop.owner && prop.group !== "mushroom" && prop.group !== "desert") {
+    if (prop && !prop.owner && prop.group !== "superBanana" && prop.group !== "desert") {
       propPos = i;
       break;
     }
@@ -1139,7 +1367,7 @@ section("46. Auction - Minimum Bid Validation");
   let propPos = -1;
   for (let i = 1; i < 48; i++) {
     const prop = game.properties.get(i);
-    if (prop && !prop.owner && prop.group !== "mushroom") {
+    if (prop && !prop.owner && prop.group !== "superBanana") {
       propPos = i;
       break;
     }
@@ -1173,7 +1401,7 @@ section("47. Multiple Sell Listings Limit");
   let count = 0;
   for (let i = 1; i < 48 && count < 6; i++) {
     const prop = game.properties.get(i);
-    if (prop && prop.group !== "mushroom") {
+    if (prop && prop.group !== "superBanana") {
       prop.owner = cur.id;
       cur.properties.push(i);
       positions.push(i);
@@ -1202,7 +1430,7 @@ section("48. Duplicate Sell Listing Prevention");
   let farmPos = -1;
   for (let i = 1; i < 48; i++) {
     const prop = game.properties.get(i);
-    if (prop && prop.group !== "mushroom") {
+    if (prop && prop.group !== "superBanana") {
       farmPos = i;
       break;
     }
@@ -1235,7 +1463,7 @@ section("49. Last Player Standing Wins");
 }
 
 // ============================================================
-section("50. Mushroom/Super Banana - Can Afford");
+section("50. Super Banana - Can Afford");
 // ============================================================
 
 {
@@ -1243,18 +1471,18 @@ section("50. Mushroom/Super Banana - Can Afford");
   const cur = game.getCurrentPlayer();
 
   // Find super banana position
-  let mushroomPos = -1;
+  let superBananaPos = -1;
   for (let i = 0; i < 48; i++) {
     const prop = game.properties.get(i);
-    if (prop && prop.group === "mushroom") {
-      mushroomPos = i;
+    if (prop && prop.group === "superBanana") {
+      superBananaPos = i;
       break;
     }
   }
 
-  if (mushroomPos >= 0) {
-    cur.position = mushroomPos;
-    const prop = game.properties.get(mushroomPos);
+  if (superBananaPos >= 0) {
+    cur.position = superBananaPos;
+    const prop = game.properties.get(superBananaPos);
 
     // Ensure player can afford it
     cur.money = prop.price + 1000;
@@ -1265,44 +1493,49 @@ section("50. Mushroom/Super Banana - Can Afford");
     assert(game.superBananaWin !== null || game.state === "finished",
       "Super Banana triggers win sequence");
   } else {
-    console.log("  (No mushroom property found)");
+    console.log("  (No super banana property found)");
   }
 }
 
 // ============================================================
-section("51. Mushroom/Super Banana - Can't Afford (Swap)");
+section("51. Super Banana - Can't Afford (Swap)");
 // ============================================================
 
 {
   const { game } = createStartedGame(2, { startingMoney: 500 });
   const cur = game.getCurrentPlayer();
 
-  let mushroomPos = -1;
+  let superBananaPos = -1;
   for (let i = 0; i < 48; i++) {
     const prop = game.properties.get(i);
-    if (prop && prop.group === "mushroom") {
-      mushroomPos = i;
+    if (prop && prop.group === "superBanana") {
+      superBananaPos = i;
       break;
     }
   }
 
-  if (mushroomPos >= 0) {
-    cur.position = mushroomPos;
+  if (superBananaPos >= 0) {
+    cur.position = superBananaPos;
+    // Keep opponents off the super banana tile so landing triggers the Super
+    // Banana flow, not poker (createStartedGame parks everyone on tile 0).
+    for (const p of game.players) {
+      if (p.id !== cur.id) p.position = (superBananaPos + 1) % game.boardSize;
+    }
     game._processLanding(cur);
 
-    assert(game.mushroomPending !== null, "Mushroom pending swap initiated when can't afford");
-    assert(game.mushroomPending.mushroomPos === mushroomPos, "Correct mushroom position in pending");
+    assert(game.superBananaPending !== null, "Super Banana pending swap initiated when can't afford");
+    assert(game.superBananaPending.superBananaPos === superBananaPos, "Correct super banana position in pending");
   } else {
-    console.log("  (No mushroom property found)");
+    console.log("  (No super banana property found)");
   }
 }
 
 // ============================================================
 section("51b. Super Banana swap reveals the swapped-in tile to all players");
 // ============================================================
-// The swapped-in tile (whatever its type — grow, freebananas, tax, property)
+// The swapped-in tile (whatever its type — grow, desert, tax, property)
 // must be revealed to every player after the swap completes. Previously this
-// was only guaranteed for buyable property tiles; grow / freebananas tiles
+// was only guaranteed for buyable property tiles; grow / desert tiles
 // stayed hidden from non-landers.
 
 function _testSwapReveal(targetType) {
@@ -1310,17 +1543,17 @@ function _testSwapReveal(targetType) {
   const cur = game.getCurrentPlayer();
   const other = game.players.find((p) => p.id !== cur.id);
 
-  let mushroomPos = -1;
+  let superBananaPos = -1;
   for (let i = 0; i < game.boardSize; i++) {
     const prop = game.properties.get(i);
-    if (prop && prop.group === "mushroom") { mushroomPos = i; break; }
+    if (prop && prop.group === "superBanana") { superBananaPos = i; break; }
   }
-  if (mushroomPos < 0) return null;
+  if (superBananaPos < 0) return null;
 
   // Find a tile of the desired type that nobody has revealed.
   let swapPos = -1;
   for (let i = 0; i < game.boardSize; i++) {
-    if (i === mushroomPos) continue;
+    if (i === superBananaPos) continue;
     if (game.board[i].type !== targetType) continue;
     let anyRevealed = false;
     for (const p of game.players) {
@@ -1331,27 +1564,27 @@ function _testSwapReveal(targetType) {
   if (swapPos < 0) return null;
 
   // Stand on the Super Banana and ensure we can't afford it.
-  cur.position = mushroomPos;
+  cur.position = superBananaPos;
   cur.money = 0;
   game._processLanding(cur);
-  if (!game.mushroomPending) return null;
+  if (!game.superBananaPending) return null;
   // Force the swap target so we exercise the type we care about.
-  game.mushroomPending.swapPos = swapPos;
-  game.completeMushroomSwap();
+  game.superBananaPending.swapPos = swapPos;
+  game.completeSuperBananaSwap();
 
-  return { game, cur, other, mushroomPos, swapPos };
+  return { game, cur, other, superBananaPos, swapPos };
 }
 
 {
   const ctx = _testSwapReveal("grow");
   if (ctx) {
-    const { game, cur, other, mushroomPos } = ctx;
+    const { game, cur, other, superBananaPos } = ctx;
     assert(
-      cur.revealedTiles.has(mushroomPos),
+      cur.revealedTiles.has(superBananaPos),
       "Swap with grow tile: lander sees the swapped-in tile",
     );
     assert(
-      other.revealedTiles.has(mushroomPos),
+      other.revealedTiles.has(superBananaPos),
       "Swap with grow tile: opponents see the swapped-in tile too",
     );
   } else {
@@ -1360,36 +1593,124 @@ function _testSwapReveal(targetType) {
 }
 
 {
-  const ctx = _testSwapReveal("freebananas");
+  const ctx = _testSwapReveal("desert");
   if (ctx) {
-    const { game, cur, other, mushroomPos } = ctx;
+    const { game, cur, other, superBananaPos } = ctx;
     assert(
-      cur.revealedTiles.has(mushroomPos),
-      "Swap with freebananas tile: lander sees the swapped-in tile",
+      cur.revealedTiles.has(superBananaPos),
+      "Swap with desert tile: lander sees the swapped-in tile",
     );
     assert(
-      other.revealedTiles.has(mushroomPos),
-      "Swap with freebananas tile: opponents see the swapped-in tile too",
+      other.revealedTiles.has(superBananaPos),
+      "Swap with desert tile: opponents see the swapped-in tile too",
     );
   } else {
-    console.log("  (Could not set up freebananas-swap scenario)");
+    console.log("  (Could not set up desert-swap scenario)");
   }
 }
 
 {
   const ctx = _testSwapReveal("property");
   if (ctx) {
-    const { game, cur, other, mushroomPos } = ctx;
+    const { game, cur, other, superBananaPos } = ctx;
     assert(
-      cur.revealedTiles.has(mushroomPos),
+      cur.revealedTiles.has(superBananaPos),
       "Swap with property tile: lander sees the swapped-in tile",
     );
     assert(
-      other.revealedTiles.has(mushroomPos),
+      other.revealedTiles.has(superBananaPos),
       "Swap with property tile: opponents see the swapped-in tile too",
     );
   } else {
     console.log("  (Could not set up property-swap scenario)");
+  }
+}
+
+// ============================================================
+section("51c. Super Banana - player chooses the hideout + private rainbow hint");
+// ============================================================
+
+{
+  const { game } = createStartedGame(2, { startingMoney: 500 });
+  const cur = game.getCurrentPlayer();
+  const other = game.players.find((p) => p.id !== cur.id);
+
+  let superBananaPos = -1;
+  for (let i = 0; i < game.boardSize; i++) {
+    const prop = game.properties.get(i);
+    if (prop && prop.group === "superBanana") { superBananaPos = i; break; }
+  }
+
+  if (superBananaPos >= 0) {
+    cur.position = superBananaPos;
+    // Keep opponents off the super banana tile so landing triggers the Super
+    // Banana flow, not poker (createStartedGame parks everyone on tile 0).
+    for (const p of game.players) {
+      if (p.id !== cur.id) p.position = (superBananaPos + 1) % game.boardSize;
+    }
+    game._processLanding(cur); // money 500 < 777 price → can't afford
+
+    assert(
+      game.superBananaPending && game.superBananaPending.awaitingPick === true,
+      "Can't-afford queues a player pick (no auto random swap)",
+    );
+    assert(
+      game.superBananaPending.swapPos == null,
+      "No hideout is chosen until the player picks",
+    );
+    assert(
+      game.superBananaPending.playerId === cur.id,
+      "The landing player is the one who must pick",
+    );
+
+    // A genuinely hidden tile that isn't the Super Banana's tile.
+    let hideout = -1;
+    for (let i = 0; i < game.boardSize; i++) {
+      if (i === superBananaPos) continue;
+      if (game.players.some((p) => p.revealedTiles.has(i))) continue;
+      hideout = i;
+      break;
+    }
+    assert(hideout >= 0, "A hidden hideout tile exists");
+
+    // Opponents can't pick; the super banana tile itself isn't a valid hideout.
+    assert(
+      game.pickSuperBananaSwap(other.id, hideout) === false,
+      "Only the landing player may pick the hideout",
+    );
+    assert(
+      game.pickSuperBananaSwap(cur.id, superBananaPos) === false,
+      "Can't hide the Super Banana on its own tile",
+    );
+
+    // Valid pick: completes the swap and moves the Super Banana to the hideout.
+    assert(
+      game.pickSuperBananaSwap(cur.id, hideout) === true,
+      "Landing player picks a hidden tile to hide it",
+    );
+    assert(game.superBananaPending === null, "Pending cleared after the pick");
+    const movedProp = game.properties.get(hideout);
+    assert(
+      movedProp && movedProp.group === "superBanana",
+      "Super Banana now lives on the chosen hideout tile",
+    );
+    const oldProp = game.properties.get(superBananaPos);
+    assert(
+      !oldProp || oldProp.group !== "superBanana",
+      "Super Banana no longer sits on its original tile",
+    );
+
+    // The rainbow hint is private to the hider only.
+    assert(
+      game.getState(cur.id).superBananaHintPos === hideout,
+      "Hider sees the rainbow hint at the hideout",
+    );
+    assert(
+      game.getState(other.id).superBananaHintPos == null,
+      "Opponents never see the rainbow hint",
+    );
+  } else {
+    console.log("  (No super banana property found)");
   }
 }
 
@@ -1434,7 +1755,7 @@ section("53. Vine Swing - Has Properties");
   let farmPos = -1;
   for (let i = 1; i < 48; i++) {
     const prop = game.properties.get(i);
-    if (prop && prop.group !== "mushroom") {
+    if (prop && prop.group !== "superBanana") {
       farmPos = i;
       break;
     }
@@ -1474,7 +1795,7 @@ section("54. Auction - Price Cap");
   let propPos = -1;
   for (let i = 1; i < 48; i++) {
     const prop = game.properties.get(i);
-    if (prop && !prop.owner && prop.group !== "mushroom" && prop.price > 0) {
+    if (prop && !prop.owner && prop.group !== "superBanana" && prop.price > 0) {
       propPos = i;
       break;
     }
@@ -1556,7 +1877,7 @@ section("57. Squatter Steal on GROW");
   let farmPos = -1;
   for (let i = 1; i < 48; i++) {
     const prop = game.properties.get(i);
-    if (prop && prop.group && prop.group !== "desert" && prop.group !== "mushroom") {
+    if (prop && prop.group && prop.group !== "desert" && prop.group !== "superBanana") {
       farmPos = i;
       break;
     }
@@ -1598,8 +1919,8 @@ section("58. Poker - Real Poker (Texas Hold'em)");
 
   if (game.poker) {
     assert(game.poker.monkeyPoker === false, "Real poker mode");
-    assert(game.poker.players[cur.id].cards.length === 2, "BB gets 2 hole cards");
-    assert(game.poker.players[other.id].cards.length === 2, "SB gets 2 hole cards");
+    assert(game.poker.players[cur.id].cards.length === 2, "SB (challenger) gets 2 hole cards");
+    assert(game.poker.players[other.id].cards.length === 2, "BB (opponent) gets 2 hole cards");
 
     // Play through
     let safety = 0;
@@ -1683,7 +2004,7 @@ function setupSimpleGrow(opts = {}) {
   let farmPos = -1;
   for (let i = 1; i < 48; i++) {
     const prop = game.properties.get(i);
-    if (prop && prop.group && prop.group !== "desert" && prop.group !== "mushroom" && i !== growPos) {
+    if (prop && prop.group && prop.group !== "desert" && prop.group !== "superBanana" && i !== growPos) {
       farmPos = i; break;
     }
   }
@@ -1777,11 +2098,10 @@ section("64. Classic - Rolled grow fires BEFORE move (path collection)");
   const other = game.players.find((p) => p.id !== cur.id);
   for (const p of game.players) {
     p.revealedTiles = new Set();
-    p.scoutedTiles = new Set();
     p.startPickPending = false;
   }
   game.auction = game.poker = game.vineSwing = null;
-  game.mushroomPending = null;
+  game.superBananaPending = null;
   game.itemAuction = null;
   game.diceRolled = false;
   game.petResolving = false;
@@ -2014,14 +2334,14 @@ section("66. Classic - Cornerless 48-tile board");
   assert(game.board.length === 48, "Simple board has 48 tiles");
   assert(game.boardSize === 48, "boardSize is 48 in simple mode");
 
-  const counts = { grow: 0, bus: 0, special: 0, tax10: 0, freebananas: 0, farm: 0 };
+  const counts = { grow: 0, bus: 0, special: 0, tax10: 0, desert: 0, farm: 0 };
   for (let i = 0; i < game.board.length; i++) {
     const t = game.board[i];
     if (t.type === "grow") counts.grow++;
     else if (t.type === "bus") counts.bus++;
     else if (t.type === "special") counts.special++;
     else if (t.type === "tax10") counts.tax10++;
-    else if (t.type === "freebananas") counts.freebananas++;
+    else if (t.type === "desert") counts.desert++;
     else if (t.buyable && t.buyable.group === "farm") counts.farm++;
   }
   assert(counts.grow === 6, "Simple board has 6 GROW tiles");
@@ -2029,7 +2349,7 @@ section("66. Classic - Cornerless 48-tile board");
   assert(counts.bus === 0, "Simple board has no Vine Swing tile (now an ability)");
   assert(counts.special === 1, "Simple board has 1 Super Banana tile");
   assert(counts.tax10 === 0, "Simple board has no -10% tax tile");
-  assert(counts.freebananas === 1, "Simple board has 1 +500 Free Bananas tile");
+  assert(counts.desert === 1, "Simple board has 1 Desert tile");
 
   // Grow tiles are labelled 1..6 (no 0, no 7).
   const labels = [...game.growTileLabels.values()].sort((a, b) => a - b);
@@ -2063,7 +2383,7 @@ section("67. Classic - Roll One item (guaranteed move of 1)");
   cur.position = 0;
   for (const p of game.players) p.startPickPending = false;
   game.auction = game.poker = game.vineSwing = null;
-  game.mushroomPending = null;
+  game.superBananaPending = null;
   game.itemAuction = null;
   game.diceRolled = false;
   game.petResolving = false;
@@ -2109,7 +2429,7 @@ section("68. Classic - Vine Swing ability (your OWN farms only)");
   game.petResolving = false;
   game.cardUsedThisTurn = false;
   game.auction = game.poker = game.vineSwing = null;
-  game.mushroomPending = null;
+  game.superBananaPending = null;
   game.itemAuction = null;
   const BSZ = game.boardSize;
 
@@ -2224,7 +2544,7 @@ section("68b. Classic - Arming abilities (off-turn, private, server-side)");
   cur.armedAbility = "rabbitDice";
   game.diceRolled = true;
   cur.hasRolled = true;
-  game.mushroomPending = null;
+  game.superBananaPending = null;
   game.superBananaWin = null;
   game.itemAuction = null;
   assert(game.endTurn(cur.id) === true, "endTurn succeeds with armed item still set");
@@ -2253,7 +2573,7 @@ section("68b. Classic - Arming abilities (off-turn, private, server-side)");
   game.diceRolled = false;
   game.petResolving = false;
   game.auction = game.poker = game.vineSwing = null;
-  game.mushroomPending = null;
+  game.superBananaPending = null;
   game.itemAuction = null;
   game.rollDice(cur.id, 2);
   if (game._cancelAutoEnd) game._cancelAutoEnd();
@@ -2272,37 +2592,45 @@ section("69. Classic - Bomb blast spans grow to grow");
   assert(JSON.stringify(game._sideTiles(5)) === JSON.stringify([0,1,2,3,4,5,6,7,8,9,10,11]), "Side of tile 5 = bottom (0-11)");
   assert(game._sideTiles(20)[0] === 12 && game._sideTiles(20)[11] === 23, "Side of tile 20 = left (12-23)");
 
-  // Find a non-grow tile whose neighbours on both sides are non-grow too,
-  // and identify the next grow in each direction from it. The board is
-  // shuffled at start so we have to derive these from the live layout.
-  const isGrow = (pos) => game.board[pos] && game.board[pos].type === "grow";
+  // Corner tiles sit at 0, 12, 24, 36. A blast spreads from a non-corner bomb
+  // tile to the next CORNER (inclusive) in each direction, independently.
+  const isCorner = (pos) => pos % 12 === 0;
+  // Pick a non-corner bomb tile.
   let bombPos = -1;
   for (let i = 0; i < game.boardSize; i++) {
-    if (!isGrow(i)) { bombPos = i; break; }
+    if (!isCorner(i)) { bombPos = i; break; }
   }
-  assert(bombPos !== -1, "Found a non-grow tile to host the bomb");
-  // Walk to the next grow in each direction.
-  let cwGrow = -1, ccwGrow = -1;
+  assert(bombPos !== -1, "Found a non-corner tile to host the bomb");
+  // Walk to the next corner in each direction.
+  let cwCorner = -1, ccwCorner = -1;
   for (let d = 1; d < game.boardSize; d++) {
     const p = (bombPos + d) % game.boardSize;
-    if (isGrow(p)) { cwGrow = p; break; }
+    if (isCorner(p)) { cwCorner = p; break; }
   }
   for (let d = 1; d < game.boardSize; d++) {
     const p = (bombPos - d + game.boardSize) % game.boardSize;
-    if (isGrow(p)) { ccwGrow = p; break; }
+    if (isCorner(p)) { ccwCorner = p; break; }
   }
-  assert(cwGrow !== -1 && ccwGrow !== -1, "Both directions terminate on a grow");
+  assert(cwCorner !== -1 && ccwCorner !== -1, "Both directions terminate on a corner");
 
-  // Blast tiles should cover from ccwGrow → bombPos → cwGrow (inclusive).
+  // Blast tiles should cover from ccwCorner → bombPos → cwCorner (inclusive).
   const blast = new Set(game._bombBlastTiles(bombPos));
   assert(blast.has(bombPos), "Blast includes the bomb tile");
-  assert(blast.has(cwGrow), "Blast extends clockwise to the next grow (inclusive)");
-  assert(blast.has(ccwGrow), "Blast extends counter-clockwise to the next grow (inclusive)");
-  // The tile JUST PAST each grow must NOT be in the blast.
-  const pastCw = (cwGrow + 1) % game.boardSize;
-  const pastCcw = (ccwGrow - 1 + game.boardSize) % game.boardSize;
-  assert(!blast.has(pastCw), "Blast stops at the clockwise grow — past it is safe");
-  assert(!blast.has(pastCcw), "Blast stops at the counter-clockwise grow — past it is safe");
+  assert(blast.has(cwCorner), "Blast extends clockwise to the next corner (inclusive)");
+  assert(blast.has(ccwCorner), "Blast extends counter-clockwise to the next corner (inclusive)");
+  // The tile JUST PAST each corner must NOT be in the blast.
+  const pastCw = (cwCorner + 1) % game.boardSize;
+  const pastCcw = (ccwCorner - 1 + game.boardSize) % game.boardSize;
+  assert(!blast.has(pastCw), "Blast stops at the clockwise corner — past it is safe");
+  assert(!blast.has(pastCcw), "Blast stops at the counter-clockwise corner — past it is safe");
+
+  // Bombs can't be placed on a corner tile.
+  const placerForRules = game.players[0];
+  placerForRules.bomb = 1;
+  game.bombMode = true;
+  assert(game.placeBomb(placerForRules.id, 0) === false, "Cannot place a bomb on corner tile 0");
+  assert(game.placeBomb(placerForRules.id, 12) === false, "Cannot place a bomb on corner tile 12");
+  assert(game.bombs.length === 0, "No bomb placed on a corner");
 
   // Find a tile far away from the blast for the survivor.
   let safePos = -1;
@@ -2313,7 +2641,7 @@ section("69. Classic - Bomb blast spans grow to grow");
 
   const [placer, victim, survivor] = game.players;
   placer.position = bombPos;
-  victim.position = cwGrow; // sits on the bounding grow → killed
+  victim.position = cwCorner; // sits on the bounding corner → killed
   survivor.position = safePos;
 
   game.bombs.push({ placedBy: placer.id, position: bombPos, turnsLeft: 0, pending: false });
@@ -2321,49 +2649,85 @@ section("69. Classic - Bomb blast spans grow to grow");
 
   const exploded = game._explodeExpiredBombs();
   assert(exploded === true, "Bomb detonates when its fuse expires");
-  assert(victim.bankrupt === true, "Opponent on the bounding grow is eliminated");
+  assert(victim.bankrupt === true, "Opponent on the bounding corner is eliminated");
   assert(survivor.bankrupt === false, "Player outside the blast survives");
   assert(placer.bankrupt === false, "Placer is NOT eliminated by their own bomb");
   assert(placer.money >= placerMoneyBefore, "Placer loses no money from self-bomb (no-op)");
-  assert(!game.bombSelfDamage, "No bombSelfDamage state recorded for self-bomb");
   assert(game.bombs.length === 0, "Bomb consumed after detonating");
 
-  // Corner-case: a bomb placed on a grow tile spreads CLOCKWISE only,
-  // ending at the next grow tile in that direction.
+  // Landing on an armed bomb detonates it.
   const g2 = createStartedGame(2, { gameMode: "classic", startingMoney: 5000 }).game;
   for (const p of g2.players) p.startPickPending = false;
-  const isGrow2 = (pos) => g2.board[pos] && g2.board[pos].type === "grow";
-  let growPos = -1;
-  for (let i = 0; i < g2.boardSize; i++) {
-    if (isGrow2(i)) { growPos = i; break; }
-  }
-  let nextGrow = -1;
-  for (let d = 1; d < g2.boardSize; d++) {
-    const p = (growPos + d) % g2.boardSize;
-    if (isGrow2(p)) { nextGrow = p; break; }
-  }
-  let prevGrow = -1;
-  for (let d = 1; d < g2.boardSize; d++) {
-    const p = (growPos - d + g2.boardSize) % g2.boardSize;
-    if (isGrow2(p)) { prevGrow = p; break; }
-  }
-  const cornerBlast = new Set(g2._bombBlastTiles(growPos));
-  assert(cornerBlast.has(growPos), "Corner bomb includes its own grow tile");
-  assert(cornerBlast.has(nextGrow), "Corner bomb extends to the next grow clockwise");
-  assert(!cornerBlast.has((nextGrow + 1) % g2.boardSize), "Corner bomb stops at the next grow");
-  // Counter-clockwise tile is NOT in the blast (corner bomb is clockwise-only).
-  const ccwTile = (growPos - 1 + g2.boardSize) % g2.boardSize;
-  if (ccwTile !== prevGrow) {
-    assert(!cornerBlast.has(ccwTile), "Corner bomb does NOT spread counter-clockwise");
-  }
-
+  let landPos = -1;
+  for (let i = 0; i < g2.boardSize; i++) { if (!isCorner(i)) { landPos = i; break; } }
   const [pl2, vic2] = g2.players;
-  pl2.position = 0;
-  g2.bombs.push({ placedBy: pl2.id, position: growPos, turnsLeft: 3, pending: false });
-  vic2.position = growPos; // lands on the bomb
+  pl2.position = (landPos + 6) % g2.boardSize;
+  g2.bombs.push({ placedBy: pl2.id, position: landPos, turnsLeft: 3, pending: false });
+  vic2.position = landPos; // lands on the bomb
   const det = g2._checkBombDetonation(vic2);
   assert(det === true, "Landing on a bomb detonates it");
   assert(vic2.bankrupt === true, "Lander on the bomb is eliminated");
+}
+
+// ============================================================
+section("69b. Bomb placement timing + 2v2 teammate/bomb-win rules");
+// ============================================================
+
+{
+  // Unified placement timing: a bomb stays pending until the END of the
+  // placer's next turn, then spawns + arms. Placing on your OWN turn needs two
+  // of your turn-ends (armCountdown 2); placing on someone else's needs one.
+  const { game } = createStartedGame(2, { gameMode: "classic", startingMoney: 5000 });
+  game.bombMode = true;
+  const a = game.players[0];
+  const b = game.players[1];
+  a.bomb = 1;
+  let tile = -1;
+  for (let i = 0; i < game.boardSize; i++) { if (i % 12 !== 0) { tile = i; break; } }
+  // a places on a's own turn (a is current).
+  game.currentPlayerIndex = 0;
+  assert(game.placeBomb(a.id, tile) === true, "Placed bomb on own turn");
+  const bomb = game.bombs[0];
+  assert(bomb.pending === true && bomb.armCountdown === 2, "Own-turn bomb pending with armCountdown 2");
+  // a's turn ends (this turn) → still pending.
+  game.diceRolled = true; game.endTurn(a.id);
+  assert(bomb.pending === true && bomb.armCountdown === 1, "Still pending after this turn ends");
+  // b's turn ends → not a's bomb, no change.
+  game.diceRolled = true; game.endTurn(b.id);
+  assert(bomb.pending === true, "Unchanged on the other player's turn end");
+  // a's NEXT turn ends → spawns + arms.
+  game.diceRolled = true; game.endTurn(a.id);
+  assert(bomb.pending === false && bomb.turnsLeft === 3, "Bomb spawns + arms at end of placer's next turn");
+}
+
+{
+  // 2v2: a teammate caught in the blast takes NO damage; eliminating BOTH
+  // opposing players via bombs wins the game for the placer's team.
+  const { game } = createStartedGame(4, { gameMode: "2v2", startingMoney: 5000 });
+  for (const p of game.players) p.startPickPending = false;
+  game.bombMode = true;
+  const A = game.teams.A, B = game.teams.B;
+  const placer = game.players.find((p) => p.id === A[0]);
+  const ally = game.players.find((p) => p.id === A[1]);
+  const foe1 = game.players.find((p) => p.id === B[0]);
+  const foe2 = game.players.find((p) => p.id === B[1]);
+  let tile = -1;
+  for (let i = 0; i < game.boardSize; i++) { if (i % 12 !== 0) { tile = i; break; } }
+  const blast = new Set(game._bombBlastTiles(tile));
+  // Put the ally and both foes inside the blast.
+  const inBlast = [...blast].filter((t) => t !== tile);
+  ally.position = inBlast[0];
+  foe1.position = inBlast[1] != null ? inBlast[1] : inBlast[0];
+  foe2.position = inBlast[2] != null ? inBlast[2] : inBlast[0];
+  placer.position = (tile + (game.boardSize >> 1)) % game.boardSize;
+  if (blast.has(placer.position)) placer.position = [...Array(game.boardSize).keys()].find((i) => !blast.has(i));
+  const allyMoneyBefore = ally.money;
+  game.bombs.push({ placedBy: placer.id, position: tile, turnsLeft: 0, pending: false });
+  game._explodeExpiredBombs();
+  assert(ally.bankrupt === false && ally.money === allyMoneyBefore, "Teammate in the blast takes NO damage");
+  assert(foe1.bankrupt === true && foe2.bankrupt === true, "Both opposing players are eliminated");
+  assert(game.state === "finished", "Team wins by bombing out the opposing team");
+  assert(game.bombWinner === placer.id || game.bombWinner === ally.id, "bombWinner points at a surviving team member");
 }
 
 // ============================================================
@@ -2455,7 +2819,7 @@ section("72. Property auction - silent-bid edge cases");
   let pos = -1;
   for (let i = 1; i < 48; i++) {
     const p = game.properties.get(i);
-    if (p && !p.owner && p.group !== "mushroom" && p.price > 0) { pos = i; break; }
+    if (p && !p.owner && p.group !== "superBanana" && p.price > 0) { pos = i; break; }
   }
 
   function reset() {
@@ -2748,139 +3112,13 @@ section("74. Classic - Hidden grow is dormant on a roll");
 }
 
 // ============================================================
-section("75. Classic - Scouted grow is not a genuine reveal");
-// ============================================================
-
-{
-  const { game } = createStartedGame(2, { gameMode: "classic", startingMoney: 5000 });
-  const cur = game.getCurrentPlayer();
-  for (const p of game.players) { p.revealedTiles = new Set(); p.scoutedTiles = new Set(); }
-
-  let growPos = -1;
-  for (let i = 0; i < game.boardSize; i++) {
-    if (game.board[i].type === "grow") { growPos = i; break; }
-  }
-  if (growPos >= 0) {
-    const n = 3;
-    game.growTileLabels = game.growTileLabels || new Map();
-    for (const [pos, lbl] of [...game.growTileLabels]) {
-      if (lbl === n) game.growTileLabels.delete(pos);
-    }
-    game.growTileLabels.set(growPos, n);
-    cur.position = (growPos + 5) % game.boardSize; // stand clear of the grow
-    // Own a farm in range so a successful fire grows bananas (the glow only
-    // records when something grew).
-    let farmPos = -1;
-    for (let off = 1; off < game.boardSize; off++) {
-      const pos = (growPos + off) % game.boardSize;
-      const prop = game.properties.get(pos);
-      if (prop && prop.group === "farm" && pos !== cur.position) { farmPos = pos; break; }
-    }
-    if (farmPos >= 0) {
-      cur.properties = [farmPos];
-      const fp = game.properties.get(farmPos);
-      fp.owner = cur.id;
-      fp.bananaPile = 0;
-    }
-
-    // Mark it scouted-only (fog-of-war hint, not a genuine discovery). The
-    // Scout ability is retired, but the scoutedTiles mechanism still feeds the
-    // grow-anchoring logic exercised below.
-    cur.revealedTiles.add(growPos);
-    cur.scoutedTiles.add(growPos);
-    assert(cur.revealedTiles.has(growPos), "Scouted grow shows on the scouter's board");
-    assert(cur.scoutedTiles.has(growPos), "Grow is flagged as scouted-only");
-    assert(!game._isGenuinelyRevealed(growPos), "A scouted-only grow is NOT genuinely revealed");
-    assert(
-      !game._genuineRevealedGrowPositions().includes(growPos),
-      "A scouted-only grow is excluded from the genuine-revealed grow list",
-    );
-    const state = game.getState(cur.id);
-    assert(
-      Array.isArray(state.genuineRevealedGrows) && !state.genuineRevealedGrows.includes(growPos),
-      "getState omits a scouted-only grow from genuineRevealedGrows",
-    );
-
-    // Rolling its number stays dormant (scouted != revealed).
-    game.lastGrowFired = null;
-    game._processRolledGrow(cur, n);
-    assert(!game.lastGrowFired, "A scouted-only grow stays dormant when its number is rolled");
-
-    // Landing on it genuinely reveals it and clears the scouted-only flag.
-    game._fireGrowAt(cur, growPos, "land");
-    assert(!cur.scoutedTiles.has(growPos), "Landing clears the scouted-only flag");
-    assert(game._isGenuinelyRevealed(growPos), "Landing makes the grow genuinely revealed");
-    assert(
-      game._genuineRevealedGrowPositions().includes(growPos),
-      "A genuinely-revealed grow appears in the genuine-revealed grow list",
-    );
-
-    // Now its number fires on a roll.
-    game.lastGrowFired = null;
-    game._processRolledGrow(cur, n);
-    assert(
-      game.lastGrowFired && game.lastGrowFired.includes(growPos),
-      "A genuinely-revealed grow fires when its number is rolled",
-    );
-  }
-}
-
-// ============================================================
-section("76. Classic - Scouted grow does not bound a grow range");
-// ============================================================
-
-{
-  const { game } = createStartedGame(2, { gameMode: "classic", startingMoney: 5000 });
-  const cur = game.getCurrentPlayer();
-  for (const p of game.players) { p.revealedTiles = new Set(); p.scoutedTiles = new Set(); }
-
-  // Two grow tiles, scanning clockwise so g2 sits after g1.
-  const grows = [];
-  for (let i = 0; i < game.boardSize && grows.length < 2; i++) {
-    if (game.board[i].type === "grow") grows.push(i);
-  }
-  if (grows.length >= 2) {
-    const g1 = grows[0];
-    const g2 = grows[1];
-    // First owned-able farm strictly clockwise of g2 (before wrapping to g1).
-    let farmPos = -1;
-    for (let off = 1; off < game.boardSize; off++) {
-      const pos = (g2 + off) % game.boardSize;
-      if (pos === g1) break;
-      const prop = game.properties.get(pos);
-      if (prop && prop.group === "farm") { farmPos = pos; break; }
-    }
-    if (farmPos >= 0) {
-      // g1 genuinely revealed; g2 only scouted (so it must NOT bound the range).
-      for (const p of game.players) p.revealedTiles.add(g1);
-      cur.revealedTiles.add(g2);
-      cur.scoutedTiles.add(g2);
-      // cur owns the far farm and stands clear; opponents off the farm tile.
-      if (!cur.properties.includes(farmPos)) cur.properties.push(farmPos);
-      const prop = game.properties.get(farmPos);
-      prop.owner = cur.id;
-      prop.bananaPile = 0;
-      cur.position = g1;
-      for (const p of game.players) if (p.id !== cur.id) p.position = g1;
-
-      game.lastGrowFired = null;
-      game._fireGrowAt(cur, g1, "roll");
-      assert(
-        prop.bananaPile > 0,
-        "A farm beyond a scouted-only grow still grows (the scouted grow does not bound the range)",
-      );
-    }
-  }
-}
-
-// ============================================================
 section("77. Classic - Grow glows only when it grows stuff");
 // ============================================================
 
 {
   const { game } = createStartedGame(2, { gameMode: "classic", startingMoney: 5000 });
   const cur = game.getCurrentPlayer();
-  for (const p of game.players) { p.revealedTiles = new Set(); p.scoutedTiles = new Set(); }
+  for (const p of game.players) { p.revealedTiles = new Set(); }
 
   let growPos = -1;
   for (let i = 0; i < game.boardSize; i++) {
@@ -2928,7 +3166,7 @@ section("77b. Classic - Grow fires on the dice SUM, not the faces");
   // grow label (e.g. 7-12, since labels are 1-6) fire nothing.
   const { game } = createStartedGame(2, { gameMode: "classic", startingMoney: 5000 });
   const cur = game.getCurrentPlayer();
-  for (const p of game.players) { p.revealedTiles = new Set(); p.scoutedTiles = new Set(); }
+  for (const p of game.players) { p.revealedTiles = new Set(); }
 
   const n = 5; // we'll label a grow 5 and match it with a sum of 5
   let growPos = -1;
@@ -2991,7 +3229,7 @@ section("77c. Classic - One-grow global fire grows ALL farms, even a desynced on
 {
   const { game } = createStartedGame(2, { gameMode: "classic", startingMoney: 5000 });
   const cur = game.getCurrentPlayer();
-  for (const p of game.players) { p.startPickPending = false; p.revealedTiles = new Set(); if (p.scoutedTiles) p.scoutedTiles.clear(); }
+  for (const p of game.players) { p.startPickPending = false; p.revealedTiles = new Set(); }
 
   // Pick one grow position, force its label to a known value, reveal it to
   // everyone. Make sure no other grow is revealed.
@@ -3095,6 +3333,132 @@ section("78. Classic - Dice never cost money; shop & item-pool are item-only");
     "Item auction only spins Turtle/Rabbit/Roll One/Vine Swing",
   );
   game.itemAuction = null;
+}
+
+// ============================================================
+section("79. Ghost players - leave, auction, bomb");
+// ============================================================
+{
+  const { game } = createStartedGame(3, { startingMoney: 5000 });
+  for (const p of game.players) p.startPickPending = false;
+  const [a, b, c] = game.players;
+  a.clientId = "dev-a";
+
+  // A farm to keep through ghosting.
+  let farmPos = -1;
+  for (let i = 0; i < game.boardSize; i++) {
+    const pr = game.properties.get(i);
+    if (pr && pr.group === "farm") { farmPos = i; break; }
+  }
+  game.properties.get(farmPos).owner = a.id;
+  a.properties = [farmPos];
+  a.money = 1234;
+  a.cards.teleport = 2;
+
+  assert(game.makeGhost(a.id) === true, "makeGhost flags a mid-game leaver");
+  assert(a.ghost === true, "Player is now a ghost");
+  assert(a.money === 1234 && a.properties.includes(farmPos), "Ghost keeps money + farms");
+  assert(!game._eligibleBidderIds().includes(a.id), "Ghost is excluded from bidding in auctions");
+
+  // Ghost lander prices a found tile at 0 → the others sealed-bid.
+  let unowned = -1;
+  for (let i = 0; i < game.boardSize; i++) {
+    const pr = game.properties.get(i);
+    if (pr && pr.group === "farm" && !pr.owner && i !== farmPos) { unowned = i; break; }
+  }
+  a.position = unowned;
+  b.money = 500; c.money = 500;
+  const opened = game._createAuctionForLander(a.id);
+  assert(opened === true, "Ghost-found farm opens an auction");
+  assert(game.auction && game.auction.sealedBid === true, "Ghost lander triggers a sealed bid");
+  assert(!game.auction.bidders.includes(a.id), "Ghost is not a bidder in its own found-tile auction");
+  if (game._auctionTimer) { clearTimeout(game._auctionTimer); game._auctionTimer = null; }
+  game.auction = null;
+
+  // Bombing a ghost takes money + farms + items.
+  game.bombMode = true;
+  const ghostMoney = a.money;
+  b.money = 100; b.cards.teleport = 0;
+  game._bombEliminate(a, b);
+  assert(a.bankrupt === true, "Bombed ghost is eliminated");
+  assert(b.money === 100 + ghostMoney, "Placer took the ghost's bananas");
+  assert(game.properties.get(farmPos).owner === b.id, "Placer took the ghost's farm");
+  assert(b.cards.teleport === 2, "Placer took the ghost's items");
+}
+
+// ============================================================
+section("79b. Ghost reconnect rebinds the player id everywhere");
+// ============================================================
+{
+  const { game } = createStartedGame(2, { startingMoney: 5000 });
+  for (const p of game.players) p.startPickPending = false;
+  const [a] = game.players;
+  a.clientId = "dev-reconnect";
+  let farmPos = -1;
+  for (let i = 0; i < game.boardSize; i++) {
+    const pr = game.properties.get(i);
+    if (pr && pr.group === "farm") { farmPos = i; break; }
+  }
+  game.properties.get(farmPos).owner = a.id;
+  a.properties = [farmPos];
+  game.bombs.push({ placedBy: a.id, position: 5, turnsLeft: 3, pending: false, armCountdown: 0 });
+  const oldId = a.id;
+  game.makeGhost(a.id);
+
+  const rejoined = game.reconnectByClientId("new-socket-xyz", "dev-reconnect");
+  assert(rejoined && rejoined.id === "new-socket-xyz", "reconnectByClientId rebinds to the new socket id");
+  assert(a.ghost === false, "Reconnected player is no longer a ghost");
+  assert(game.properties.get(farmPos).owner === "new-socket-xyz", "Farm ownership rebound to the new id");
+  assert(game.bombs[0].placedBy === "new-socket-xyz", "Bomb placedBy rebound to the new id");
+  assert(game.players.find((p) => p.id === oldId) === undefined, "Old socket id no longer exists");
+  assert(game.reconnectByClientId("another-socket", "dev-reconnect") === null, "No ghost to reclaim after reconnect");
+}
+
+// ============================================================
+section("79c. Ghost landing interactions (skim 10% / no poker)");
+// ============================================================
+{
+  // A LIVE player landing on a ghost skims 10% of the ghost's bananas, no poker.
+  const { game } = createStartedGame(2, { startingMoney: 5000, monkeyPoker: true });
+  for (const p of game.players) p.startPickPending = false;
+  const [live, gh] = game.players;
+  gh.ghost = true;
+  gh.money = 1000;
+  live.money = 2000;
+  let farmPos = -1;
+  for (let i = 0; i < game.boardSize; i++) {
+    const pr = game.properties.get(i);
+    if (pr && pr.group === "farm") { farmPos = i; break; }
+  }
+  game.properties.get(farmPos).owner = gh.id; // owned → no auction interference
+  gh.position = farmPos;
+  live.position = farmPos;
+  game.poker = null;
+  game._processLanding(live);
+  assert(game.poker === null, "No poker when a live player lands on a ghost");
+  assert(live.money === 2100, "Live lander skims 10% (100) of the ghost");
+  assert(gh.money === 900, "Ghost loses the skimmed 10%");
+}
+{
+  // A GHOST landing on a live player does nothing (no poker, no skim).
+  const { game } = createStartedGame(2, { startingMoney: 5000, monkeyPoker: true });
+  for (const p of game.players) p.startPickPending = false;
+  const [live, gh] = game.players;
+  gh.ghost = true;
+  gh.money = 1000;
+  live.money = 2000;
+  let farmPos = -1;
+  for (let i = 0; i < game.boardSize; i++) {
+    const pr = game.properties.get(i);
+    if (pr && pr.group === "farm") { farmPos = i; break; }
+  }
+  game.properties.get(farmPos).owner = live.id; // owned by live → no auction
+  live.position = farmPos;
+  gh.position = farmPos;
+  game.poker = null;
+  game._processLanding(gh);
+  assert(game.poker === null, "A ghost landing on a live player starts no poker");
+  assert(live.money === 2000 && gh.money === 1000, "Nothing transfers when a ghost lands on you");
 }
 
 // ============================================================

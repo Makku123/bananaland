@@ -39,11 +39,6 @@ function spaceRect(i) {
   return { l: 0, t: 0, w: 0, h: 0 };
 }
 
-// ——— Free Bananas popup tracking ——————————————————————————————————
-let _prevFreeBananasTiles = new Set(); // positions where freebananas is known
-let _freeBananasShown = new Set(); // positions already shown this walk
-window._freeBananasShown = _freeBananasShown;
-
 // ——— Banana pile tracking for collection animation ————————————————
 let _prevBananaPiles = {}; // { tileIndex: amount }
 
@@ -68,6 +63,29 @@ function _pileChipLabel(tileIndex, amount) {
   return { text: amount + "🍌", mult: false, title: "" };
 }
 
+// "Friendly steal" (2v2): stealing a teammate's pile shows a green
+// "Friendly Steal!" floater instead of the red "Steal!" — the bananas came off
+// your own teammate's farm.
+function _teamOfPlayer(playerId) {
+  if (!gs || !gs.teams || !playerId) return null;
+  if (gs.teams.A && gs.teams.A.includes(playerId)) return "A";
+  if (gs.teams.B && gs.teams.B.includes(playerId)) return "B";
+  return null;
+}
+function _isFriendlySteal(collectorId, ownerId) {
+  if (!gs || gs.gameMode !== "2v2") return false;
+  const a = _teamOfPlayer(collectorId);
+  const b = _teamOfPlayer(ownerId);
+  return !!a && a === b;
+}
+// Style a steal floater element as either a normal (red) or friendly (green) steal.
+function _applyStealFloaterStyle(el, friendly) {
+  el.className = friendly
+    ? "steal-floater steal-floater-friendly"
+    : "steal-floater";
+  el.textContent = friendly ? "Friendly Steal!" : "Steal!";
+}
+
 // Fire the "Steal!" text floater at a tile immediately (no walk-end delay).
 // game.js calls this at walk-start when the player leaves a squatted tile, so
 // the steal reads at departure rather than at the end of the walk. Marks the
@@ -84,8 +102,10 @@ function _showStealFloaterAt(tileIndex) {
   if (!board) return;
   const r = spaceRect(tileIndex);
   const stealFloater = document.createElement("div");
-  stealFloater.className = "steal-floater";
-  stealFloater.textContent = "Steal!";
+  const _collectorId =
+    window._walkingPlayerId || (gs && gs.currentPlayer && gs.currentPlayer.id);
+  const _ownerProp = gs && gs.properties && gs.properties.find((p) => p.id === tileIndex);
+  _applyStealFloaterStyle(stealFloater, _isFriendlySteal(_collectorId, _ownerProp && _ownerProp.owner));
   const boardRect = board.getBoundingClientRect();
   stealFloater.style.position = "fixed";
   stealFloater.style.left =
@@ -140,6 +160,81 @@ function _positionPileChip(pileEl, r) {
     outside ? rightOf() : leftOf(); // interior of a right tile is LEFT
   }
 }
+
+// Reconcile the on-board .banana-pile count-box chips IN PLACE against the
+// desired `piles` list, reusing the existing chip element for each tile rather
+// than removing and recreating every chip on every render. Keeping the same
+// node alive is what stops the boxes from blinking: at turn-end the client
+// fires several full renders back-to-back across separate timers/socket events
+// (walk-end cleanup → grow-unfreeze → route refresh → next-turn update), and
+// recreating the chips meant a chip could be absent from a painted frame and
+// its infinite glow restarted every pass. With reuse the node never leaves the
+// DOM and its animation runs continuously. Each chip is tagged data-tile and
+// data-pile-color so updates stay surgical (we never blow away its animation
+// classes). Returns a Map of tileIndex → chip element so callers can layer
+// extra animation on top (e.g. the grow bounce in renderBoard).
+function _reconcileBananaPiles(board, piles) {
+  const existing = new Map();
+  board.querySelectorAll(".banana-pile").forEach((el) => {
+    const t = el.getAttribute("data-tile");
+    if (t == null) { el.remove(); return; } // untagged legacy chip — drop
+    existing.set(Number(t), el);
+  });
+
+  const chips = new Map();
+  const wanted = new Set();
+  for (const pile of piles) {
+    wanted.add(pile.tileIndex);
+    const r = spaceRect(pile.tileIndex);
+    let pileEl = existing.get(pile.tileIndex);
+    if (!pileEl) {
+      pileEl = document.createElement("div");
+      pileEl.className = "banana-pile";
+      pileEl.setAttribute("data-tile", String(pile.tileIndex));
+      board.appendChild(pileEl);
+    }
+    // Owner-colour class: swap it surgically so we never strip the chip's other
+    // (animation) classes, which would restart the glow or cut a bounce short.
+    const wantColor = pile.ownerColor ? "pile-" + pile.ownerColor : "";
+    const haveColor = pileEl.getAttribute("data-pile-color") || "";
+    if (haveColor !== wantColor) {
+      if (haveColor) pileEl.classList.remove(haveColor);
+      if (wantColor) pileEl.classList.add(wantColor);
+      pileEl.setAttribute("data-pile-color", wantColor);
+    }
+    const _chip = _pileChipLabel(pile.tileIndex, pile.amount);
+    if (pileEl.textContent !== _chip.text) pileEl.textContent = _chip.text;
+    pileEl.classList.toggle("pile-mult", !!_chip.mult);
+    if (_chip.title) pileEl.setAttribute("data-tooltip", _chip.title);
+    else pileEl.removeAttribute("data-tooltip");
+    _positionPileChip(pileEl, r);
+    // Grow-chain bounce while the tile sits in _pileBounceTiles. Add it ONCE
+    // (resuming at the right frame for a chip that entered the set mid-bounce);
+    // re-adding it to a chip already bouncing would restart the animation.
+    const wantBounce = !!(
+      window._pileBounceTiles && window._pileBounceTiles.has(pile.tileIndex)
+    );
+    const hasBounce = pileEl.classList.contains("pile-bounce");
+    if (wantBounce && !hasBounce) {
+      pileEl.classList.add("pile-bounce");
+      const _bStart =
+        window._pileBounceStart && window._pileBounceStart[pile.tileIndex];
+      if (_bStart != null)
+        pileEl.style.animationDelay = -(performance.now() - _bStart) + "ms";
+    } else if (!wantBounce && hasBounce) {
+      pileEl.classList.remove("pile-bounce");
+      pileEl.style.animationDelay = "";
+    }
+    chips.set(pile.tileIndex, pileEl);
+  }
+
+  // Drop chips whose tile no longer has a pile.
+  for (const [tile, el] of existing) {
+    if (!wanted.has(tile)) el.remove();
+  }
+  return chips;
+}
+
 let _stealShown = new Set(); // tile indices where "Steal!" floater already fired this turn
 let _collectShown = new Set(); // tile indices where collect floater/popup already fired this turn
 let _wasTokenWalking = false; // tracks previous walk state to detect walk-start transitions
@@ -155,8 +250,6 @@ function resetBoardAnimationState() {
   _stealShown = new Set();
   _collectShown = new Set();
   _wasTokenWalking = false;
-  _prevFreeBananasTiles = new Set();
-  _freeBananasShown = new Set();
   _chainCache = null;
   window._lastGrowFiredKey = null;
   // sale_completed sets _pendingSaleFlash and the next renderBoard consumes
@@ -175,8 +268,6 @@ function resetBoardAnimationState() {
 function resetWalkDedup() {
   _stealShown = new Set();
   _collectShown = new Set();
-  _freeBananasShown = new Set();
-  window._freeBananasShown = _freeBananasShown;
   window._walkStartStealTiles = new Set();
   _wasTokenWalking = true;
 }
@@ -219,6 +310,18 @@ function _setupBoardDelegation() {
       if (occupied) return;
       if (socket && gameId)
         socket.emit("pick_start_tile", { gameId, position: i });
+      return;
+    }
+    // Super Banana hide-pick: the broke lander chooses a hidden tile to hide it.
+    if (
+      gs.superBananaPending &&
+      gs.superBananaPending.awaitingPick &&
+      gs.superBananaPending.playerId === myId &&
+      !window._tokenWalking &&
+      tile.classList.contains("super-banana-pick-target")
+    ) {
+      if (socket && gameId)
+        socket.emit("pick_super_banana_swap", { gameId, position: i });
       return;
     }
     // Vine swing mode
@@ -351,30 +454,9 @@ function walkStepUpdate(gs) {
     }
   }
 
-  // Remove old banana pile elements and re-render
-  board.querySelectorAll(".banana-pile").forEach((el) => el.remove());
-  for (const pile of _bananaPiles) {
-    const r = spaceRect(pile.tileIndex);
-    const pileEl = document.createElement("div");
-    pileEl.className = "banana-pile";
-    if (pile.ownerColor) pileEl.classList.add("pile-" + pile.ownerColor);
-    // Bounce the count box when the grow chain reaches this farm (even if it
-    // already had bananas). The tile stays in _pileBounceTiles for ~one bounce.
-    if (window._pileBounceTiles && window._pileBounceTiles.has(pile.tileIndex)) {
-      pileEl.classList.add("pile-bounce");
-      // Resume the bounce at the right frame after a mid-pulse chip rebuild, so
-      // it plays through once instead of restarting on every pulse step.
-      const _bStart = window._pileBounceStart && window._pileBounceStart[pile.tileIndex];
-      if (_bStart != null)
-        pileEl.style.animationDelay = -(performance.now() - _bStart) + "ms";
-    }
-    const _chip = _pileChipLabel(pile.tileIndex, pile.amount);
-    pileEl.textContent = _chip.text;
-    if (_chip.mult) pileEl.classList.add("pile-mult");
-    if (_chip.title) pileEl.setAttribute("data-tooltip", _chip.title);
-    _positionPileChip(pileEl, r);
-    board.appendChild(pileEl);
-  }
+  // Reconcile the pile chips in place (reuse existing nodes — see
+  // _reconcileBananaPiles) so they never blink across the walk's many updates.
+  _reconcileBananaPiles(board, _bananaPiles);
 
   // Detect collected piles and show floating animation (once per tile per turn)
   // Delay burst by 150ms so the token CSS transition finishes before the explosion
@@ -415,8 +497,7 @@ function walkStepUpdate(gs) {
         bananaBurst(collected, collectorId, stealAnchorEl);
         if (isSteal) {
           const stealFloater = document.createElement("div");
-          stealFloater.className = "steal-floater";
-          stealFloater.textContent = "Steal!";
+          _applyStealFloaterStyle(stealFloater, _isFriendlySteal(collectorId, stolenProp && stolenProp.owner));
           const boardRect = board.getBoundingClientRect();
           stealFloater.style.position = "fixed";
           stealFloater.style.left = boardRect.left + (r.l + r.w / 2) / 100 * boardRect.width + "px";
@@ -446,53 +527,6 @@ function walkStepUpdate(gs) {
   }
   _prevBananaPiles = currentPiles;
   window._vineSwingJustLanded = false;
-
-  // Free Bananas pass-through detection
-  const layout = gs && gs.boardLayout;
-  const me = gs && gs.players && gs.players.find((p) => p.id === myId);
-  const myRevealed = me && me.revealedTiles ? new Set(me.revealedTiles) : null;
-  if (layout && window._diceRollingPositions) {
-    const currentFB = new Set();
-    layout.forEach((tile, idx) => {
-      if (tile.type === "freebananas") currentFB.add(idx);
-    });
-    for (const [playerId, pos] of Object.entries(window._diceRollingPositions)) {
-      const isStartPos =
-        window._walkStartPositions &&
-        window._walkStartPositions[playerId] === pos;
-      if (isStartPos) continue;
-      const tileRevealed = !myRevealed || myRevealed.has(pos);
-      if (currentFB.has(pos) && !_freeBananasShown.has(pos) && tileRevealed) {
-        _freeBananasShown.add(pos);
-        // Flash the tile itself so the source of the bananas is obvious \u2014 the
-        // floater near the banana box alone doesn't tell you which tile fired.
-        const _fbTile = document.getElementById("space-" + pos);
-        if (_fbTile) {
-          _fbTile.classList.remove("freebananas-triggered");
-          void _fbTile.offsetWidth; // restart the animation
-          _fbTile.classList.add("freebananas-triggered");
-          _fbTile.addEventListener(
-            "animationend",
-            () => _fbTile.classList.remove("freebananas-triggered"),
-            { once: true },
-          );
-        }
-        // Rain bananas on the tile (anchored to the source) so the payout
-        // reads visually at the tile. bananaBurst also fires the green
-        // "+25\uD83C\uDF4C" floater near the player's score, which is the canonical
-        // gain text. Tracked in a window counter so the post-walk
-        // reconciliation in game.js doesn't double-burst the same amount on
-        // the walker's token.
-        const _fbAmount = 25;
-        if (typeof bananaBurst === "function" && _fbTile) {
-          bananaBurst(_fbAmount, playerId, _fbTile);
-          if (window._tokenWalking) {
-            window._walkFreeBananasBursted = (window._walkFreeBananasBursted || 0) + _fbAmount;
-          }
-        }
-      }
-    }
-  }
 
   // Update token positions (reuse persistent token layer)
   let tokenLayer = document.getElementById("token-layer");
@@ -526,10 +560,11 @@ function walkStepUpdate(gs) {
         let tok = _tokenElements[p.id];
         if (!tok) {
           tok = document.createElement("div");
-          tok.textContent = "\ud83d\udc35";
           _tokenElements[p.id] = tok;
         }
-        tok.className = "token c-" + p.color;
+        // Ghosts (players who left mid-game) show a ghost emoji until they reconnect.
+        tok.textContent = p.ghost ? "\ud83d\udc7b" : "\ud83d\udc35";
+        tok.className = "token c-" + p.color + (p.ghost ? " token-ghost" : "");
         if (p.id === myId) tok.classList.add("token-me");
         if (gs.currentPlayer && gs.currentPlayer.id === p.id)
           tok.classList.add("token-active");
@@ -651,6 +686,14 @@ function renderBoard(gs) {
   // Detach persistent token layer before clearing
   let tokenLayer = document.getElementById("token-layer");
   if (tokenLayer) tokenLayer.remove();
+  // Preserve the banana-pile count-box chips across the teardown (like the
+  // token layer) so _reconcileBananaPiles can reuse the same nodes below
+  // instead of recreating them — this is what stops the boxes from blinking on
+  // turn change. We hold references, detach, and re-append after the reset.
+  const _preservedPileChips = Array.from(
+    board.querySelectorAll(".banana-pile"),
+  );
+  _preservedPileChips.forEach((el) => el.remove());
   // Floaters (steal, collect) are NOT preserved across re-renders — re-appending
   // restarts CSS animations causing visible flashing. Instead, dedup sets
   // (_collectShown, _stealShown) prevent re-creation, and popups on document.body
@@ -675,6 +718,9 @@ function renderBoard(gs) {
   if (pokerTable) board.appendChild(pokerTable);
   if (auctionBox) board.appendChild(auctionBox);
   if (itemAuctionBox) board.appendChild(itemAuctionBox);
+  // Re-attach the preserved pile chips; _reconcileBananaPiles (below) updates
+  // their values in place and removes any whose pile is now gone.
+  _preservedPileChips.forEach((el) => board.appendChild(el));
 
   // Use server's board layout if available, otherwise fall back to static data
   const layout = gs && gs.boardLayout;
@@ -703,18 +749,6 @@ function renderBoard(gs) {
     }
   }
 
-  // Tiles the viewer has only SCOUTED (peeked, not genuinely discovered). These
-  // render like revealed tiles but under a translucent leafy veil, so you can
-  // see what's there without it counting as fully revealed. Landing on a tile
-  // clears its scouted flag server-side, so this set is scouted-only.
-  let myScouted = null;
-  if (gs && gs.players && typeof myId !== "undefined") {
-    const me = _playerById[myId];
-    if (me && me.scoutedTiles && me.scoutedTiles.length) {
-      myScouted = new Set(me.scoutedTiles);
-    }
-  }
-
   // Compute chain multipliers (cached — only recompute when ownership changes)
   // Build a key from owned tile positions to detect changes
   let _chainMultipliers;
@@ -730,7 +764,7 @@ function renderBoard(gs) {
       _chainMultipliers = {};
       const ownerPositions = {};
       for (const prop of gs.properties) {
-        if (prop.owner && prop.group && prop.group !== "desert" && prop.group !== "mushroom") {
+        if (prop.owner && prop.group && prop.group !== "desert" && prop.group !== "superBanana") {
           if (!ownerPositions[prop.owner]) ownerPositions[prop.owner] = [];
           ownerPositions[prop.owner].push(prop);
         }
@@ -853,6 +887,14 @@ function renderBoard(gs) {
       gs.currentPlayer.startPickPending &&
       !window._tokenWalking;
 
+    // Super Banana hide-pick: the broke lander clicks a hidden tile to hide it.
+    const superBananaPickActive =
+      gs &&
+      gs.superBananaPending &&
+      gs.superBananaPending.awaitingPick &&
+      gs.superBananaPending.playerId === myId &&
+      !window._tokenWalking;
+
     if (!isRevealed) {
       el.classList.add("space-hidden");
       const leaverHex = _leaverCoverByPos.get(i);
@@ -861,6 +903,11 @@ function renderBoard(gs) {
         el.style.setProperty("--leaver-color", leaverHex);
       }
       el.innerHTML = `<span class="sname">${i}</span>`;
+      // Rainbow hint: the Super Banana is hidden here — shown only to the
+      // player who last hid it (server sends superBananaHintPos privately).
+      if (gs && gs.superBananaHintPos != null && i === gs.superBananaHintPos) {
+        el.classList.add("superbanana-hint");
+      }
       // Vine Swing: hidden tiles are also clickable (only own properties)
       if (gs && gs.vineSwing && gs.vineSwing === myId && !window._tokenWalking) {
         const ownsProp = _propById[i] && _propById[i].owner === myId;
@@ -871,8 +918,13 @@ function renderBoard(gs) {
       if (startPickActive && !_occupiedPositions.has(i)) {
         el.classList.add("space-pickable", "start-pick-target");
       }
-      // Bomb placement mode: make hidden tiles clickable
-      if (window._bombPlacementMode) {
+      // Super Banana hideout pick: any hidden tile except the banana's own.
+      if (superBananaPickActive && i !== gs.superBananaPending.superBananaPos) {
+        el.classList.add("space-pickable", "super-banana-pick-target");
+      }
+      // Bomb placement mode: make tiles clickable (but not corner tiles —
+      // bombs can't be placed on a corner).
+      if (window._bombPlacementMode && i % 12 !== 0) {
         el.classList.add("space-pickable", "bomb-target");
       }
       // Sell mode: make hidden owned tiles clickable too
@@ -894,13 +946,6 @@ function renderBoard(gs) {
       }
       board.appendChild(el);
       continue;
-    }
-
-    // Scouted-only tiles render their full content but under a translucent
-    // veil (see .space-scouted in CSS). Skip when everything is revealed at
-    // game end so the veil doesn't linger.
-    if (myScouted && myScouted.has(i) && !(typeof revealAll !== "undefined" && revealAll)) {
-      el.classList.add("space-scouted");
     }
 
     if (layout) {
@@ -935,8 +980,8 @@ function renderBoard(gs) {
         } else if (tile.group === "desert") {
           el.classList.add("type-desert");
           el.innerHTML = `<span class="sname desert-icon">${tile.tileName}</span>`;
-        } else if (tile.group === "mushroom") {
-          el.classList.add("g-mushroom");
+        } else if (tile.group === "superBanana") {
+          el.classList.add("g-super-banana");
           el.innerHTML =
             `<span class="sname"><svg class="rainbow-banana" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">` +
             `<defs><linearGradient id="rb${i}" x1="0.2" y1="0" x2="0.8" y2="1">` +
@@ -991,8 +1036,9 @@ function renderBoard(gs) {
       }
     }
 
-    // Bomb placement mode: make tiles clickable
-    if (window._bombPlacementMode) {
+    // Bomb placement mode: make tiles clickable (but not corner tiles —
+    // bombs can't be placed on a corner).
+    if (window._bombPlacementMode && i % 12 !== 0) {
       el.classList.add("space-pickable", "bomb-target");
     }
 
@@ -1123,71 +1169,68 @@ function renderBoard(gs) {
   }
 
   // Render banana pile indicators next to their tiles (see _positionPileChip).
+  // Reconcile in place (reuse existing chip nodes) so the boxes don't blink when
+  // several renders fire back-to-back at turn-end \u2014 see _reconcileBananaPiles.
+  const _pileChips = _reconcileBananaPiles(board, _bananaPiles);
+
+  // Pile-grew animation: a pile whose amount increased since the last render
+  // pops with a bounce. Skip during the walk UNLESS this is a dice-match or
+  // GROW unfreeze render. Because chips are now reused, replay the bounce by
+  // clearing the class, forcing a reflow, then re-adding it.
   for (const pile of _bananaPiles) {
-    const r = spaceRect(pile.tileIndex);
-    const pileEl = document.createElement("div");
-    pileEl.className = "banana-pile";
-    if (pile.ownerColor) pileEl.classList.add("pile-" + pile.ownerColor);
-    // Bounce the count box when the grow chain reaches this farm (even if it
-    // already had bananas). The tile stays in _pileBounceTiles for ~one bounce.
-    if (window._pileBounceTiles && window._pileBounceTiles.has(pile.tileIndex)) {
-      pileEl.classList.add("pile-bounce");
-      // Resume the bounce at the right frame after a mid-pulse chip rebuild, so
-      // it plays through once instead of restarting on every pulse step.
-      const _bStart = window._pileBounceStart && window._pileBounceStart[pile.tileIndex];
-      if (_bStart != null)
-        pileEl.style.animationDelay = -(performance.now() - _bStart) + "ms";
-    }
-    const _chip = _pileChipLabel(pile.tileIndex, pile.amount);
-    pileEl.textContent = _chip.text;
-    if (_chip.mult) pileEl.classList.add("pile-mult");
-    if (_chip.title) pileEl.setAttribute("data-tooltip", _chip.title);
-
-    // Place the chip relative to its tile (outside the board ring in simple mode).
-    _positionPileChip(pileEl, r);
-
-    // Pile-grew animation: pile amount increased since last render
-    // Skip during walk animation UNLESS this is a dice-match or GROW unfreeze render
-    if (grewTiles.has(pile.tileIndex) && (!window._tokenWalking || isGrowUnfreeze || isDiceMatchSteal)) {
-      const isDiceMatch = diceMatchSet.has(pile.tileIndex);
+    if (!grewTiles.has(pile.tileIndex)) continue;
+    if (window._tokenWalking && !isGrowUnfreeze && !isDiceMatchSteal) continue;
+    const pileEl = _pileChips.get(pile.tileIndex);
+    const isDiceMatch = diceMatchSet.has(pile.tileIndex);
+    if (pileEl) {
+      pileEl.classList.remove("dice-match-grow", "pile-grew");
+      void pileEl.offsetWidth; // reflow so the re-added class replays the bounce
       pileEl.classList.add(isDiceMatch ? "dice-match-grow" : "pile-grew");
-      const tileEl = document.getElementById("space-" + pile.tileIndex);
-      if (tileEl) tileEl.classList.add("pile-grew-tile");
-      if (isDiceMatch && tileEl) {
-        const numEl = tileEl.querySelector(".sname-num");
-        if (numEl) {
-          numEl.classList.add("dice-match-glow");
-          setTimeout(() => numEl.classList.remove("dice-match-glow"), 2500);
-        }
+      // The chip node is reused across renders now, so the grow class (which
+      // carries a bright box-shadow) must be cleared once the bounce finishes —
+      // otherwise it would stick permanently. One persistent listener per chip.
+      if (!pileEl._growClearBound) {
+        pileEl._growClearBound = true;
+        pileEl.addEventListener("animationend", (e) => {
+          if (e.animationName === "pile-grow-bounce")
+            pileEl.classList.remove("dice-match-grow", "pile-grew");
+        });
       }
-      const delta = grewTiles.get(pile.tileIndex);
-      const floater = document.createElement("div");
-      floater.className = "pile-grow-floater";
-      floater.textContent = "+" + delta + "\uD83C\uDF4C";
-      const r2 = spaceRect(pile.tileIndex);
-      if (r2.side === "bottom") {
-        floater.style.left = r2.l + r2.w / 2 + "%";
-        floater.style.top = r2.t - 0.3 + "%";
-      } else if (r2.side === "top") {
-        floater.style.left = r2.l + r2.w / 2 + "%";
-        floater.style.top = r2.t + r2.h + 0.3 + "%";
-      } else if (r2.side === "left") {
-        floater.style.left = r2.l + r2.w + 0.3 + "%";
-        floater.style.top = r2.t + r2.h / 2 + "%";
-      } else if (r2.side === "right") {
-        floater.style.left = r2.l - 0.3 + "%";
-        floater.style.top = r2.t + r2.h / 2 + "%";
-      } else {
-        const cx = r2.l + r2.w / 2;
-        const cy = r2.t + r2.h / 2;
-        floater.style.left = (cx < 50 ? r2.l + r2.w + 0.3 : r2.l - 0.3) + "%";
-        floater.style.top = (cy < 50 ? r2.t + r2.h + 0.3 : r2.t - 0.3) + "%";
-      }
-      board.appendChild(floater);
-      floater.addEventListener("animationend", () => floater.remove());
     }
-
-    board.appendChild(pileEl);
+    const tileEl = document.getElementById("space-" + pile.tileIndex);
+    if (tileEl) tileEl.classList.add("pile-grew-tile");
+    if (isDiceMatch && tileEl) {
+      const numEl = tileEl.querySelector(".sname-num");
+      if (numEl) {
+        numEl.classList.add("dice-match-glow");
+        setTimeout(() => numEl.classList.remove("dice-match-glow"), 2500);
+      }
+    }
+    const delta = grewTiles.get(pile.tileIndex);
+    const floater = document.createElement("div");
+    floater.className = "pile-grow-floater";
+    floater.textContent = "+" + delta + "\uD83C\uDF4C";
+    const r2 = spaceRect(pile.tileIndex);
+    if (r2.side === "bottom") {
+      floater.style.left = r2.l + r2.w / 2 + "%";
+      floater.style.top = r2.t - 0.3 + "%";
+    } else if (r2.side === "top") {
+      floater.style.left = r2.l + r2.w / 2 + "%";
+      floater.style.top = r2.t + r2.h + 0.3 + "%";
+    } else if (r2.side === "left") {
+      floater.style.left = r2.l + r2.w + 0.3 + "%";
+      floater.style.top = r2.t + r2.h / 2 + "%";
+    } else if (r2.side === "right") {
+      floater.style.left = r2.l - 0.3 + "%";
+      floater.style.top = r2.t + r2.h / 2 + "%";
+    } else {
+      const cx = r2.l + r2.w / 2;
+      const cy = r2.t + r2.h / 2;
+      floater.style.left = (cx < 50 ? r2.l + r2.w + 0.3 : r2.l - 0.3) + "%";
+      floater.style.top = (cy < 50 ? r2.t + r2.h + 0.3 : r2.t - 0.3) + "%";
+    }
+    board.appendChild(floater);
+    floater.addEventListener("animationend", () => floater.remove());
   }
 
   // Grow-then-steal animation for squatters on GROW corner tiles or dice-match grows
@@ -1219,8 +1262,8 @@ function renderBoard(gs) {
       // After 1 second, show "Steal!" floater and banana burst for squatter
       setTimeout(() => {
         const stealFloater = document.createElement("div");
-        stealFloater.className = "steal-floater";
-        stealFloater.textContent = "Steal!";
+        const _sqOwner = gs && gs.properties && gs.properties.find((p) => p.id === steal.tileId);
+        _applyStealFloaterStyle(stealFloater, _isFriendlySteal(steal.squatterId, _sqOwner && _sqOwner.owner));
         const boardRect = board.getBoundingClientRect();
         stealFloater.style.position = "fixed";
         stealFloater.style.left = boardRect.left + (r.l + r.w / 2) / 100 * boardRect.width + "px";
@@ -1272,8 +1315,7 @@ function renderBoard(gs) {
         bananaBurst(collected, collectorId, stealAnchorEl);
         if (isSteal) {
           const stealFloater = document.createElement("div");
-          stealFloater.className = "steal-floater";
-          stealFloater.textContent = "Steal!";
+          _applyStealFloaterStyle(stealFloater, _isFriendlySteal(collectorId, stolenProp && stolenProp.owner));
           const boardRect = board.getBoundingClientRect();
           stealFloater.style.position = "fixed";
           stealFloater.style.left = boardRect.left + (r.l + r.w / 2) / 100 * boardRect.width + "px";
@@ -1304,100 +1346,15 @@ function renderBoard(gs) {
   _prevBananaPiles = currentPiles;
   window._vineSwingJustLanded = false;
 
-  // Free Bananas +500 popup — show at player's banana score when triggered
-  if (layout) {
-    // Track known freebananas positions
-    const currentFB = new Set();
-    layout.forEach((tile, idx) => {
-      if (tile.type === "freebananas") currentFB.add(idx);
-    });
-
+  {
     // Reset dedup sets when a NEW walk starts (not when walk ends, because
     // post-walk renderBoard calls still need the sets to block duplicates)
     const walking = !!window._tokenWalking;
     if (walking && !_wasTokenWalking) {
-      _freeBananasShown = new Set();
-      window._freeBananasShown = _freeBananasShown;
       _stealShown = new Set();
       _collectShown = new Set();
     }
     _wasTokenWalking = walking;
-
-    // Check if any walking token is currently on a freebananas tile
-    // Only show popup if the tile is revealed (hidden tiles don't award bananas)
-    if (window._diceRollingPositions) {
-      for (const [playerId, pos] of Object.entries(
-        window._diceRollingPositions,
-      )) {
-        // Skip if this is still the pre-walk starting position — the player is
-        // leaving, not passing through.  The landing case is handled separately
-        // in game.js at the end of the walk interval.
-        const isStartPos =
-          window._walkStartPositions &&
-          window._walkStartPositions[playerId] === pos;
-        if (isStartPos) continue;
-        const tileRevealed = !myRevealed || myRevealed.has(pos);
-        if (currentFB.has(pos) && !_freeBananasShown.has(pos) && tileRevealed) {
-          _freeBananasShown.add(pos);
-          // Tile bounce + banana rain \u2014 mirrors the walkStepUpdate path so the
-          // visual feedback is the same regardless of which detector wins.
-          const _fbTile = document.getElementById("space-" + pos);
-          if (_fbTile) {
-            _fbTile.classList.remove("freebananas-triggered");
-            void _fbTile.offsetWidth;
-            _fbTile.classList.add("freebananas-triggered");
-            _fbTile.addEventListener(
-              "animationend",
-              () => _fbTile.classList.remove("freebananas-triggered"),
-              { once: true },
-            );
-          }
-          const _fbAmount = 25;
-          if (typeof bananaBurst === "function" && _fbTile) {
-            // bananaBurst handles the green "+25\uD83C\uDF4C" floater near the
-            // player's score as part of the canonical gain bundle.
-            bananaBurst(_fbAmount, playerId, _fbTile);
-            if (window._tokenWalking) {
-              window._walkFreeBananasBursted = (window._walkFreeBananasBursted || 0) + _fbAmount;
-            }
-          }
-        }
-      }
-    }
-
-    // Also trigger for newly revealed tiles when no walk is happening (e.g. passive push)
-    if (!window._tokenWalking) {
-      for (const pos of currentFB) {
-        if (!_prevFreeBananasTiles.has(pos) && !_freeBananasShown.has(pos)) {
-          _freeBananasShown.add(pos);
-          // For passive reveal, show at the player who is on the tile
-          const currentPlayer = gs.players.find((p) => p.position === pos);
-          if (currentPlayer) {
-            // Tile bounce + banana rain on the source tile. No walk in progress,
-            // so no reconciliation tracking is needed — money landed via passive
-            // push and won't be reconciled by the post-walk burst.
-            const _fbTile = document.getElementById("space-" + pos);
-            if (_fbTile) {
-              _fbTile.classList.remove("freebananas-triggered");
-              void _fbTile.offsetWidth;
-              _fbTile.classList.add("freebananas-triggered");
-              _fbTile.addEventListener(
-                "animationend",
-                () => _fbTile.classList.remove("freebananas-triggered"),
-                { once: true },
-              );
-            }
-            const _fbAmount = 25;
-            if (typeof bananaBurst === "function" && _fbTile) {
-              // bananaBurst handles the green "+25\uD83C\uDF4C" floater near the
-              // player's score as part of the canonical gain bundle.
-              bananaBurst(_fbAmount, currentPlayer.id, _fbTile);
-            }
-          }
-        }
-      }
-    }
-    _prevFreeBananasTiles = currentFB;
   }
 
   // Center decoration: jungle scene with decorative rings
@@ -1473,22 +1430,20 @@ function renderBoard(gs) {
   // Bomb indicators
   if (gs && gs.bombs) {
     for (const bomb of gs.bombs) {
+      // Pending bombs are invisible \u2014 a bomb only "spawns" on the board when it
+      // arms (at the end of the placer's next turn).
+      if (bomb.pending) continue;
       const r = spaceRect(bomb.position);
       const bombEl = document.createElement("div");
-      const isArming = bomb.pending || bomb.turnsLeft > 5;
-      bombEl.className = "bomb-indicator" + (isArming ? " bomb-arming" : "");
+      const activeTurns = bomb.turnsLeft;
+      bombEl.className = "bomb-indicator";
       bombEl.textContent = "\uD83C\uDF4D";
-      const activeTurns = isArming ? 0 : bomb.turnsLeft;
-      bombEl.title = bomb.pending
-        ? "Pineapple Bomb (activates on your next turn)"
-        : isArming
-          ? "Pineapple Bomb (arming...)"
-          : `Pineapple Bomb (${activeTurns} turn${activeTurns !== 1 ? "s" : ""} until detonation)`;
+      bombEl.title = `Pineapple Bomb (${activeTurns} turn${activeTurns !== 1 ? "s" : ""} until detonation)`;
       bombEl.style.left = r.l + r.w - 2 + "%";
       bombEl.style.top = r.t + r.h - 2 + "%";
       const timerBadge = document.createElement("span");
       timerBadge.className = "bomb-timer";
-      timerBadge.textContent = isArming ? "~" : activeTurns;
+      timerBadge.textContent = activeTurns;
       bombEl.appendChild(timerBadge);
       board.appendChild(bombEl);
     }
@@ -1891,10 +1846,11 @@ function renderBoard(gs) {
         const isNew = !tok;
         if (!tok) {
           tok = document.createElement("div");
-          tok.textContent = "\ud83d\udc35";
           _tokenElements[p.id] = tok;
         }
-        tok.className = "token c-" + p.color;
+        // Ghosts (players who left mid-game) show a ghost emoji until they reconnect.
+        tok.textContent = p.ghost ? "\ud83d\udc7b" : "\ud83d\udc35";
+        tok.className = "token c-" + p.color + (p.ghost ? " token-ghost" : "");
         tok.dataset.playerId = p.id;
         if (p.id === myId) tok.classList.add("token-me");
         if (gs.currentPlayer && gs.currentPlayer.id === p.id)
@@ -2026,7 +1982,7 @@ function updateSellHighlights() {
 
 // board variation (mirrors backend BOARD_SIMPLE): 48 tiles —
 // 40 farms with yields 1..40 (shown as F1..F40), 6 GROW tiles (labelled 1-6
-// like in play), and 2 special tiles (Super Banana 777🍌, +25 Free Bananas).
+// like in play), 1 Super Banana (777🍌), and 1 Desert (an inert cactus tile).
 // No tax, no Vine Swing tile (it's an ability now), no corners. All shuffled.
 function buildSimplePreviewLayout() {
   const allTiles = [];
@@ -2045,10 +2001,10 @@ function buildSimplePreviewLayout() {
     type: "special",
     name: "⭐",
     tileName: "⭐ Super Banana",
-    group: "mushroom",
+    group: "superBanana",
     price: 777,
   });
-  allTiles.push({ type: "freebananas", name: "+25" });
+  allTiles.push({ type: "desert", name: "🌵" });
 
   for (let i = allTiles.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
@@ -2111,7 +2067,7 @@ function renderPreviewTileList(layout) {
   const groups = {};
   const cacti = [];
   const others = [];
-  let mushroom = null;
+  let superBanana = null;
 
   for (const tile of layout) {
     if (tile.type === "grow") continue;
@@ -2119,8 +2075,8 @@ function renderPreviewTileList(layout) {
       cacti.push(tile);
       continue;
     }
-    if (tile.group === "mushroom") {
-      mushroom = tile;
+    if (tile.group === "superBanana") {
+      superBanana = tile;
       continue;
     }
     if (tile.group && groupNames[tile.group]) {
@@ -2176,8 +2132,8 @@ function renderPreviewTileList(layout) {
     panel.appendChild(section);
   }
 
-  // Mushroom
-  if (mushroom) {
+  // Super Banana
+  if (superBanana) {
     const section = document.createElement("div");
     section.className = "bp-group";
     section.innerHTML =
@@ -2190,7 +2146,7 @@ function renderPreviewTileList(layout) {
     row.innerHTML =
       `<span class="bp-tile-dot" style="background:conic-gradient(#ff3333,#ff9933,#ffee33,#33dd55,#3399ff,#cc44ff,#ff3333)"></span>` +
       `<span class="bp-tile-name">\u2b50 Super Banana</span>` +
-      `<span class="bp-tile-price">${mushroom.price}\ud83c\udf4c</span>`;
+      `<span class="bp-tile-price">${superBanana.price}\ud83c\udf4c</span>`;
     section.appendChild(row);
     panel.appendChild(section);
   }
@@ -2286,10 +2242,8 @@ function renderSimplePreviewTileList(layout, panel) {
   growSection.appendChild(growGrid);
   panel.appendChild(growSection);
 
-  // Special tiles — +25 and Super Banana grouped together, with their own
-  // icon-coded swatches so they read distinctly from farms/grows.
+  // Special tiles — just the Super Banana now (the Desert is its own category).
   const specials = [
-    { icon: "🍌", name: "+25 Free Bananas", dot: "#ffd633" },
     { icon: "⭐", name: "Super Banana — 777🍌 to win", dot: "#d24cff" },
   ];
   const specialSection = document.createElement("div");
@@ -2298,7 +2252,7 @@ function renderSimplePreviewTileList(layout, panel) {
     `<div class="bp-group-header">` +
     `<span class="bp-group-dot" style="background:linear-gradient(135deg,#ffd633,#d24cff)"></span>` +
     `Special Tiles ✨ ` +
-    `<span class="bp-group-meta">${specials.length} tiles</span>` +
+    `<span class="bp-group-meta">${specials.length} tile</span>` +
     `</div>`;
   for (const s of specials) {
     const row = document.createElement("div");
@@ -2310,6 +2264,22 @@ function renderSimplePreviewTileList(layout, panel) {
   }
   panel.appendChild(specialSection);
 
+  // Desert — its own category (auctionable like a farm, but grows nothing).
+  const desertSection = document.createElement("div");
+  desertSection.className = "bp-group bp-group--desert";
+  desertSection.innerHTML =
+    `<div class="bp-group-header">` +
+    `<span class="bp-group-dot" style="background:#a88848"></span>` +
+    `Desert 🌵 ` +
+    `<span class="bp-group-meta">1 tile · won at auction, grows nothing</span>` +
+    `</div>`;
+  const desertRow = document.createElement("div");
+  desertRow.className = "bp-tile bp-tile--desert";
+  desertRow.innerHTML =
+    `<span class="bp-tile-dot" style="background:#a88848"></span>` +
+    `<span class="bp-tile-name">🌵 Desert</span>`;
+  desertSection.appendChild(desertRow);
+  panel.appendChild(desertSection);
 }
 
 function renderPreviewBoard(layout) {
@@ -2351,8 +2321,8 @@ function renderPreviewBoard(layout) {
           (tile.price > 0
             ? `<span class="sprice desert-price">${tile.price}\ud83c\udf4c</span>`
             : "");
-      } else if (tile.group === "mushroom") {
-        el.classList.add("g-mushroom");
+      } else if (tile.group === "superBanana") {
+        el.classList.add("g-super-banana");
         el.innerHTML =
           `<span class="sname"><svg class="rainbow-banana" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">` +
           `<defs><linearGradient id="rb-prev" x1="0.2" y1="0" x2="0.8" y2="1">` +
