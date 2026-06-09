@@ -1074,6 +1074,7 @@ class MonkeyBusinessGame {
   _clearDeferredTimers() {
     for (const id of this._deferredTimers) clearTimeout(id);
     this._deferredTimers.clear();
+    this._lastLiveWinTimer = null;
   }
 
   // Called by the server before deleting this game from its map. Cancels every
@@ -1337,6 +1338,8 @@ class MonkeyBusinessGame {
           `🏆 ${alive[0].name} is the last monkey standing and wins! 👑`,
         );
         this._revealAllTiles();
+      } else {
+        this._checkLastLiveWin();
       }
     }
   }
@@ -1356,6 +1359,7 @@ class MonkeyBusinessGame {
     player.ghost = true;
     player.armedAbility = null;
     this._log(`👻 ${player.name} left — they're a ghost now, the spirits will play their turns.`);
+    this._checkLastLiveWin();
     // If it's their turn (or they're blocking an interaction), the driver takes
     // over and resolves it.
     this._maybeDriveGhost();
@@ -1472,6 +1476,7 @@ class MonkeyBusinessGame {
     const oldId = ghost.id;
     this._rebindPlayerId(oldId, newSocketId);
     ghost.ghost = false;
+    this._cancelLastLiveWin();
     this._log(`✨ ${ghost.name} reconnected — back in control of their monkey!`);
     // If they reconnected mid-turn after rolling, the ghost-fast auto-end timer
     // would snap their turn shut — replace it with the normal human safety net
@@ -5055,6 +5060,7 @@ class MonkeyBusinessGame {
           return;
         }
       }
+      this._checkLastLiveWin();
       return;
     }
     const alive = this.players.filter((p) => !p.bankrupt);
@@ -5065,7 +5071,58 @@ class MonkeyBusinessGame {
         `\ud83c\udfc6 ${alive[0].name} is the last monkey standing and is the Monkey King! \ud83d\udc51\ud83d\udca5`,
       );
       this._revealAllTiles();
+      return;
     }
+    this._checkLastLiveWin();
+  }
+
+  // rules.md (Leavers): "If every remaining player is a ghost except for one,
+  // that one live player just wins." A 10s grace window reconciles this with
+  // the reconnect promise \u2014 a quick refresh cancels the win instead of handing
+  // the game to the opponent mid-reload. Ghosts keep auto-playing meanwhile.
+  _checkLastLiveWin() {
+    if (!this._lastLiveWinPending()) return false;
+    if (this._lastLiveWinTimer) return true;
+    const live = this.players.find((p) => !p.bankrupt && !p.ghost);
+    this._log(
+      `\ud83d\udc7b ${live.name} is the only live monkey left \u2014 they win in 10s unless a ghost returns!`,
+    );
+    this._lastLiveWinTimer = this._deferredSetTimeout(() => {
+      this._lastLiveWinTimer = null;
+      this._resolveLastLiveWin();
+      if (this.onUpdate) this.onUpdate();
+    }, 10000);
+    return true;
+  }
+
+  _lastLiveWinPending() {
+    if (this.state !== "playing" && this.state !== "revealing") return false;
+    const alive = this.players.filter((p) => !p.bankrupt);
+    return alive.length >= 2 && alive.filter((p) => !p.ghost).length === 1;
+  }
+
+  _cancelLastLiveWin() {
+    if (this._lastLiveWinTimer) {
+      clearTimeout(this._lastLiveWinTimer);
+      this._deferredTimers.delete(this._lastLiveWinTimer);
+      this._lastLiveWinTimer = null;
+    }
+  }
+
+  _resolveLastLiveWin() {
+    if (!this._lastLiveWinPending()) return false;
+    const winner = this.players.find((p) => !p.bankrupt && !p.ghost);
+    this.state = "finished";
+    this.bombWinner = winner.id;
+    const teamKey =
+      this._isTeams() && this.teams ? this.getTeamOf(winner.id) : null;
+    this._log(
+      teamKey
+        ? `\ud83c\udfc6 ${winner.name} is the only monkey still here \u2014 the spirits concede. Team ${teamKey} wins! \ud83d\udc51\ud83d\udc7b`
+        : `\ud83c\udfc6 ${winner.name} is the only monkey still here \u2014 the spirits concede the game! \ud83d\udc51\ud83d\udc7b`,
+    );
+    this._revealAllTiles();
+    return true;
   }
 
   _revealAllTiles() {

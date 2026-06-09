@@ -3532,6 +3532,50 @@ section("79c. Ghost landing interactions (skim 10% / no poker)");
 }
 
 // ============================================================
+section("79d. Last live monkey among ghosts wins (grace window)");
+// ============================================================
+{
+  // Classic, 3 players: two ghost out → win goes pending, then resolves.
+  const { game } = createStartedGame(3, { startingMoney: 5000 });
+  for (const p of game.players) p.startPickPending = false;
+  const [a, b, c] = game.players;
+  game.makeGhost(b.id);
+  assert(game.state === "playing" && !game._lastLiveWinTimer, "Two live players left — no win pending");
+  game.makeGhost(c.id);
+  assert(game.state === "playing", "Win is NOT instant — grace window first");
+  assert(!!game._lastLiveWinTimer, "Lone live player schedules the win");
+  game._cancelLastLiveWin();
+  assert(game._resolveLastLiveWin() === true, "Grace expiry resolves the win");
+  assert(game.state === "finished" && game.bombWinner === a.id, "Last live monkey wins the game");
+  assert(a.revealedTiles.size === game.boardSize, "All tiles revealed on the ghost-concede win");
+}
+{
+  // Reconnect during the grace window cancels the win.
+  const { game } = createStartedGame(2, { startingMoney: 5000 });
+  for (const p of game.players) p.startPickPending = false;
+  const [a] = game.players;
+  a.clientId = "dev-llw";
+  game.makeGhost(a.id);
+  assert(!!game._lastLiveWinTimer && game.state === "playing", "1v1 leaver puts the win on the clock");
+  const back = game.reconnectByClientId("llw-socket", "dev-llw");
+  assert(back && !game._lastLiveWinTimer, "Reconnect cancels the pending win");
+  assert(game._resolveLastLiveWin() === false, "No win once everyone is live again");
+  assert(game.state === "playing", "Game continues after the reconnect");
+}
+{
+  // Bombing a live player so only one live + a ghost remain also triggers it.
+  const { game } = createStartedGame(3, { startingMoney: 5000 });
+  for (const p of game.players) p.startPickPending = false;
+  const [a, b, c] = game.players;
+  game.makeGhost(c.id);
+  game._bombEliminate(b, a);
+  game._checkBombWin();
+  assert(game.state === "playing" && !!game._lastLiveWinTimer, "Bomb leaving 1 live + 1 ghost schedules the win");
+  game._cancelLastLiveWin();
+  assert(game._resolveLastLiveWin() === true && game.bombWinner === a.id, "Bomber wins once the grace expires");
+}
+
+// ============================================================
 // SUMMARY
 // ============================================================
 
