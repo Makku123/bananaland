@@ -447,6 +447,40 @@ function _setupItemAuction(game, starterId) {
   assert(p2.money === 3000 - 250, "sealed-bid winner pays their bid");
 }
 
+// Sealed-bid tie → the lander gets the property (rules.md), free.
+{
+  const { game } = createStartedGame(3, { startingMoney: 5000 });
+  const [p0, p1, p2] = game.players;
+  const farm = _findUnownedFarm(game);
+  p0.money = 0; p1.money = 5000; p2.money = 3000;
+  p0.position = farm;
+  game.noAuctionTimer = true;
+  assert(game._createAuctionForLander(p0.id) === true, "sealed tie: auction opened");
+  assert(game.auction.sealedLanderId === p0.id, "sealed bid records the lander");
+  assert(game.submitSilentBid(p1.id, 250), "p1 bids 250");
+  assert(game.submitSilentBid(p2.id, 250), "p2 ties at 250");
+  const prop = game.properties.get(farm);
+  assert(prop && prop.owner === p0.id, "sealed-bid tie: the lander gets the farm");
+  assert(p0.money === 0, "broke lander pays nothing on the tie");
+  assert(p1.money === 5000 && p2.money === 3000, "tied bidders pay nothing");
+}
+
+// Ghost-found sealed bid tie → the ghost lander takes the tile.
+{
+  const { game } = createStartedGame(3, { startingMoney: 5000 });
+  const [p0, p1, p2] = game.players;
+  const farm = _findUnownedFarm(game);
+  game.noAuctionTimer = true;
+  assert(game.makeGhost(p0.id) === true, "leaver becomes a ghost");
+  p0.position = farm;
+  p1.money = 500; p2.money = 500;
+  assert(game._createAuctionForLander(p0.id) === true, "ghost sealed tie: auction opened");
+  assert(game.submitSilentBid(p1.id, 100), "p1 bids 100");
+  assert(game.submitSilentBid(p2.id, 100), "p2 ties at 100");
+  const prop = game.properties.get(farm);
+  assert(prop && prop.owner === p0.id, "ghost sealed tie: ghost lander takes the farm");
+}
+
 // Everyone broke → lander gets it for free.
 {
   const { game } = createStartedGame(2, { startingMoney: 5000 });

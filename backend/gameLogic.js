@@ -1064,6 +1064,7 @@ class MonkeyBusinessGame {
 
     if (this.auction) {
       scalar(this.auction, "landingPlayer");
+      scalar(this.auction, "sealedLanderId");
       scalar(this.auction, "highBidder");
       arr(this.auction.bidders);
       arr(this.auction.acceptorIds);
@@ -2701,7 +2702,7 @@ class MonkeyBusinessGame {
         );
         return false;
       }
-      this._startSealedAuction(prop, pos, others);
+      this._startSealedAuction(prop, pos, others, landerId);
       this._log(`\ud83d\udc7b ${lander.name}'s ghost found ${prop.name} \u2014 everyone bids, highest wins!`);
       return true;
     }
@@ -2728,7 +2729,7 @@ class MonkeyBusinessGame {
     if (lander.money > 0) {
       this._startPitchAuction(prop, pos, lander.id, eligibleIds);
     } else {
-      this._startSealedAuction(prop, pos, eligibleIds);
+      this._startSealedAuction(prop, pos, eligibleIds, landerId);
     }
     return true;
   }
@@ -2758,7 +2759,7 @@ class MonkeyBusinessGame {
   // Sealed bid: the lander is broke (can't price it), so every eligible player
   // secretly names a price and the highest wins. Reuses the silent-bid phase
   // with a base price of 0 and no leader.
-  _startSealedAuction(prop, pos, bidderIds) {
+  _startSealedAuction(prop, pos, bidderIds, landerId) {
     const bids = {};
     for (const id of bidderIds) {
       bids[id] = {
@@ -2778,6 +2779,7 @@ class MonkeyBusinessGame {
       propGroup: prop.group || null,
       landingPlayer: null,
       sealedBid: true,
+      sealedLanderId: landerId || null,
       bidders: [...bidderIds],
       bids,
       phase: "silentbid",
@@ -3004,10 +3006,22 @@ class MonkeyBusinessGame {
       a.highBidder = top[0];
       a.highBid = a.landerOpenBid + maxTopup;
     } else if (a.sealedBid) {
-      // Sealed bid has no leader to fall back to — earliest tied bidder wins
-      // at their bid.
-      a.highBidder = this._earliestByTurnOrder(top);
-      a.highBid = a.landerOpenBid + maxTopup;
+      // rules.md: a sealed-bid tie gives the LANDER the property — free, since
+      // a sealed bid only runs when the lander can't pay. Earliest tied bidder
+      // only if the lander is gone.
+      const lander = this.players.find(
+        (p) => p.id === a.sealedLanderId && !p.bankrupt,
+      );
+      if (lander) {
+        a.highBidder = lander.id;
+        a.highBid = 0;
+        this._log(
+          `🤝 Tie at the top — ${lander.name} (the lander) takes ${a.propName}!`,
+        );
+      } else {
+        a.highBidder = this._earliestByTurnOrder(top);
+        a.highBid = a.landerOpenBid + maxTopup;
+      }
       a.silentTie = true;
     } else {
       // Tie at the top — lander gets it at the listed price.
