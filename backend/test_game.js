@@ -294,8 +294,6 @@ section("9. Auction - Pass Mechanics");
 
     if (game.auction) {
       game.noAuctionTimer = true;
-      // passBid is retired in the new system — always returns false
-      assert(!game.passBid(cur.id), "passBid is disabled");
 
       // Lander names a price
       game.placeBid(cur.id, 50);
@@ -897,8 +895,8 @@ section("24. Stealing Banana Piles");
 
     const moneyBefore = cur.money;
     game._collectBananasAtTile(cur, farmPos);
-    assert(cur.money === moneyBefore + 300, "Stole opponent's banana pile");
-    assert(prop.bananaPile === 0, "Opponent's pile cleared");
+    assert(cur.money === moneyBefore, "Arriving never insta-steals an opponent's pile (rules.md: steal happens on leave)");
+    assert(prop.bananaPile === 300, "Opponent's pile stays on the farm until a leave-steal");
   }
 }
 

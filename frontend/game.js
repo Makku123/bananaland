@@ -3851,9 +3851,6 @@ function placeBid() {
   input.value = "0";
 }
 
-function passBid() {
-  socket.emit("pass_bid", { gameId });
-}
 
 function auctionBuyNow() {
   if (socket && gameId) socket.emit("auction_buy_now", { gameId });
@@ -4140,9 +4137,6 @@ function updateAuctionPanel() {
   controls.style.display = showKeypad ? "flex" : "none";
   const bidBtn = document.getElementById("btn-bid");
   if (bidBtn) bidBtn.textContent = keypadLabel;
-  const passBtn = document.getElementById("btn-pass");
-  if (passBtn) passBtn.style.display = "none";
-
   // Buy Now: the richest lander can instantly win at second-highest + 1,
   // skipping the auction. The backend sends the price (null when unavailable).
   const buyNowBtn = document.getElementById("btn-buynow");

@@ -2428,35 +2428,6 @@ class MonkeyBusinessGame {
   // Passive landing — only handles non-interactive effects (grow, reveals).
   // Used when a player is pushed onto a tile by an external effect so it
   // doesn't trigger poker, auctions, or super banana swaps.
-  _processLandingPassive(player, magicUserId = null) {
-    const space = this.board[player.position];
-    if (!space) return;
-
-    // GROW fires passively
-    if (space.type === "grow") {
-      this._fireGrowAt(player, player.position, "land");
-      return;
-    }
-
-    if (space.type === "desert") {
-      // Desert pays nothing; a passive push just reveals it.
-      for (const p of this.players) p.revealedTiles.add(player.position);
-      this._log(
-        `${player.name} was pushed into the Desert \ud83c\udf35 \u2014 nothing grows here.`,
-      );
-      return;
-    }
-
-    // Rent applies passively (but no auction/poker/super banana)
-    const prop = this.properties.get(player.position);
-    if (!prop) return;
-    // No rent in this game
-
-    // Magic auction: pushed onto unowned tile
-    if (!prop.owner && magicUserId && player.money > 0) {
-      this._startDevilAuction(player, magicUserId);
-    }
-  }
 
   // The broke lander chooses which hidden tile to hide the Super Banana under.
   // Only that player may pick, and only a tile nobody has revealed yet (and not
@@ -2610,54 +2581,6 @@ class MonkeyBusinessGame {
 
   // -- Auction System ---------------------------------------------
 
-  _startDevilAuction(pushedPlayer, magicUserId) {
-    const pos = pushedPlayer.position;
-    const prop = this.properties.get(pos);
-    if (!prop || prop.owner) return;
-
-    // 0-banana players are excluded from the auction. The pushed player always
-    // has money (the caller guards money > 0), so they remain the pitcher.
-    const bidders = [];
-    bidders.push(pushedPlayer.id);
-    for (const p of this.players) {
-      if (!p.bankrupt && p.id !== pushedPlayer.id && p.money > 0)
-        bidders.push(p.id);
-    }
-
-    const bids = {};
-    for (const id of bidders)
-      bids[id] = { amount: 0, placed: false, passed: false };
-
-    this.auction = {
-      position: pos,
-      propName: prop.name,
-      propPrice: prop.price,
-      propGroup: prop.group || null,
-      landingPlayer: pushedPlayer.id,
-      magicUser: magicUserId,
-      bidders,
-      bids,
-      phase: "pitch",
-      highBid: 0,
-      highBidder: null,
-    };
-
-    this._log(
-      `\ud83d\udd2e Magic auction! ${pushedPlayer.name} was pushed onto an unowned farm! Name your price!`,
-    );
-
-    // Auto-list at 0 if lander is broke
-    if (pushedPlayer.money === 0) {
-      const lb = this.auction.bids[pushedPlayer.id];
-      lb.amount = 0;
-      lb.placed = true;
-      lb.bidTime = Date.now();
-      this._log(
-        `${pushedPlayer.name} has 0\ud83c\udf4c \u2014 auto-listed for free!`,
-      );
-      this._checkPhaseComplete();
-    }
-  }
 
   startAuction(socketId) {
     const cur = this.getCurrentPlayer();
@@ -3211,10 +3134,6 @@ class MonkeyBusinessGame {
     return true;
   }
 
-  passBid(socketId) {
-    // No passing in the new auction system — use respondAuction to reject
-    return false;
-  }
 
   respondAuction(socketId, accept) {
     if (!this.auction) return false;
@@ -3623,44 +3542,16 @@ class MonkeyBusinessGame {
   }
 
   _collectBananasAtTile(player, pos) {
-    // Single-tile collection (for teleports like Vine Swing)
+    // Single-tile collection for Vine Swing. The teleport target is always a
+    // farm the player owns (_validateTeleportTarget), so this only ever
+    // collects the player's own pile.
     const prop = this.properties.get(pos);
-    if (!prop || prop.bananaPile <= 0) return;
-
-    if (prop.owner === player.id) {
-      player.money += prop.bananaPile;
-      this._log(
-        `${player.name} harvested ${prop.bananaPile}\ud83c\udf4c from a banana pile! \ud83d\udc35`,
-      );
-      prop.bananaPile = 0;
-    } else if (!prop.owner) {
-      player.money += prop.bananaPile;
-      this._log(
-        `${player.name} picked up ${prop.bananaPile}\ud83c\udf4c from the ground! \ud83d\udc35`,
-      );
-      prop.bananaPile = 0;
-    } else if (prop.owner && prop.owner !== player.id) {
-      const isTeammate =
-        this._isTeams() &&
-        this.getTeamOf(prop.owner) === this.getTeamOf(player.id);
-      if (isTeammate) {
-        // Teammates don't auto-collect each other's piles \u2014 they STEAL them,
-        // shown as a friendly (green) steal.
-        player.money += prop.bananaPile;
-        const mate = this.players.find((p) => p.id === prop.owner);
-        this._log(
-          `${player.name} stole ${prop.bananaPile}\ud83c\udf4c from teammate ${mate?.name || "?"}'s banana pile! \ud83e\udd1d`,
-          { color: "green" },
-        );
-      } else {
-        const victim = this.players.find((p) => p.id === prop.owner);
-        player.money += prop.bananaPile;
-        this._log(
-          `${player.name} stole ${prop.bananaPile}\ud83c\udf4c from ${victim?.name || "?"}'s banana pile! \ud83d\udc12`,
-        );
-      }
-      prop.bananaPile = 0;
-    }
+    if (!prop || prop.bananaPile <= 0 || prop.owner !== player.id) return;
+    player.money += prop.bananaPile;
+    this._log(
+      `${player.name} harvested ${prop.bananaPile}\ud83c\udf4c from a banana pile! \ud83d\udc35`,
+    );
+    prop.bananaPile = 0;
   }
 
   // -- Poker System ------------------------------------------------
@@ -5011,7 +4902,6 @@ class MonkeyBusinessGame {
               // Buy Now price for the richest lander (null for everyone else).
               buyNowPrice: this._buyNowPrice(viewerId),
               landingPlayer: a.landingPlayer,
-              magicUser: a.magicUser || null,
               landerOpenBid: a.landerOpenBid ?? null,
               respondDeadline: a.respondDeadline || null,
               respondStartTime: a.respondStartTime || null,

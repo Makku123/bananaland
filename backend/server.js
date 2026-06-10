@@ -627,14 +627,6 @@ io.on("connection", (socket) => {
     }
   });
 
-  // ── Pass Bid ─────────────────────────────────────────────────
-  socket.on("pass_bid", (data) => {
-    const game = games.get(data.gameId);
-    if (!game) return;
-    if (game.passBid(socket.id)) {
-      emitGameUpdate(data.gameId, game);
-    }
-  });
 
   // ── Respond to Auction (accept/reject) ──────────────────────
   socket.on("respond_auction", (data) => {
