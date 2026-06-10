@@ -74,11 +74,13 @@ Farms don't earn passively — they **grow** in bursts fired from the grow tiles
    reveals it to everyone.
 
 **What a grow does — the grow chain / pulse.** A fired grow sweeps **clockwise**
-from its tile and grows **every farm in range at once**. The sweep stops when it
-hits the **next revealed grow tile** (which acts as a wall); if there isn't one,
-it wraps all the way around the board.
+from its tile and grows **every revealed farm in range owned by the player who
+fired it**, all at once. Opponents' farms, unowned farms, and unrevealed farms
+in range grow **nothing**. The sweep stops when it hits the **next revealed
+grow tile** (which acts as a wall); if there isn't one, it wraps all the way
+around the board.
 
-**How much each farm grows.** Every farm in range grows by its **full yield**
+**How much each farm grows.** Every farm that grows adds its **full yield**
 (`F20` adds 20🍌). There's no cap on how many farms a single grow can hit.
 
 **Early pickup.** If you're **standing on your own farm when it grows**, you

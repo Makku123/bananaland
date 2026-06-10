@@ -4027,19 +4027,19 @@ class MonkeyBusinessGame {
       { pos: growPos, source },
     ]);
 
-    // Every owned farm in range grows by its full yield, no matter whose it
-    // is (rules.md: a fired grow "grows every farm in range at once"). The
+    // rules.md: only revealed farms OWNED BY THE PLAYER WHO FIRED the grow
+    // grow piles — opponents' and unowned farms in range get nothing. The
     // range is bounded by the next revealed grow tile (see _growRange).
-    // Unowned farms don't grow — there's no owner to pile bananas for.
     //
-    // Use the canonical properties map rather than each player's
-    // `properties` array, so an owner/list desync can't drop a farm.
+    // Use the canonical properties map rather than the player's `properties`
+    // array, so an owner/list desync can't drop a farm.
     const range = this._growRange(growPos);
     const farmsInRange = [];
     for (const [propId, prop] of this.properties) {
-      if (!prop || !prop.owner) continue;
+      if (!prop || prop.owner !== player.id) continue;
       if (!range.has(propId)) continue;
       if (prop.group !== "farm") continue;
+      if (!this._isGenuinelyRevealed(propId)) continue;
       farmsInRange.push(propId);
     }
 
@@ -4051,7 +4051,6 @@ class MonkeyBusinessGame {
     let totalGrown = 0;
     let totalEarlyPicked = 0;
     let earlyPickupTile = null;
-    const otherPickups = new Map(); // ownerId → early-picked total
     // Every farm that grew this fire, plus the fresh amount per tile. These
     // feed the dice-match animation pipeline (see below) so the frontend pops
     // the piles in.
@@ -4064,26 +4063,19 @@ class MonkeyBusinessGame {
       grownTiles.push(propId);
       grownAmounts[propId] = amount;
 
-      // Early pickup: an owner standing on their own farm when it grows
-      // pockets the bananas immediately — the fresh growth plus any pile
-      // already sitting there — instead of leaving a pile. Applies to ANY
-      // owner, not just the firing player.
-      const owner = this.players.find((p) => p.id === prop.owner);
+      // Early pickup: standing on your own farm when it grows pockets the
+      // bananas immediately — the fresh growth plus any pile already sitting
+      // there — instead of leaving a pile.
       if (
-        owner &&
-        !owner.bankrupt &&
-        owner.position === propId &&
-        !owner.startPickPending
+        !player.bankrupt &&
+        player.position === propId &&
+        !player.startPickPending
       ) {
         const pickup = amount + (prop.bananaPile || 0);
         prop.bananaPile = 0;
-        owner.money += pickup;
-        if (owner.id === player.id) {
-          totalEarlyPicked += pickup;
-          earlyPickupTile = propId;
-        } else {
-          otherPickups.set(owner.id, (otherPickups.get(owner.id) || 0) + pickup);
-        }
+        player.money += pickup;
+        totalEarlyPicked += pickup;
+        earlyPickupTile = propId;
         continue;
       }
 
@@ -4118,26 +4110,20 @@ class MonkeyBusinessGame {
         `${player.name} ${verb} — early-picked ${totalEarlyPicked}🍌 from the farm under them! 🌱🐒`,
       );
     }
-    for (const [ownerId, pickup] of otherPickups) {
-      const owner = this.players.find((p) => p.id === ownerId);
-      this._log(
-        `${owner ? owner.name : "?"} was standing on their farm — early-picked ${pickup}🍌! 🌱🐒`,
-      );
-    }
     if (totalGrown > 0) {
       this._log(
-        `${player.name} ${verb} — ${totalGrown}🍌 grew on farms in range! 🌱`,
+        `${player.name} ${verb} — ${totalGrown}🍌 grew on their farms in range! 🌱`,
       );
     }
-    if (totalGrown === 0 && totalEarlyPicked === 0 && otherPickups.size === 0) {
-      this._log(`${player.name} ${verb} — no owned farms in range! 🌱`);
+    if (totalGrown === 0 && totalEarlyPicked === 0) {
+      this._log(`${player.name} ${verb} — none of their farms in range! 🌱`);
     }
 
     // Glow the grow tile ONLY when it actually grew bananas — whether they
     // landed in the owner's pile or were early-picked. A fire that grows
     // nothing (no farms in range) does not glow. Accumulates across fires so a
     // rolled grow + a walked landing both glow.
-    if (totalGrown > 0 || totalEarlyPicked > 0 || otherPickups.size > 0) {
+    if (totalGrown > 0 || totalEarlyPicked > 0) {
       this.lastGrowFired = (this.lastGrowFired || []).concat([growPos]);
     }
     return { totalGrown, totalEarlyPicked };

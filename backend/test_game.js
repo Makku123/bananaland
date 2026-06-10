@@ -795,6 +795,7 @@ section("21. GROW Mechanics");
     const prop = game.properties.get(farmPos);
     prop.owner = cur.id;
     cur.properties.push(farmPos);
+    for (const p of game.players) p.revealedTiles.add(farmPos);
 
     // Find a grow tile and stand on it; fire it directly.
     let growPos = -1;
@@ -816,7 +817,7 @@ section("21. GROW Mechanics");
 }
 
 // ============================================================
-section("21b. Grow grows every owned farm in range, any owner (rules.md)");
+section("21b. Grow grows ONLY the firing player's revealed farms (rules.md)");
 // ============================================================
 
 {
@@ -832,42 +833,49 @@ section("21b. Grow grows every owned farm in range, any owner (rules.md)");
     }
   }
   const farms = [];
-  for (let i = 0; i < game.boardSize && farms.length < 3; i++) {
+  for (let i = 0; i < game.boardSize && farms.length < 4; i++) {
     const prop = game.properties.get(i);
     if (prop && prop.group === "farm") farms.push(i);
   }
-  const [minePos, theirsPos, nobodysPos] = farms;
+  const [minePos, theirsPos, nobodysPos, hiddenPos] = farms;
   const mine = game.properties.get(minePos);
   const theirs = game.properties.get(theirsPos);
   const nobodys = game.properties.get(nobodysPos);
+  const hidden = game.properties.get(hiddenPos);
+  // Only the grow + the two "bought" farms are revealed; hiddenPos is owned
+  // but stays unrevealed.
+  for (const p of game.players)
+    p.revealedTiles = new Set([growPos, minePos, theirsPos]);
   mine.owner = cur.id;
   cur.properties.push(minePos);
   theirs.owner = other.id;
   other.properties.push(theirsPos);
   nobodys.owner = null;
+  hidden.owner = cur.id;
+  cur.properties.push(hiddenPos);
   mine.bananaPile = 0;
   theirs.bananaPile = 0;
   nobodys.bananaPile = 0;
+  hidden.bananaPile = 0;
   cur.position = growPos;
   other.position = growPos;
   cur.startPickPending = false;
   other.startPickPending = false;
 
   game._fireGrowAt(cur, growPos, "land");
-  assert(mine.bananaPile === mine.price, "Firing player's farm grew by its full yield");
-  assert(theirs.bananaPile === theirs.price, "Opponent's farm in range grew by its full yield too");
+  assert(mine.bananaPile === mine.price, "Firing player's revealed farm grew by its full yield");
+  assert(theirs.bananaPile === 0, "Opponent's farm in range did NOT grow");
   assert(nobodys.bananaPile === 0, "Unowned farm did not grow");
+  assert(hidden.bananaPile === 0, "Firing player's UNREVEALED farm did not grow");
 
-  // Early pickup applies to a NON-firing owner standing on their own farm.
+  // An opponent standing on their own farm pockets nothing — their farm
+  // never grows off someone else's fire.
   theirs.bananaPile = 10;
   const otherMoney = other.money;
   other.position = theirsPos;
   game._fireGrowAt(cur, growPos, "land");
-  assert(
-    other.money === otherMoney + theirs.price + 10,
-    "Non-firing owner standing on their farm pocketed fresh growth + existing pile",
-  );
-  assert(theirs.bananaPile === 0, "Early pickup swept the non-firing owner's pile");
+  assert(other.money === otherMoney, "Opponent on their own farm pockets nothing from your grow");
+  assert(theirs.bananaPile === 10, "Opponent's existing pile is untouched by your grow");
 }
 
 // ============================================================
@@ -2080,6 +2088,8 @@ function setupGrow(opts = {}) {
       farmPos = i; break;
     }
   }
+  // Owned farms are revealed in real play (bought at auction) — mirror that.
+  if (farmPos >= 0) for (const p of game.players) p.revealedTiles.add(farmPos);
   return { game, p0: game.players[0], p1: game.players[1], growPos, farmPos };
 }
 
@@ -2219,7 +2229,11 @@ section("64. Classic - Rolled grow fires BEFORE move (path collection)");
 
       cur.position = start;
       // Only this grow revealed → its range wraps the board (covers both farms).
-      for (const p of game.players) p.revealedTiles.add(growPos);
+      for (const p of game.players) {
+        p.revealedTiles.add(growPos);
+        p.revealedTiles.add(start);
+        p.revealedTiles.add(pathPos);
+      }
       const before = cur.money;
 
       game.rollDice(cur.id); // default 2d6 → sum 4 (mocked)
@@ -3162,6 +3176,7 @@ section("74. Classic - Hidden grow is dormant on a roll");
       const fp = game.properties.get(farmPos);
       fp.owner = cur.id;
       fp.bananaPile = 0;
+      for (const p of game.players) p.revealedTiles.add(farmPos);
     }
 
     // Hidden grow + roll its number -> dormant: no fire, no reveal.
@@ -3216,6 +3231,7 @@ section("77. Classic - Grow glows only when it grows stuff");
       const fp = game.properties.get(farmPos);
       fp.owner = cur.id;
       fp.bananaPile = 0;
+      for (const p of game.players) p.revealedTiles.add(farmPos);
       cur.position = growPos; // stand on the grow, not the farm
       for (const p of game.players) if (p.id !== cur.id) p.position = growPos;
       game.lastGrowFired = null;
@@ -3263,6 +3279,7 @@ section("77b. Classic - Grow fires on the dice SUM, not the faces");
     }
     const fp = game.properties.get(farmPos);
     fp.owner = cur.id; cur.properties = [farmPos];
+    for (const p of game.players) p.revealedTiles.add(farmPos);
     // Stand on the grow tile itself — (growPos + 2) can be the farm when the
     // shuffle puts a non-farm at growPos + 1, and standing on your own farm
     // early-picks the growth, leaving the pile at 0.
@@ -3358,6 +3375,11 @@ section("77c. Classic - One-grow global fire grows ALL farms, even a desynced on
     prop.owner = cur.id;
     prop.bananaPile = 0;
     // Intentionally NOT pushing into cur.properties.
+  }
+
+  // Owned farms are revealed in real play — reveal all three.
+  for (const pos of [oldFarmA, oldFarmB, recentFarm]) {
+    for (const p of game.players) p.revealedTiles.add(pos);
   }
 
   // Move player off any owned farm so no early-pickup interference.
