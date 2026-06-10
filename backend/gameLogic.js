@@ -220,29 +220,6 @@ const CARD_LABELS = {
   teleport: "🌿 Vine Swing",
 };
 
-// --- Pet Definitions -----------------------------------------------
-const PET_TYPES = {
-  strong: {
-    name: "Strong Pet",
-    emoji: "🦁",
-    cooldown: 15,
-    description: "Move forward 1 space (guaranteed). 15 roll cooldown.",
-  },
-  energy: {
-    name: "Energy Pet",
-    emoji: "??",
-    cooldown: 7,
-    description: "Flip a coin to move forward 1 space. 7 roll cooldown.",
-  },
-  magic: {
-    name: "Magic Pet",
-    emoji: "??",
-    cooldown: 15,
-    description:
-      "Flip a coin: heads move forward 1, tails move backward 1. 15 roll cooldown.",
-  },
-};
-
 // --- Game Class ----------------------------------------------------
 
 class MonkeyBusinessGame {
@@ -339,11 +316,7 @@ class MonkeyBusinessGame {
     // Private hint marking where the Super Banana is currently hidden, shown
     // (as a rainbow tile cover) ONLY to the player who last hid it there.
     this.superBananaHint = null; // { pos, playerId }
-    this.petCoinFlip = null; // { playerName, petType, result: "heads"|"tails", targetName? }
-    this.pendingPetMove = null; // deferred move after coin flip animation
-    this.pendingMagicPets = []; // queued magic pet effects for target's turn
-    this.petResolving = false; // true while a pet effect plays at start of turn
-    this.petUsedThisTurn = false; // true when own pet fired this turn (skips dice)
+    this.itemMoveThisTurn = false; // movement this turn came from an item (Roll One / Vine Swing)
     this.onUpdate = null; // callback to emit game state
     this.bombs = []; // { placedBy, position, turnsLeft }
     this.sellListings = []; // { id, sellerId, sellerName, propPos, propName, price }
@@ -405,11 +378,6 @@ class MonkeyBusinessGame {
       properties: [],
       bankrupt: false,
       revealedTiles: new Set([START_POSITION]),
-      // Auto-selects the strong pet internally; the Magic Dice it
-      // backs is a won consumable, not an always-on cooldown ability.
-      pet: "strong",
-      petCooldown: 0,
-      pendingPet: null,
       bomb: 0,
       hasRolled: false,
       startPickPending: false,
@@ -554,418 +522,6 @@ class MonkeyBusinessGame {
     return true;
   }
 
-  selectPet(socketId, petType) {
-    if (this.state !== "waiting") return false;
-    if (!PET_TYPES[petType]) return false;
-    // Strong pet ("Magic Dice") is the only option.
-    if (petType !== "strong") return false;
-    const player = this.players.find((p) => p.id === socketId);
-    if (!player) return false;
-    player.pet = petType;
-    player.petCooldown = 0;
-    return true;
-  }
-
-  usePetAbility() {
-    // The strong pet (Magic Dice) is consumed via useMagicDice() on-turn;
-    // there is no off-turn pet flow.
-    return false;
-  }
-
-  cancelPet(socketId) {
-    if (this.state !== "playing") return false;
-    const player = this.players.find((p) => p.id === socketId);
-    if (!player || !player.pendingPet) return false;
-    player.pendingPet = null;
-    this.lastPetUsed = null;
-    this._log(`${player.name} cancelled their pet ability.`);
-    return true;
-  }
-
-  _resolvePendingPets() {
-    if (this.state === "finished") return;
-    const cur = this.getCurrentPlayer();
-    if (!cur || cur.bankrupt) {
-      this.petResolving = false;
-      if (this.onUpdate) this.onUpdate();
-      return;
-    }
-
-    // 1. Flip waitForCasterTurn flag when it's the caster's turn
-    if (this.pendingMagicPets && this.pendingMagicPets.length > 0) {
-      for (const mp of this.pendingMagicPets) {
-        if (mp.waitForCasterTurn && mp.userId === cur.id) {
-          mp.waitForCasterTurn = false;
-        }
-      }
-    }
-
-    // 2. Check magic pets targeting current player (only if past caster's turn)
-    if (this.pendingMagicPets && this.pendingMagicPets.length > 0) {
-      const idx = this.pendingMagicPets.findIndex(
-        (mp) => mp.targetId === cur.id && !mp.waitForCasterTurn,
-      );
-      if (idx >= 0) {
-        const mp = this.pendingMagicPets.splice(idx, 1)[0];
-        this._triggerMagicPetOnTurn(mp);
-        return;
-      }
-    }
-
-    // 3. Check own pending pet (strong/energy)
-    if (cur.pendingPet) {
-      const pp = cur.pendingPet;
-      cur.pendingPet = null;
-      this._triggerOwnPetOnTurn(cur, pp);
-      return;
-    }
-
-    // Nothing to resolve
-    this.petResolving = false;
-    if (this.petUsedThisTurn) {
-      this.diceRolled = true;
-      this._log(`\u{1F43E} Pet used!`);
-      const cur2 = this.getCurrentPlayer();
-      if (
-        cur2 &&
-        !this.auction &&
-        !this.poker &&
-        !this.vineSwing &&
-        !this.superBananaPending
-      ) {
-        this._scheduleAutoEnd(cur2, 2000);
-      }
-    }
-    if (this.onUpdate) this.onUpdate();
-  }
-
-  _triggerMagicPetOnTurn(mp) {
-    this.petResolving = true;
-    // Show "Your Turn" for 2s before coin flip
-    this.petTurnDelay = true;
-    if (this.onUpdate) this.onUpdate();
-    setTimeout(() => {
-      this.petTurnDelay = false;
-      const coinFlip = Math.random() < 0.5;
-      this.petCoinFlip = {
-        playerName: mp.userName,
-        petType: "magic",
-        result: coinFlip ? "heads" : "tails",
-        targetName: mp.targetName,
-      };
-      if (coinFlip) {
-        this.pendingPetMove = {
-          type: "magic_on_turn",
-          playerId: mp.userId,
-          userName: mp.userName,
-          targetId: mp.targetId,
-          targetName: mp.targetName,
-          cooldown: mp.cooldown,
-        };
-        if (this.onUpdate) this.onUpdate();
-        setTimeout(() => {
-          this._executeMagicPetOnTurn();
-        }, 9500);
-      } else {
-        this._log(
-          `\u{1F984} ${mp.userName}'s Magic Pet flipped TAILS \u2014 ${mp.targetName} is safe!`,
-        );
-        if (this.onUpdate) this.onUpdate();
-        setTimeout(() => {
-          this.petCoinFlip = null;
-          this._resolvePendingPets();
-        }, 9500);
-      }
-    }, 2000);
-  }
-
-  _executeMagicPetOnTurn() {
-    const pending = this.pendingPetMove;
-    if (!pending || pending.type !== "magic_on_turn") {
-      this._resolvePendingPets();
-      return;
-    }
-    this.pendingPetMove = null;
-    this.petCoinFlip = null;
-
-    const target = this.players.find((p) => p.id === pending.targetId);
-    if (!target || target.bankrupt) {
-      this._resolvePendingPets();
-      return;
-    }
-
-    const oldPos = target.position;
-    target.position = (target.position + 1) % this.boardSize;
-    target.revealedTiles.add(target.position);
-    this._collectBananasOnPath(target, oldPos, target.position);
-    this._log(
-      `\u{1F984} ${pending.userName}'s Magic Pet flipped HEADS \u2014 pushed ${pending.targetName} forward 1!`,
-    );
-    if (this._checkBombDetonation(target)) {
-      if (target.bankrupt || this.state === "finished") {
-        this._resolvePendingPets();
-        if (this.onUpdate) this.onUpdate();
-        return;
-      }
-    }
-    if (this._explodeExpiredBombs()) {
-      if (target.bankrupt || this.state === "finished") {
-        this._resolvePendingPets();
-        if (this.onUpdate) this.onUpdate();
-        return;
-      }
-    }
-    this._processLandingPassive(target, pending.playerId);
-    this._resolvePendingPets();
-    if (this.onUpdate) this.onUpdate();
-  }
-
-  _triggerOwnPetOnTurn(player, pp) {
-    this.petResolving = true;
-    this.petUsedThisTurn = true;
-
-    if (pp.type === "strong") {
-      // Set cooldown now that the effect is resolving
-      player.petCooldown = pp.cooldown;
-      const oldPos = player.position;
-      player.position = (player.position + 1) % this.boardSize;
-      player.revealedTiles.add(player.position);
-      this._collectBananasOnPath(player, oldPos, player.position);
-      this._log(
-        `\u{1F981} ${player.name}'s Strong Pet pushed them forward 1 space! (${pp.cooldown} roll cooldown)`,
-      );
-      if (this._checkBombDetonation(player)) {
-        if (player.bankrupt || this.state === "finished") {
-          this._resolvePendingPets();
-          if (this.onUpdate) this.onUpdate();
-          return;
-        }
-      }
-      if (this._explodeExpiredBombs()) {
-        if (player.bankrupt || this.state === "finished") {
-          this._resolvePendingPets();
-          if (this.onUpdate) this.onUpdate();
-          return;
-        }
-      }
-      this._processLandingPassive(player, player.id);
-      this._resolvePendingPets();
-      if (this.onUpdate) this.onUpdate();
-      return;
-    }
-
-    if (pp.type === "energy") {
-      // Set cooldown now that the coin flip is resolving
-      player.petCooldown = pp.cooldown;
-      // Show "Your Turn" for 2s before coin flip
-      this.petTurnDelay = true;
-      if (this.onUpdate) this.onUpdate();
-      setTimeout(() => {
-        this.petTurnDelay = false;
-        const coinFlip = Math.random() < 0.5;
-        this.petCoinFlip = {
-          playerName: player.name,
-          petType: "energy",
-          result: coinFlip ? "heads" : "tails",
-        };
-        if (coinFlip) {
-          this.pendingPetMove = {
-            type: "energy_on_turn",
-            playerId: player.id,
-            cooldown: pp.cooldown,
-          };
-          if (this.onUpdate) this.onUpdate();
-          // Show coin flip result first, then move after animation finishes
-          setTimeout(() => {
-            this._executeOwnEnergyPetOnTurn();
-          }, 5000);
-        } else {
-          if (this.onUpdate) this.onUpdate();
-          // Show coin flip result first, then resolve after animation finishes + 1s pause
-          setTimeout(() => {
-            this.petCoinFlip = null;
-            this._log(
-              `\u{1F406} ${player.name}'s Energy Pet flipped TAILS \u2014 no movement!`,
-            );
-            if (this.onUpdate) this.onUpdate();
-            setTimeout(() => {
-              this._resolvePendingPets();
-            }, 1000);
-          }, 5000);
-        }
-      }, 2000);
-      return;
-    }
-
-    if (pp.type === "magic") {
-      // Set cooldown now that the coin flip is resolving
-      player.petCooldown = pp.cooldown;
-      // Show "Your Turn" for 2s before coin flip
-      this.petTurnDelay = true;
-      if (this.onUpdate) this.onUpdate();
-      setTimeout(() => {
-        this.petTurnDelay = false;
-        const coinFlip = Math.random() < 0.5;
-        this.petCoinFlip = {
-          playerName: player.name,
-          petType: "magic",
-          result: coinFlip ? "heads" : "tails",
-        };
-        if (coinFlip) {
-          this.pendingPetMove = {
-            type: "magic_self_forward",
-            playerId: player.id,
-            cooldown: pp.cooldown,
-          };
-          if (this.onUpdate) this.onUpdate();
-          setTimeout(() => {
-            this._executeOwnDevilPetOnTurn(true);
-          }, 5000);
-        } else {
-          this.pendingPetMove = {
-            type: "magic_self_backward",
-            playerId: player.id,
-            cooldown: pp.cooldown,
-          };
-          if (this.onUpdate) this.onUpdate();
-          setTimeout(() => {
-            this._executeOwnDevilPetOnTurn(false);
-          }, 5000);
-        }
-      }, 2000);
-      return;
-    }
-
-    // Unknown type, just resolve
-    this._resolvePendingPets();
-  }
-
-  _executeOwnEnergyPetOnTurn() {
-    const pending = this.pendingPetMove;
-    if (!pending || pending.type !== "energy_on_turn") {
-      this._resolvePendingPets();
-      return;
-    }
-    this.pendingPetMove = null;
-    this.petCoinFlip = null;
-
-    const player = this.players.find((p) => p.id === pending.playerId);
-    if (!player || player.bankrupt) {
-      this._resolvePendingPets();
-      return;
-    }
-
-    const oldPos = player.position;
-    player.position = (player.position + 1) % this.boardSize;
-    player.revealedTiles.add(player.position);
-    this._collectBananasOnPath(player, oldPos, player.position);
-    this._log(
-      `\u{1F406} ${player.name}'s Energy Pet flipped HEADS \u2014 moved forward 1! (${pending.cooldown} roll cooldown)`,
-    );
-    if (this._checkBombDetonation(player)) {
-      if (player.bankrupt || this.state === "finished") {
-        this._resolvePendingPets();
-        if (this.onUpdate) this.onUpdate();
-        return;
-      }
-    }
-    if (this._explodeExpiredBombs()) {
-      if (player.bankrupt || this.state === "finished") {
-        this._resolvePendingPets();
-        if (this.onUpdate) this.onUpdate();
-        return;
-      }
-    }
-    // Full landing: allows auctions/pitching on unowned tiles
-    this._processLanding(player);
-
-    // If an interactive element started (auction, poker, vine swing, super banana),
-    // stop pet resolution and let it play out. Pet counts as the roll.
-    if (this.auction || this.poker || this.vineSwing || this.superBananaPending) {
-      this.petResolving = false;
-      this.diceRolled = true;
-      if (this.onUpdate) this.onUpdate();
-      return;
-    }
-
-    // Wait 1s after move before unlocking dice
-    if (this.onUpdate) this.onUpdate();
-    setTimeout(() => {
-      this._resolvePendingPets();
-    }, 1000);
-  }
-
-  _executeOwnDevilPetOnTurn(isForward) {
-    const pending = this.pendingPetMove;
-    if (
-      !pending ||
-      (pending.type !== "magic_self_forward" &&
-        pending.type !== "magic_self_backward")
-    ) {
-      this._resolvePendingPets();
-      return;
-    }
-    this.pendingPetMove = null;
-    this.petCoinFlip = null;
-
-    const player = this.players.find((p) => p.id === pending.playerId);
-    if (!player || player.bankrupt) {
-      this._resolvePendingPets();
-      return;
-    }
-
-    const oldPos = player.position;
-    if (isForward) {
-      player.position = (player.position + 1) % this.boardSize;
-      player.revealedTiles.add(player.position);
-      this._collectBananasOnPath(player, oldPos, player.position);
-      this._log(
-        `\u{1F984} ${player.name}'s Magic Pet flipped HEADS \u2014 moved forward 1!`,
-      );
-    } else {
-      player.position = (player.position - 1 + this.boardSize) % this.boardSize;
-      player.revealedTiles.add(player.position);
-      this._collectBananasAtTile(player, player.position);
-      this._log(
-        `\u{1F984} ${player.name}'s Magic Pet flipped TAILS \u2014 moved backward 1!`,
-      );
-    }
-    if (this._checkBombDetonation(player)) {
-      if (player.bankrupt || this.state === "finished") {
-        this._resolvePendingPets();
-        if (this.onUpdate) this.onUpdate();
-        return;
-      }
-    }
-    if (this._explodeExpiredBombs()) {
-      if (player.bankrupt || this.state === "finished") {
-        this._resolvePendingPets();
-        if (this.onUpdate) this.onUpdate();
-        return;
-      }
-    }
-    this._processLanding(player);
-
-    if (this.auction || this.poker || this.vineSwing || this.superBananaPending) {
-      this.petResolving = false;
-      this.diceRolled = true;
-      if (this.onUpdate) this.onUpdate();
-      return;
-    }
-
-    if (this.onUpdate) this.onUpdate();
-    setTimeout(() => {
-      this._resolvePendingPets();
-    }, 1000);
-  }
-
-  _autoEndAfterPet(player) {
-    // Auto-end turn after pet use with a brief pause so the result is visible
-    if (!this.auction && !this.poker && !this.vineSwing) {
-      this._scheduleAutoEnd(player, 0);
-    }
-  }
-
   // Called immediately after any action that will eventually trigger an end-
   // of-turn (rollDice, useMagicDice, vine swing, etc.). We mark autoEndDelay
   // so the End Turn button stays disabled until either:
@@ -1092,11 +648,6 @@ class MonkeyBusinessGame {
     this._clearDeferredTimers();
   }
 
-  _petReady(player) {
-    if (!player || !player.pet) return false;
-    return player.petCooldown <= 0;
-  }
-
   removePlayer(socketId) {
     const idx = this.players.findIndex((p) => p.id === socketId);
     if (idx === -1) return;
@@ -1209,11 +760,6 @@ class MonkeyBusinessGame {
       prop.bananaPile = 0;
     }
 
-    // Remove any pending magic pets that involve this player (as caster or target)
-    this.pendingMagicPets = this.pendingMagicPets.filter(
-      (mp) => mp.userId !== socketId && mp.targetId !== socketId,
-    );
-
     // Splice the leaver out BEFORE the shuffle so player.properties lists are
     // adjusted by _swapTilePositions only for the remaining players.
     this.players.splice(idx, 1);
@@ -1303,10 +849,8 @@ class MonkeyBusinessGame {
     if (wasCurrentPlayer && this.players.length > 0) {
       this._cancelAutoEnd();
       this.diceRolled = false;
-      this.petUsedThisTurn = false;
-      this.petResolving = false;
-      this.petCoinFlip = null;
-      this.lastPetUsed = null;
+      this.itemMoveThisTurn = false;
+      this.lastMagicDice = null;
       if (this.vineSwing === socketId) this.vineSwing = null;
       if (this.superBananaPending && this.superBananaPending.playerId === socketId)
         this.superBananaPending = null;
@@ -1314,12 +858,6 @@ class MonkeyBusinessGame {
         this.superBananaHint = null;
       if (this.superBananaWin && this.superBananaWin.playerId === socketId)
         this.superBananaWin = null;
-      if (
-        this.pendingPetMove &&
-        (this.pendingPetMove.playerId === socketId ||
-          this.pendingPetMove.targetId === socketId)
-      )
-        this.pendingPetMove = null;
       const next = this.players[this.currentPlayerIndex];
       if (next) {
         this._log(
@@ -1496,7 +1034,7 @@ class MonkeyBusinessGame {
 
   // Rewrite every reference to a player's socket id (oldId → newId) across the
   // whole game: ownership, teams, bombs, the three auction/poker structures,
-  // super-banana state, pending pet effects, and bookkeeping scalars. Used by
+  // super-banana state, and bookkeeping scalars. Used by
   // reconnect so a fresh socket seamlessly inherits the ghost's identity.
   _rebindPlayerId(oldId, newId) {
     if (!oldId || !newId || oldId === newId) return;
@@ -1552,13 +1090,6 @@ class MonkeyBusinessGame {
     if (this.superBananaHint) scalar(this.superBananaHint, "playerId");
     if (this.superBananaWin) scalar(this.superBananaWin, "playerId");
 
-    if (Array.isArray(this.pendingMagicPets)) {
-      for (const mp of this.pendingMagicPets) { scalar(mp, "userId"); scalar(mp, "targetId"); }
-    }
-    if (this.pendingPetMove) {
-      scalar(this.pendingPetMove, "playerId");
-      scalar(this.pendingPetMove, "targetId");
-    }
     if (this._lobbyReady && this._lobbyReady.has(oldId)) {
       this._lobbyReady.delete(oldId);
       this._lobbyReady.add(newId);
@@ -1603,11 +1134,7 @@ class MonkeyBusinessGame {
     this._clearDeferredTimers();
     this.superBananaPending = null;
     this.superBananaHint = null;
-    this.petCoinFlip = null;
-    this.pendingPetMove = null;
-    this.pendingMagicPets = [];
-    this.petResolving = false;
-    this.petUsedThisTurn = false;
+    this.itemMoveThisTurn = false;
     this.bombs = [];
     this.sellListings = [];
     this._sellListingId = 0;
@@ -1629,8 +1156,7 @@ class MonkeyBusinessGame {
     this.superBananaWin = null;
     this.autoEndDelay = false;
     this.autoEndDelayMs = 0;
-    this.lastPetUsed = null;
-    this.petTurnDelay = false;
+    this.lastMagicDice = null;
     if (this._pokerDismissTimer) {
       clearTimeout(this._pokerDismissTimer);
       this._pokerDismissTimer = null;
@@ -1663,11 +1189,6 @@ class MonkeyBusinessGame {
       p.properties = [];
       p.bankrupt = false;
       p.revealedTiles = new Set([START_POSITION]);
-      // Auto-restore the strong pet so the "all players must have a pet"
-      // check in startGame doesn't block re-starting from the lobby.
-      p.pet = "strong";
-      p.petCooldown = 0;
-      p.pendingPet = null;
       p.bomb = 0;
       p.hasRolled = false;
       p.startPickPending = false;
@@ -1687,8 +1208,6 @@ class MonkeyBusinessGame {
   startGame(socketId) {
     if (socketId !== this.admin || this.players.length < 2) return false;
     if (this._isTeams() && this.players.length !== 4) return false;
-    // All players must have selected a pet
-    if (this.players.some((p) => !p.pet)) return false;
     // Assign teams in team mode (players 0,1 = Team A, players 2,3 = Team B)
     if (this._isTeams()) {
       this.teams = {
@@ -1788,15 +1307,6 @@ class MonkeyBusinessGame {
     return true;
   }
 
-  debugResetPetCooldown(socketId) {
-    if (this.state !== "playing") return false;
-    const player = this.players.find((p) => p.id === socketId);
-    if (!player || !player.pet) return false;
-    player.petCooldown = 0;
-    this._log(`\ud83d\udc3e ${player.name}'s pet cooldown reset! (debug)`);
-    return true;
-  }
-
   debugAddBananas(socketId) {
     if (this.state !== "playing") return false;
     const player = this.players.find((p) => p.id === socketId);
@@ -1858,7 +1368,6 @@ class MonkeyBusinessGame {
       cur.id !== socketId ||
       this.diceRolled ||
       cur.bankrupt ||
-      this.petResolving ||
       cur.startPickPending ||
       this.itemAuction
     )
@@ -1875,12 +1384,6 @@ class MonkeyBusinessGame {
     this.diceRolled = true;
     cur.hasRolled = true;
     cur.armedAbility = null; // an armed item (if any) is spent/moot once you roll
-    this.petCoinFlip = null;
-
-    // Tick pet cooldowns for all players
-    for (const p of this.players) {
-      if (p.petCooldown > 0) p.petCooldown--;
-    }
 
     const diceSum = rolls.reduce((a, b) => a + b, 0);
     // item auction: every dice value subtracts from the counter.
@@ -1988,7 +1491,6 @@ class MonkeyBusinessGame {
     const cur = this.getCurrentPlayer();
     if (!cur || cur.id !== socketId || cur.bankrupt) return null;
     if (this.diceRolled) return null;
-    if (this.petResolving) return null;
     if (cur.startPickPending) return null;
     if (this.auction || this.poker || this.vineSwing || this.superBananaPending)
       return null;
@@ -2014,17 +1516,12 @@ class MonkeyBusinessGame {
     this.dice = [n];
     this.diceRolled = true;
     cur.hasRolled = true;
-    this.petCoinFlip = null;
-    for (const p of this.players) {
-      if (p.petCooldown > 0) p.petCooldown--;
-    }
-    this.petUsedThisTurn = true;
+    this.itemMoveThisTurn = true;
     // item auction: Magic Dice counts as a dice roll.
     this._subtractItemAuctionCounter(n);
-    this.lastPetUsed = {
+    this.lastMagicDice = {
       playerId: cur.id,
       playerName: cur.name,
-      petType: "strong",
     };
     // No shared log line here on purpose: a Magic Dice roll must be
     // indistinguishable from a normal roll to opponents. (A grow it fires still
@@ -2144,14 +1641,10 @@ class MonkeyBusinessGame {
     this.growSquatterSteals = null;
     this.lastGrowFired = null;
     this.lastGrowActivated = null;
-    this.petCoinFlip = null;
     cur.hasRolled = true;
     this.diceRolled = true;
     cur.armedAbility = null;
-    this.petUsedThisTurn = true;
-    for (const p of this.players) {
-      if (p.petCooldown > 0) p.petCooldown--;
-    }
+    this.itemMoveThisTurn = true;
   }
 
   // useCard handles only Vine Swing now (internal key "teleport"):
@@ -2168,7 +1661,6 @@ class MonkeyBusinessGame {
     const cur = this.getCurrentPlayer();
     if (!cur || cur.id !== socketId) return null;
     if (this.diceRolled) return null;
-    if (this.petResolving) return null;
     if (cur.startPickPending) return null;
     if (this.auction || this.poker || this.vineSwing || this.superBananaPending)
       return null;
@@ -2975,7 +2467,7 @@ class MonkeyBusinessGame {
   }
 
   // Passive landing — only handles non-interactive effects (tax, rent, grow).
-  // Used when a player is pushed onto a tile by an opponent's pet so it
+  // Used when a player is pushed onto a tile by an external effect so it
   // doesn't trigger poker, vine swing, auctions, or super banana swaps.
   _processLandingPassive(player, magicUserId = null) {
     const space = this.board[player.position];
@@ -3674,7 +3166,6 @@ class MonkeyBusinessGame {
   _resolveAuction() {
     const a = this.auction;
     const prop = this.properties.get(a.position);
-    this.petCoinFlip = null;
 
     if (a.highBidder) {
       const winner = this.players.find((p) => p.id === a.highBidder);
@@ -5146,15 +4637,14 @@ class MonkeyBusinessGame {
     // armedAbility intentionally persists across turn end — if armed mid-turn
     // after rolling, it fires on the player's NEXT roll. Consumed on use in
     // rollDice / useMagicDice / _beginCardTurn.
-    this.petCoinFlip = null;
-    this.petUsedThisTurn = false;
+    this.itemMoveThisTurn = false;
     this.diceMatchTiles = null;
     this.diceMatchGrownAmounts = null;
     this.diceMatchEarlyPickup = null;
     this.growSquatterSteals = null;
     this.lastGrowFired = null;
     this.lastGrowActivated = null;
-    this.lastPetUsed = null;
+    this.lastMagicDice = null;
     this.lastStartPick = null;
     this.lastTeleport = null;
     this.lastTileSwap = null;
@@ -5234,31 +4724,6 @@ class MonkeyBusinessGame {
       }
     } else {
       // FFA: only Super Banana purchase wins (no bankruptcy)
-    }
-
-    // Trigger any pending pet effects for the new current player
-    if (this.state !== "finished") {
-      const newCur = this.getCurrentPlayer();
-      if (newCur && !newCur.bankrupt) {
-        // Flip waitForCasterTurn when caster's turn arrives
-        if (this.pendingMagicPets) {
-          for (const mp of this.pendingMagicPets) {
-            if (mp.waitForCasterTurn && mp.userId === newCur.id) {
-              mp.waitForCasterTurn = false;
-            }
-          }
-        }
-        const hasMagicPet =
-          this.pendingMagicPets &&
-          this.pendingMagicPets.some(
-            (mp) => mp.targetId === newCur.id && !mp.waitForCasterTurn,
-          );
-        const hasOwnPet = !!newCur.pendingPet;
-        if (hasMagicPet || hasOwnPet) {
-          this.petResolving = true;
-          this._resolvePendingPets();
-        }
-      }
     }
 
     // item auction: if a counter-zero was queued during this
@@ -5580,15 +5045,11 @@ class MonkeyBusinessGame {
       currentPlayer: this.getCurrentPlayer(),
       players: this.players.map((p) => {
         const isViewer = p.id === viewerId;
-        const hidePet = this.state === "waiting" && !isViewer && p.pet;
         return {
           ...p,
           revealedTiles: [...p.revealedTiles],
           // clientId is a private reconnect token — never broadcast it.
           clientId: undefined,
-          pet: hidePet ? "hidden" : p.pet,
-          petCooldown: hidePet ? 0 : p.petCooldown,
-          pendingPet: p.pendingPet ? p.pendingPet.type : null,
           // Your armed item is private until it fires — only you see it.
           armedAbility: isViewer ? p.armedAbility || null : null,
         };
@@ -5679,11 +5140,8 @@ class MonkeyBusinessGame {
       vineSwing: this.vineSwing || null,
       autoEndDelay: this.autoEndDelay || false,
       autoEndDelayMs: this.autoEndDelayMs || 0,
-      petCoinFlip: this.petCoinFlip || null,
-      petResolving: this.petResolving || false,
-      petTurnDelay: this.petTurnDelay || false,
-      petUsedThisTurn: this.petUsedThisTurn || false,
-      lastPetUsed: this.lastPetUsed || null,
+      itemMoveThisTurn: this.itemMoveThisTurn || false,
+      lastMagicDice: this.lastMagicDice || null,
       poker: this.poker ? this._getPokerState(viewerId) : null,
       revealAccepted: this.revealAccepted ? [...this.revealAccepted] : [],
       log: this.log.slice(-20),
@@ -5802,5 +5260,5 @@ class MonkeyBusinessGame {
   }
 }
 
-module.exports = { MonkeyBusinessGame, BOARD, PET_TYPES };
+module.exports = { MonkeyBusinessGame, BOARD };
 

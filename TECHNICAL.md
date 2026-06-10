@@ -36,7 +36,7 @@ grows, collects, and steals work.
 
 A game progresses through states: `waiting` (lobby) → `revealing` (pre-shuffle
 board reveal) → `playing` → `finished`. Each player tracks bananas (money),
-position, owned farms, special items, bombs, pet cooldown, and ghost status.
+position, owned farms, special items, bombs, and ghost status.
 Disconnected players become server-driven ghosts rather than leaving the game
 (see rules.md, "Leavers").
 
@@ -48,10 +48,10 @@ Disconnected players become server-driven ghosts rather than leaving the game
 ## Socket.io events (client → server)
 
 Lobby: `auth_socket`, `create_game`, `join_game`, `get_public_lobbies`,
-`change_color`, `select_pet`, `transfer_host`, `kick_player`, `switch_team`,
+`change_color`, `transfer_host`, `kick_player`, `switch_team`,
 `update_settings`, `toggle_no_timer`, `start_game`.
 
-Turn flow: `roll_dice`, `pick_start_tile`, `use_pet`, `cancel_pet`,
+Turn flow: `roll_dice`, `pick_start_tile`,
 `use_magic_dice`, `upgrade_magic_dice`, `arm_ability`, `use_card`, `buy_card`,
 `vine_swing_move`, `end_turn`, `turn_anims_complete`.
 
@@ -67,7 +67,7 @@ Bombs & economy: `buy_bomb`, `place_bomb`, `trade_bananas`, `sell_property`,
 Super Banana: `pick_super_banana_swap`.
 
 Misc: `chat_message`, `player_reaction`, `return_to_lobby`, `leave_game`,
-plus `debug_*` events (`debug_move`, `debug_shuffle`, `debug_reset_pet`,
+plus `debug_*` events (`debug_move`, `debug_shuffle`,
 `debug_add_bananas`). Note: the debug events are currently not gated by
 environment — consider disabling them in production.
 

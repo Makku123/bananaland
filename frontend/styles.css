@@ -21,14 +21,7 @@ img.tw-emoji {
 .board-center-title .banana-land-emoji img.tw-emoji {
   height: 52px;
   width: 52px;
-}
-
-.lobby-pet-emoji img.tw-emoji {
-  height: 1.6em;
-  width: 1.6em;
-}
-
-.poker-announce-emoji img.tw-emoji {
+}.poker-announce-emoji img.tw-emoji {
   height: 36px;
   width: 36px;
 }
@@ -4114,209 +4107,7 @@ body {
   box-shadow: 0 0 30px rgba(255, 107, 74, 0.4);
   animation: turnPulse 0.6s ease-out;
   pointer-events: none;
-}
-
-/* ── Pet Coin Flip Notification ──────────────────────────── */
-.pet-coin-notification {
-  display: none;
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  z-index: 103;
-  font-family: "Baloo 2", "Fredoka", sans-serif;
-  font-size: 20px;
-  font-weight: 700;
-  color: #fff;
-  background:
-    radial-gradient(
-      ellipse at 30% 20%,
-      rgba(80, 80, 180, 0.3),
-      transparent 60%
-    ),
-    linear-gradient(160deg, #0d0d2b 0%, #1a1a4a 40%, #0d0d2b 100%);
-  border: 2px solid rgba(255, 225, 53, 0.25);
-  border-radius: 20px;
-  padding: 22px 40px 18px;
-  min-width: 220px;
-  text-align: center;
-  box-shadow:
-    0 8px 32px rgba(0, 0, 0, 0.6),
-    0 0 60px rgba(255, 215, 0, 0.08),
-    inset 0 1px 0 rgba(255, 255, 255, 0.08);
-  pointer-events: none;
-  backdrop-filter: blur(6px);
-}
-.pet-coin-notification.show {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 12px;
-  animation: petCoinAppear 0.35s cubic-bezier(0.22, 1, 0.36, 1);
-}
-.pet-coin-text {
-  font-size: 16px;
-  letter-spacing: 0.5px;
-  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
-  opacity: 0.9;
-}
-.pet-coin-scene {
-  width: 90px;
-  height: 90px;
-  perspective: 800px;
-  margin: 4px 0;
-  filter: drop-shadow(0 4px 20px rgba(255, 215, 0, 0.35));
-}
-.pet-coin-flipper {
-  width: 100%;
-  height: 100%;
-  position: relative;
-  transform-style: preserve-3d;
-  transform: rotateY(0deg);
-}
-.pet-coin-face {
-  position: absolute;
-  width: 90px;
-  height: 90px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  backface-visibility: hidden;
-}
-.pet-coin-face .coin-icon {
-  font-size: 40px;
-  line-height: 1;
-}
-.pet-coin-heads {
-  background:
-    radial-gradient(
-      circle at 35% 30%,
-      rgba(255, 255, 255, 0.35),
-      transparent 60%
-    ),
-    linear-gradient(160deg, #ffe566, #d4a017 50%, #a67c00);
-  box-shadow:
-    0 0 0 3px rgba(180, 140, 20, 0.5),
-    0 4px 12px rgba(0, 0, 0, 0.4),
-    inset 0 -2px 4px rgba(0, 0, 0, 0.15),
-    inset 0 2px 4px rgba(255, 255, 255, 0.3);
-  transform: rotateY(0deg) translateZ(3px);
-}
-.pet-coin-tails {
-  background:
-    radial-gradient(
-      circle at 35% 30%,
-      rgba(255, 255, 255, 0.25),
-      transparent 60%
-    ),
-    linear-gradient(160deg, #ff6b6b, #d32f2f 50%, #a01010);
-  box-shadow:
-    0 0 0 3px rgba(180, 30, 30, 0.5),
-    0 4px 12px rgba(0, 0, 0, 0.4),
-    inset 0 -2px 4px rgba(0, 0, 0, 0.2),
-    inset 0 2px 4px rgba(255, 255, 255, 0.2);
-  transform: rotateY(180deg) translateZ(3px);
-}
-.pet-coin-result {
-  font-size: 15px;
-  font-weight: 600;
-  min-height: 1.4em;
-  padding: 4px 14px;
-  border-radius: 8px;
-  opacity: 0;
-  transform: translateY(4px);
-  transition:
-    opacity 0.35s,
-    transform 0.35s;
-}
-.pet-coin-result.visible {
-  opacity: 1;
-  transform: translateY(0);
-}
-.pet-coin-result.heads {
-  background: rgba(255, 215, 0, 0.15);
-  color: #ffe566;
-  text-shadow: 0 0 10px rgba(255, 215, 0, 0.3);
-}
-.pet-coin-result.tails {
-  background: rgba(255, 80, 80, 0.12);
-  color: #ff8a8a;
-}
-@keyframes petCoinSpin {
-  0% {
-    transform: rotateY(0deg) scale(1) translateY(0);
-  }
-  5% {
-    transform: rotateY(60deg) scale(0.95) translateY(-6px);
-  }
-  15% {
-    transform: rotateY(360deg) scale(0.85) translateY(-28px);
-  }
-  30% {
-    transform: rotateY(720deg) scale(0.8) translateY(-38px);
-  }
-  50% {
-    transform: rotateY(1080deg) scale(0.82) translateY(-30px);
-  }
-  70% {
-    transform: rotateY(1380deg) scale(0.9) translateY(-12px);
-  }
-  85% {
-    transform: rotateY(1530deg) scale(0.96) translateY(-3px);
-  }
-  93% {
-    transform: rotateY(1590deg) scale(0.99) translateY(1px);
-  }
-  100% {
-    transform: rotateY(1620deg) scale(1) translateY(0);
-  }
-}
-@keyframes petCoinSpinTails {
-  0% {
-    transform: rotateY(0deg) scale(1) translateY(0);
-  }
-  5% {
-    transform: rotateY(60deg) scale(0.95) translateY(-6px);
-  }
-  15% {
-    transform: rotateY(360deg) scale(0.85) translateY(-28px);
-  }
-  30% {
-    transform: rotateY(720deg) scale(0.8) translateY(-38px);
-  }
-  50% {
-    transform: rotateY(1080deg) scale(0.82) translateY(-30px);
-  }
-  70% {
-    transform: rotateY(1380deg) scale(0.9) translateY(-12px);
-  }
-  85% {
-    transform: rotateY(1710deg) scale(0.96) translateY(-3px);
-  }
-  93% {
-    transform: rotateY(1770deg) scale(0.99) translateY(1px);
-  }
-  100% {
-    transform: rotateY(1800deg) scale(1) translateY(0);
-  }
-}
-@keyframes petCoinAppear {
-  0% {
-    opacity: 0;
-    transform: translate(-50%, -50%) scale(0.6);
-  }
-  60% {
-    opacity: 1;
-    transform: translate(-50%, -50%) scale(1.03);
-  }
-  100% {
-    opacity: 1;
-    transform: translate(-50%, -50%) scale(1);
-  }
-}
-
-.dice-roll-notification {
+}.dice-roll-notification {
   display: none;
   position: absolute;
   top: 12%;
@@ -4339,34 +4130,7 @@ body {
   pointer-events: none;
   white-space: nowrap;
   backdrop-filter: blur(4px);
-}
-
-.pet-used-notification {
-  display: none;
-  position: absolute;
-  top: 18%;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 99;
-  font-family: "Baloo 2", "Fredoka", sans-serif;
-  font-size: 19px;
-  font-weight: 700;
-  color: #e0c0ff;
-  background: linear-gradient(135deg, #1a102e 0%, #2a1840 100%);
-  border: 2px solid rgba(180, 130, 255, 0.4);
-  border-radius: 14px;
-  padding: 10px 24px;
-  text-align: center;
-  box-shadow:
-    0 0 24px rgba(180, 130, 255, 0.2),
-    0 6px 20px rgba(0, 0, 0, 0.4);
-  animation: turnPulse 0.4s ease-out;
-  pointer-events: none;
-  white-space: nowrap;
-  backdrop-filter: blur(4px);
-}
-
-.bomb-win-notification {
+}.bomb-win-notification {
   display: none;
   position: absolute;
   top: 50%;
@@ -8383,214 +8147,11 @@ body.mode-standard .board-chat-mention.c-red {
   border-radius: 4px;
   overflow: hidden;
   margin-bottom: 2px;
-}
-
-/* ── Pet Selection (Lobby) ─────────────────────────────────────── */
-
-.lobby-pet-section {
-  margin-top: 0;
-  flex: 1;
-  min-width: 0;
-}
-
-.lobby-pet-title {
-  font-weight: 700;
-  font-size: 0.75em;
-  margin-bottom: 6px;
-  color: #ffe135;
-  letter-spacing: 1px;
-  text-transform: uppercase;
-}
-
-.lobby-pet-grid {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-}
-
-.lobby-pet-card {
-  background: rgba(255, 255, 255, 0.06);
-  border: 2px solid rgba(255, 255, 255, 0.12);
-  border-radius: 12px;
-  padding: 10px 14px;
-  cursor: pointer;
-  text-align: left;
-  transition:
-    border-color 0.2s,
-    background 0.2s,
-    transform 0.15s;
-  width: 100%;
-  color: #eee;
-  font-family: inherit;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.lobby-pet-card:hover {
-  background: rgba(255, 225, 53, 0.08);
-  border-color: rgba(255, 225, 53, 0.4);
-  transform: translateY(-2px);
-}
-
-.lobby-pet-card.lobby-pet-selected {
-  background: rgba(255, 225, 53, 0.15);
-  border-color: #ffe135;
-  box-shadow: 0 0 12px rgba(255, 225, 53, 0.25);
-}
-
-.lobby-pet-emoji {
-  font-size: 1.6em;
-  flex-shrink: 0;
-}
-
-.lobby-pet-name {
-  font-weight: 700;
-  font-size: 0.85em;
-  margin-bottom: 0;
-}
-
-.lobby-pet-desc {
-  font-size: 0.78em;
-  color: #f0e8c8;
-  line-height: 1.4;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
-}
-
-.lobby-pet-badge {
-  display: inline-block;
-  background: rgba(255, 225, 53, 0.15);
-  color: #ffe135;
-  font-size: 0.72em;
-  padding: 1px 7px;
-  border-radius: 8px;
-  margin-left: 4px;
-  font-weight: 600;
-}
-
-/* ── Pet Ability (In-Game) ─────────────────────────────────────── */
-
-.pet-ability-box {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
-  margin-bottom: 8px;
-  padding: 8px 10px;
-  background: rgba(255, 225, 53, 0.07);
-  border: 1px solid rgba(255, 225, 53, 0.2);
-  border-radius: 10px;
-}
-
-
-/* ── Magic Dice (mystical arcane panel) ──────────────── */
-.magic-dice-box {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  gap: 8px;
-  margin-bottom: 8px;
-  padding: 12px;
-  overflow: hidden;
-  border-radius: 14px;
-  background:
-    radial-gradient(
-      circle at 22% 14%,
-      rgba(168, 120, 255, 0.28) 0%,
-      transparent 45%
-    ),
-    radial-gradient(
-      circle at 85% 90%,
-      rgba(96, 200, 255, 0.18) 0%,
-      transparent 50%
-    ),
-    linear-gradient(165deg, #241043 0%, #160a2e 60%, #120824 100%);
-  border: 1px solid rgba(168, 120, 255, 0.45);
-  box-shadow:
-    0 6px 20px rgba(0, 0, 0, 0.45),
-    inset 0 1px 0 rgba(190, 150, 255, 0.25),
-    0 0 22px rgba(120, 80, 255, 0.12);
-}
-/* Faint rotating rune ring for arcane flavor. */
-.magic-dice-runes {
-  position: absolute;
-  top: -40%;
-  right: -30%;
-  width: 150px;
-  height: 150px;
-  pointer-events: none;
-  border-radius: 50%;
-  border: 1.5px dashed rgba(180, 140, 255, 0.18);
-  box-shadow: inset 0 0 22px rgba(150, 110, 255, 0.12);
-  animation: magicRuneSpin 26s linear infinite;
-}
-@keyframes magicRuneSpin {
+}@keyframes magicRuneSpin {
   to {
     transform: rotate(360deg);
   }
-}
-
-.magic-dice-top {
-  position: relative;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-.magic-dice-gauge {
-  position: relative;
-  width: 60px;
-  height: 60px;
-  flex: 0 0 auto;
-}
-.magic-dice-ring-svg {
-  width: 100%;
-  height: 100%;
-  transform: rotate(-90deg);
-}
-.magic-dice-ring-track {
-  fill: none;
-  stroke: rgba(255, 255, 255, 0.08);
-  stroke-width: 6;
-}
-.magic-dice-ring-fill {
-  fill: none;
-  stroke: #a878ff;
-  stroke-width: 6;
-  stroke-linecap: round;
-  transition:
-    stroke-dashoffset 0.4s ease,
-    stroke 0.3s ease;
-}
-.magic-dice-gauge.cooling .magic-dice-ring-fill {
-  stroke: #8a6bff;
-}
-.magic-dice-gauge.ready .magic-dice-ring-fill {
-  stroke: #ffe135;
-  filter: drop-shadow(0 0 5px rgba(255, 225, 53, 0.8));
-}
-.magic-dice-gauge-center {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  font-size: 22px;
-  font-weight: 800;
-  color: #f0e6ff;
-  line-height: 1;
-  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.6);
-}
-.magic-dice-gauge.cooling .magic-dice-gauge-center {
-  font-size: 20px;
-  color: #cdb6ff;
-}
-.magic-dice-gauge.ready.usable {
-  animation: magicGaugePulse 1.4s ease-in-out infinite;
-}
-.magic-dice-gauge.ready.usable .magic-dice-gauge-center {
-  animation: magicDieBob 1.4s ease-in-out infinite;
-}
-@keyframes magicGaugePulse {
+}@keyframes magicGaugePulse {
   0%,
   100% {
     filter: drop-shadow(0 0 0 rgba(255, 225, 53, 0));
@@ -8607,122 +8168,7 @@ body.mode-standard .board-chat-mention.c-red {
   50% {
     transform: translate(-50%, -55%) scale(1.12) rotate(4deg);
   }
-}
-
-.magic-dice-titleblock {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-}
-.magic-dice-title {
-  font-size: 1.02em;
-  font-weight: 900;
-  letter-spacing: 0.4px;
-  color: #f0e6ff;
-  text-shadow: 0 0 10px rgba(168, 120, 255, 0.45);
-}
-.magic-dice-status {
-  font-size: 0.72em;
-  font-weight: 700;
-  color: #b9a4e8;
-  line-height: 1.15;
-}
-.magic-dice-gauge.ready.usable ~ .magic-dice-titleblock .magic-dice-status {
-  color: #ffe97a;
-}
-
-.magic-dice-picker-label {
-  font-size: 0.68em;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 1px;
-  color: #9b86cc;
-  text-align: center;
-}
-.magic-dice-picker {
-  display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
-  justify-content: center;
-  max-height: 132px;
-  overflow-y: auto;
-  padding: 2px;
-  scrollbar-width: thin;
-  scrollbar-color: rgba(168, 120, 255, 0.5) transparent;
-}
-.magic-dice-picker::-webkit-scrollbar {
-  width: 6px;
-}
-.magic-dice-picker::-webkit-scrollbar-thumb {
-  background: rgba(168, 120, 255, 0.5);
-  border-radius: 3px;
-}
-
-/* Die-shaped step buttons. */
-.magic-dice-step {
-  position: relative;
-  width: 34px;
-  height: 34px;
-  flex: 0 0 auto;
-  padding: 0;
-  border-radius: 8px;
-  background: linear-gradient(155deg, #efe8ff 0%, #cdbcf5 100%);
-  border: 1px solid rgba(120, 80, 200, 0.5);
-  box-shadow:
-    inset 0 1px 1px rgba(255, 255, 255, 0.8),
-    inset 0 -2px 3px rgba(110, 70, 170, 0.35),
-    0 2px 4px rgba(0, 0, 0, 0.35);
-  cursor: pointer;
-  transition:
-    transform 0.1s ease,
-    box-shadow 0.15s ease,
-    filter 0.15s ease;
-}
-.magic-dice-step:not(:disabled):hover {
-  transform: translateY(-2px) scale(1.06);
-  box-shadow:
-    inset 0 1px 1px rgba(255, 255, 255, 0.9),
-    0 0 12px rgba(255, 225, 53, 0.6),
-    0 4px 8px rgba(0, 0, 0, 0.4);
-  filter: brightness(1.05);
-}
-.magic-dice-step:not(:disabled):active {
-  transform: translateY(0) scale(0.96);
-}
-.magic-dice-step:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-  filter: grayscale(0.4);
-}
-/* Numeric faces (0 and 7+). */
-.magic-dice-step.die-num .die-num-label {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  font-size: 1.05em;
-  font-weight: 900;
-  color: #3a1d6e;
-}
-/* Pip faces (1–6): 3×3 grid, pips toggled per face class. */
-.magic-dice-step.die-pips {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  grid-template-rows: repeat(3, 1fr);
-  padding: 5px;
-  gap: 0;
-}
-.magic-dice-step.die-pips .pip {
-  width: 6px;
-  height: 6px;
-  margin: auto;
-  border-radius: 50%;
-  background: #3a1d6e;
-  box-shadow: inset 0 -1px 1px rgba(0, 0, 0, 0.3);
-  visibility: hidden;
-}
-.pips-1 .pip:nth-child(5) {
+}.pips-1 .pip:nth-child(5) {
   visibility: visible;
 }
 .pips-2 .pip:nth-child(1),
@@ -8754,129 +8200,7 @@ body.mode-standard .board-chat-mention.c-red {
 .pips-6 .pip:nth-child(7),
 .pips-6 .pip:nth-child(9) {
   visibility: visible;
-}
-
-.magic-dice-upgrade {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  padding: 7px 10px;
-  border-radius: 9px;
-  font-size: 0.82em;
-  font-weight: 800;
-  color: #f0e6ff;
-  background: linear-gradient(160deg, rgba(168, 120, 255, 0.3), rgba(120, 80, 255, 0.18));
-  border: 1px solid rgba(168, 120, 255, 0.55);
-  cursor: pointer;
-  transition:
-    background 0.15s ease,
-    box-shadow 0.15s ease,
-    transform 0.1s ease;
-}
-.magic-dice-upgrade .mdu-icon {
-  font-size: 1.05em;
-}
-.magic-dice-upgrade .mdu-cost {
-  margin-left: auto;
-  font-weight: 900;
-  color: #ffe135;
-}
-.magic-dice-upgrade:not(:disabled):hover {
-  background: linear-gradient(160deg, rgba(190, 150, 255, 0.45), rgba(140, 95, 255, 0.3));
-  box-shadow: 0 0 14px rgba(168, 120, 255, 0.4);
-  transform: translateY(-1px);
-}
-.magic-dice-upgrade:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-.magic-dice-hint {
-  font-size: 0.78em;
-  color: #b9a4e8;
-  font-style: italic;
-  text-align: center;
-  padding: 4px 0;
-}
-
-.pet-ability-info {
-  font-size: 0.78em;
-  color: #ccc;
-  text-align: center;
-}
-
-.pet-flip-result {
-  font-size: 0.82em;
-  font-weight: 700;
-  text-align: center;
-  animation: turnPulse 0.5s ease-out;
-}
-
-.pet-toggle {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 4px 0;
-  width: 100%;
-}
-.pet-toggle-button {
-  width: 100%;
-  padding: 10px 18px;
-  font-size: 0.95em;
-  font-weight: 700;
-  border: 2px solid rgba(255, 255, 255, 0.15);
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.08);
-  color: #ccc;
-  cursor: pointer;
-  transition:
-    background 0.25s,
-    border-color 0.25s,
-    color 0.25s,
-    box-shadow 0.25s,
-    transform 0.12s;
-  user-select: none;
-  letter-spacing: 0.02em;
-}
-.pet-toggle-button:hover:not(:disabled) {
-  background: rgba(255, 225, 53, 0.12);
-  border-color: rgba(255, 225, 53, 0.4);
-  color: #ffe135;
-}
-.pet-toggle-button:active:not(:disabled) {
-  transform: scale(0.97);
-}
-.pet-toggle-button[data-armed="true"] {
-  background: linear-gradient(135deg, #ffe135, #ff9800);
-  border-color: rgba(255, 225, 53, 0.7);
-  color: #1a1a2e;
-  box-shadow: 0 0 14px rgba(255, 225, 53, 0.35);
-}
-.pet-toggle-button[data-armed="true"]:hover:not(:disabled) {
-  background: linear-gradient(135deg, #ffe850, #ffab1a);
-  box-shadow: 0 0 18px rgba(255, 225, 53, 0.5);
-}
-.pet-toggle-button:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-.pet-toggle-text {
-  font-size: inherit;
-  font-weight: inherit;
-  color: inherit;
-  pointer-events: none;
-}
-.pet-toggle.pet-toggle-disabled {
-  opacity: 0.4;
-  pointer-events: none;
-}
-.pet-toggle.pet-toggle-cooldown .pet-toggle-button {
-  background: rgba(255, 100, 50, 0.15);
-  border-color: rgba(255, 100, 50, 0.25);
-  color: #aa7744;
-}
-
-/* ── Board Preview Overlay ─────────────────────────────────────── */
+}/* ── Board Preview Overlay ─────────────────────────────────────── */
 
 .board-preview-overlay {
   position: fixed;
@@ -9492,30 +8816,7 @@ body.mode-standard .board-chat-mention.c-red {
 .board-preview-actions {
   display: flex;
   gap: 12px;
-}
-
-.pet-target-select {
-  background: rgba(255, 255, 255, 0.1);
-  color: #eee;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: 6px;
-  padding: 4px 8px;
-  font-size: 0.82em;
-  font-family: inherit;
-  width: 100%;
-}
-
-.pstat-pet {
-  display: inline-block;
-  font-size: 0.75em;
-  margin-left: 4px;
-  background: rgba(255, 225, 53, 0.12);
-  padding: 0 5px;
-  border-radius: 6px;
-  color: #ffe135;
-  font-weight: 600;
-}
-.team-bar-fill {
+}.team-bar-fill {
   height: 100%;
   border-radius: 4px;
   transition: width 0.5s ease;
@@ -10579,12 +9880,7 @@ body.mode-standard .board-chat-mention.c-red {
 .dice-roll-notification.show {
   display: block;
   animation: notifSlideInX 0.35s cubic-bezier(0.22, 1, 0.36, 1);
-}
-.pet-used-notification.show {
-  display: block;
-  animation: notifSlideInX 0.35s cubic-bezier(0.22, 1, 0.36, 1);
-}
-/* ── Poker Announcement Notification ─────────────────────────── */
+}/* ── Poker Announcement Notification ─────────────────────────── */
 .poker-announce-notification {
   display: none;
   position: absolute;
@@ -10986,18 +10282,7 @@ body.mode-standard .board-chat-mention.c-red {
 .form-section:focus-within {
   border-color: rgba(255, 225, 53, 0.2);
   box-shadow: 0 0 12px rgba(255, 225, 53, 0.05);
-}
-
-/* ── Lobby pet card selection glow ───────────────────────────── */
-.lobby-pet-card:hover {
-  border-color: rgba(255, 225, 53, 0.4) !important;
-  box-shadow: 0 0 16px rgba(255, 225, 53, 0.12);
-}
-.lobby-pet-card.selected {
-  box-shadow: 0 0 20px rgba(255, 225, 53, 0.2), inset 0 0 12px rgba(255, 225, 53, 0.05);
-}
-
-/* ── Owned farm set group hover ──────────────────────────────── */
+}/* ── Owned farm set group hover ──────────────────────────────── */
 .owner-set-group {
   transition: background 0.15s;
   border-radius: 4px;
@@ -11222,9 +10507,6 @@ body.mode-standard .board-chat-mention.c-red {
   }
   .lobby-players-section {
     flex: 1 1 200px;
-  }
-  .lobby-pet-section {
-    flex: 1 1 280px;
   }
   .lobby-settings-row {
     flex-direction: column;
@@ -11561,15 +10843,15 @@ body.mode-standard .board-chat-mention.c-red {
   margin-top: 2px;
 }
 
-/* Pet showcase */
-.tut-pets-grid {
+/* Item showcase */
+.tut-items-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
   gap: 8px;
   margin: 10px 0;
 }
 
-.tut-pet-item {
+.tut-item-item {
   background: rgba(0, 0, 0, 0.25);
   border: 1px solid rgba(255, 225, 53, 0.15);
   border-radius: 8px;
@@ -11579,24 +10861,24 @@ body.mode-standard .board-chat-mention.c-red {
   cursor: default;
 }
 
-.tut-pet-item:hover {
+.tut-item-item:hover {
   border-color: rgba(255, 225, 53, 0.5);
   transform: translateY(-2px);
 }
 
-.tut-pet-item .tut-pet-icon {
+.tut-item-item .tut-item-icon {
   font-size: 1.6em;
   display: block;
   margin-bottom: 2px;
 }
 
-.tut-pet-item .tut-pet-name {
+.tut-item-item .tut-item-name {
   font-weight: 600;
   color: #ffe135;
   font-size: 0.8em;
 }
 
-.tut-pet-item .tut-pet-desc {
+.tut-item-item .tut-item-desc {
   font-size: 0.7em;
   color: #aaa;
   margin-top: 2px;
@@ -11685,7 +10967,7 @@ body.mode-standard .board-chat-mention.c-red {
 @media (max-width: 500px) {
   #tutorial-content { padding: 12px 16px 8px; }
   .tutorial-step h2 { font-size: 1.1em; }
-  .tut-pets-grid { grid-template-columns: repeat(2, 1fr); }
+  .tut-items-grid { grid-template-columns: repeat(2, 1fr); }
   .tutorial-nav { padding: 8px 16px 14px; }
 }
 
@@ -12258,38 +11540,6 @@ body.mode-standard .board-chat-mention.c-red {
   font-size: 0.8em;
   flex-shrink: 0;
   border: 1px solid rgba(255, 225, 53, 0.25);
-}
-
-/* ── Help Pet Grid ── */
-.help-pet-grid {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-  margin: 6px 0;
-}
-.help-pet-row {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  padding: 6px 10px;
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.02);
-  border: 1px solid rgba(255, 255, 255, 0.04);
-}
-.help-pet-icon {
-  font-size: 1.4em;
-  flex-shrink: 0;
-}
-.help-pet-info {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  color: #ccc;
-  font-size: 0.9em;
-}
-.help-pet-meta {
-  color: #888;
-  font-size: 0.82em;
 }
 
 /* ── Help Badges ── */

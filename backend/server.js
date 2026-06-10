@@ -323,15 +323,6 @@ io.on("connection", (socket) => {
     }
   });
 
-  // ── Select pet (lobby) ────────────────────────────────────────
-  socket.on("select_pet", (data) => {
-    const game = games.get(data.gameId);
-    if (!game) return;
-    if (game.selectPet(socket.id, data.petType)) {
-      emitGameUpdate(data.gameId, game);
-    }
-  });
-
   // ── Transfer host (lobby) ────────────────────────────────────────
   socket.on("transfer_host", (data) => {
     const game = games.get(data.gameId);
@@ -362,24 +353,6 @@ io.on("connection", (socket) => {
     const game = games.get(data.gameId);
     if (!game) return;
     if (game.switchTeam(socket.id)) {
-      emitGameUpdate(data.gameId, game);
-    }
-  });
-
-  // ── Use pet ability (in-game) ──────────────────────────────────
-  socket.on("use_pet", (data) => {
-    const game = games.get(data.gameId);
-    if (!game) return;
-    if (game.usePetAbility(socket.id, data.targetId || null)) {
-      emitGameUpdate(data.gameId, game);
-    }
-  });
-
-  // ── Cancel pet ability ────────────────────────────────────────
-  socket.on("cancel_pet", (data) => {
-    const game = games.get(data.gameId);
-    if (!game) return;
-    if (game.cancelPet(socket.id)) {
       emitGameUpdate(data.gameId, game);
     }
   });
@@ -631,15 +604,6 @@ io.on("connection", (socket) => {
       const game = games.get(data.gameId);
       if (!game) return;
       if (game.debugShuffle()) {
-        emitGameUpdate(data.gameId, game);
-      }
-    });
-
-    // ── Debug: reset pet cooldown ──────────────────────────────
-    socket.on("debug_reset_pet", (data) => {
-      const game = games.get(data.gameId);
-      if (!game) return;
-      if (game.debugResetPetCooldown(socket.id)) {
         emitGameUpdate(data.gameId, game);
       }
     });

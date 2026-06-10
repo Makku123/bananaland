@@ -663,14 +663,14 @@ function initSocket() {
     // If poker just started, defer BOTH poker players' deductions until the
     // poker table visually appears.
     if (window._prevPlayerMoney) {
-      // Start picks and pet/item teleports set diceRolled=true but never trigger
+      // Start picks and item teleports set diceRolled=true but never trigger
       // a walk animation, so the normal "defer until walk lands" path would
       // strand the gain/loss bundle entirely. Treat teleports as immediate.
       const isStartPickTeleport =
         !!(gs.lastStartPick && gs.lastStartPick.turn === gs.turn) ||
         !!(gs.lastTeleport && gs.lastTeleport.turn === gs.turn);
       // Detect if a brand-new dice roll just arrived (walk animation hasn't started yet)
-      const isNewDiceRoll = gs.diceRolled && gs.dice && !gs.petUsedThisTurn &&
+      const isNewDiceRoll = gs.diceRolled && gs.dice && !gs.itemMoveThisTurn &&
         gs.currentPlayer && !isStartPickTeleport &&
         (gs.dice.join("-") + "-" + gs.turn) !== window._lastDiceKey;
       const walkInProgress = window._tokenWalking || isNewDiceRoll;
@@ -1300,7 +1300,6 @@ function showLobby() {
     const teamTag = isTeamMode
       ? `<span class="lobby-team-tag lobby-team-tag--${idx < 2 ? "a" : "b"}">${idx < 2 ? "Team A" : "Team B"}</span>`
       : "";
-    const petBadge = "";
     // 2v2: any player can swap themselves to the other team once the lobby
     // has all four monkeys (matches the backend rule). The button only renders
     // on your own row; for others it's display-only.
@@ -1318,7 +1317,7 @@ function showLobby() {
       <div class="lobby-player-avatar c-${p.color}">${emoji}</div>
       <div class="lobby-player-info">
         <div class="lobby-player-name">${p.name}${editHint}</div>
-        ${role}${teamTag}${petBadge}
+        ${role}${teamTag}
       </div>
       ${teamSwitchBtn}
       ${hostActions}
@@ -1388,30 +1387,14 @@ function showLobby() {
   }
 
   const btn = document.getElementById("btn-start");
-  const allHavePets = gs.players.every((p) => p.pet);
   if (waitingForLobby) {
     btn.disabled = true;
   } else if (gs.gameMode === "2v2") {
-    btn.disabled = !(
-      myId === gs.admin &&
-      gs.players.length === 4 &&
-      allHavePets
-    );
+    btn.disabled = !(myId === gs.admin && gs.players.length === 4);
   } else {
-    btn.disabled = !(
-      myId === gs.admin &&
-      gs.players.length >= 2 &&
-      allHavePets
-    );
+    btn.disabled = !(myId === gs.admin && gs.players.length >= 2);
   }
-  if (myId === gs.admin && !allHavePets && gs.players.length >= 2) {
-    btn.title = "All players must pick a pet first";
-  } else {
-    btn.title = "";
-  }
-
-  // Update pet selection highlight
-  updateLobbyPets();
+  btn.title = "";
 }
 
 function toggleColorPicker(playerEl, currentColor) {
@@ -1451,49 +1434,6 @@ function toggleColorPicker(playerEl, currentColor) {
   playerEl.appendChild(picker);
 }
 
-// ── Pet Selection ──────────────────────────────────────────────────
-
-const PET_EMOJIS = {
-  strong: "\ud83e\udd81",
-  energy: "\ud83d\udc06",
-  magic: "\ud83e\udd84",
-};
-const PET_NAMES = {
-  strong: "Strong Pet",
-  energy: "Energy Pet",
-  magic: "Magic Pet",
-};
-
-// The strong pet is displayed as "Magic Dice" everywhere it shows up.
-function petDisplayName(petType) {
-  if (
-    gs &&
-    (gs.gameMode === "classic" || gs.gameMode === "2v2") &&
-    petType === "strong"
-  ) {
-    return "Magic Dice";
-  }
-  return PET_NAMES[petType] || "Pet";
-}
-
-function selectPet(petType) {
-  if (!socket || !gameId) return;
-  socket.emit("select_pet", { gameId, petType });
-}
-
-function usePet() {
-  if (!socket || !gameId || !gs) return;
-  const me = _gsPlayerMap[myId];
-  if (!me || !me.pet) return;
-  if (me.petCooldown > 0) return;
-  socket.emit("use_pet", { gameId });
-}
-
-function cancelPet() {
-  if (!socket || !gameId) return;
-  socket.emit("cancel_pet", { gameId });
-}
-
 // ── Magic Dice ────────────────────────────────────────
 function useMagicDice(steps) {
   if (!socket || !gameId) return;
@@ -1503,32 +1443,6 @@ function useMagicDice(steps) {
 function upgradeMagicDice() {
   if (!socket || !gameId) return;
   socket.emit("upgrade_magic_dice", { gameId });
-}
-
-// Magic Dice cooldown length (mirrors useMagicDice: cur.petCooldown = 10).
-const MAGIC_DICE_COOLDOWN = 10;
-
-// Build a die-shaped step button. 1–6 render real pip patterns; 7+ render a
-// centered number (no real die face above 6).
-function _makeMagicDieButton(n) {
-  const die = document.createElement("button");
-  die.className = "magic-dice-step";
-  die.dataset.value = String(n);
-  if (n >= 1 && n <= 6) {
-    die.classList.add("die-pips", "pips-" + n);
-    for (let i = 0; i < 9; i++) {
-      const pip = document.createElement("span");
-      pip.className = "pip";
-      die.appendChild(pip);
-    }
-  } else {
-    die.classList.add("die-num");
-    const label = document.createElement("span");
-    label.className = "die-num-label";
-    label.textContent = String(n);
-    die.appendChild(label);
-  }
-  return die;
 }
 
 // ── GROW pulse animation ──────────────────────────────
@@ -1790,230 +1704,6 @@ function _tickEndTurnCountdown() {
     window._endTurnSignalSent = true;
     if (socket && gameId) {
       socket.emit("turn_anims_complete", { gameId, turn: gs.turn });
-    }
-  }
-}
-
-function updateMagicDiceBox(me, isMyTurn) {
-  const box = document.getElementById("magic-dice-box");
-  if (!box) return;
-  if (!me || gs.state === "finished" || me.startPickPending) {
-    box.style.display = "none";
-    return;
-  }
-  box.style.display = "";
-
-  const max = Math.max(0, Number(me.magicDiceMaxSteps) || 0);
-  const cd = Math.max(0, Number(me.petCooldown) || 0);
-  const ready = cd === 0;
-  const canUse = isMyTurn && !gs.diceRolled && ready;
-
-  // Cooldown gauge ring.
-  const gauge = document.getElementById("magic-dice-gauge");
-  const ringFill = document.getElementById("magic-dice-ring-fill");
-  const center = document.getElementById("magic-dice-gauge-center");
-  const status = document.getElementById("magic-dice-status");
-  const R = 27;
-  const CIRC = 2 * Math.PI * R;
-  if (ringFill) {
-    ringFill.style.strokeDasharray = String(CIRC);
-    // Ring depletes as cooldown ticks down; full when ready.
-    const frac = ready ? 1 : Math.max(0, Math.min(1, cd / MAGIC_DICE_COOLDOWN));
-    ringFill.style.strokeDashoffset = String(CIRC * (1 - frac));
-  }
-  if (gauge) {
-    gauge.classList.toggle("ready", ready);
-    gauge.classList.toggle("cooling", !ready);
-    gauge.classList.toggle("usable", canUse);
-  }
-  if (center) {
-    center.textContent = ready ? "🎲" : String(cd);
-  }
-  if (status) {
-    if (!ready) status.textContent = `Charging · ${cd} ${cd === 1 ? "roll" : "rolls"}`;
-    else if (canUse) status.textContent = "Ready — pick your roll!";
-    else status.textContent = "Ready";
-  }
-
-  // Step picker (pip dice): fixed at six options, 1..6 — no upgrades. There is
-  // no "stay put" / 0-step option.
-  const pickerLabel = document.getElementById("magic-dice-picker-label");
-  const picker = document.getElementById("magic-dice-picker");
-  if (picker) {
-    picker.innerHTML = "";
-    if (pickerLabel) pickerLabel.style.display = "";
-    for (let n = 1; n <= max; n++) {
-      const die = _makeMagicDieButton(n);
-      die.disabled = !canUse;
-      die.title = `Move ${n}`;
-      die.onclick = () => useMagicDice(n);
-      picker.appendChild(die);
-    }
-  }
-
-  // No upgrade button anymore — Magic Dice is permanently level 6.
-  const upBtn = document.getElementById("btn-upgrade-magic-dice");
-  if (upBtn) upBtn.style.display = "none";
-}
-
-function updateLobbyPets() {
-  const petSection = document.getElementById("lobby-pet-section");
-  if (!petSection || !gs) return;
-  // Magic Dice is auto-assigned — hide the picker entirely.
-  if (gs.gameMode === "classic" || gs.gameMode === "2v2") {
-    petSection.style.display = "none";
-    return;
-  }
-  petSection.style.display = "";
-  const me = _gsPlayerMap[myId];
-  if (!me) return;
-
-  // Highlight selected pet card
-  const cards = document.querySelectorAll(".lobby-pet-card");
-  cards.forEach((card) => {
-    const pet = card.getAttribute("data-pet");
-    card.classList.toggle("lobby-pet-selected", me.pet === pet);
-  });
-}
-
-function updatePetAbilityBox(me, isMyTurn) {
-  const box = document.getElementById("pet-ability-box");
-  // No pet/cooldown UI here — Magic Dice is a won item shown in
-  // the "Your Special Items" box (see updateSpecialItems). Hide both panels.
-  if (gs && (gs.gameMode === "classic" || gs.gameMode === "2v2")) {
-    if (box) box.style.display = "none";
-    const magicBox = document.getElementById("magic-dice-box");
-    if (magicBox) magicBox.style.display = "none";
-    return;
-  }
-  const magicBox = document.getElementById("magic-dice-box");
-  if (magicBox) magicBox.style.display = "none";
-  if (!box || !me) {
-    if (box) box.style.display = "none";
-    return;
-  }
-
-  if (!me.pet || gs.state === "finished") {
-    box.style.display = "none";
-    return;
-  }
-
-  box.style.display = "";
-  const info = document.getElementById("pet-ability-info");
-  const targetSel = document.getElementById("pet-target");
-  const toggleLabel = document.getElementById("pet-toggle-label");
-  const toggleText = document.getElementById("pet-toggle-text");
-  const petBtn = document.getElementById("btn-auto-pet");
-
-  const petEmoji = PET_EMOJIS[me.pet] || "\ud83d\udc3e";
-  const petName = petDisplayName(me.pet);
-
-  const petUsable = me.petCooldown <= 0;
-  const canAffordPet = true;
-
-  // Show last coin flip result near toggle (delayed until coin animation finishes)
-  const flipResultEl = document.getElementById("pet-flip-result");
-  if (flipResultEl) {
-    if (gs.petCoinFlip) {
-      const flipSideKey = `${gs.turn}-${gs.petCoinFlip.playerName}-${gs.petCoinFlip.result}`;
-      if (flipSideKey !== window._lastPetFlipSideKey) {
-        window._lastPetFlipSideKey = flipSideKey;
-        flipResultEl.style.display = "none";
-        clearTimeout(window._petFlipSideTimer);
-        // 400ms show delay + 150ms pause + 1200ms animation + 0ms buffer
-        window._petFlipSideTimer = setTimeout(() => {
-          const isHeads = gs.petCoinFlip && gs.petCoinFlip.result === "heads";
-          flipResultEl.textContent = isHeads ? "✅ HEADS" : "❌ TAILS";
-          flipResultEl.style.color = isHeads ? "#4caf50" : "#ff5555";
-          flipResultEl.style.display = "";
-        }, 1750);
-      }
-    } else {
-      window._lastPetFlipSideKey = null;
-      clearTimeout(window._petFlipSideTimer);
-      flipResultEl.style.display = "none";
-    }
-  }
-
-  if (!petUsable) {
-    // On cooldown or out of uses — show dimmed toggle with cooldown info
-    if (toggleLabel) {
-      toggleLabel.classList.remove("pet-toggle-disabled");
-      toggleLabel.classList.add("pet-toggle-cooldown");
-    }
-    if (petBtn) {
-      petBtn.disabled = true;
-      petBtn.dataset.armed = "false";
-    }
-    targetSel.style.display = "none";
-    info.textContent = `${petEmoji} ${petName} — Cooldown: ${me.petCooldown} turn${me.petCooldown !== 1 ? "s" : ""}`;
-    if (toggleText)
-      toggleText.textContent = `⏳ ${me.petCooldown} turn${me.petCooldown !== 1 ? "s" : ""}`;
-  } else {
-    // Ready
-    if (toggleLabel) {
-      toggleLabel.classList.remove("pet-toggle-disabled");
-      toggleLabel.classList.remove("pet-toggle-cooldown");
-    }
-    if (petBtn) {
-      // Energy/Strong/Magic pet: disable on your turn or if already pending
-      const diceArmed = false;
-      // Only magic pet requires having rolled at least once first
-      const notYetRolled = me.pet === "magic" && !me.hasRolled;
-      if (me.pet === "energy" || me.pet === "strong" || me.pet === "magic") {
-        petBtn.disabled =
-          isMyTurn ||
-          !!me.pendingPet ||
-          !canAffordPet ||
-          diceArmed ||
-          notYetRolled;
-      } else {
-        petBtn.disabled =
-          isMyTurn || !canAffordPet || diceArmed || notYetRolled;
-      }
-    }
-    info.textContent = `${petEmoji} ${petName} — Ready!`;
-    if (toggleText) {
-      if (
-        (me.pet === "energy" || me.pet === "strong" || me.pet === "magic") &&
-        me.pendingPet
-      ) {
-        toggleText.textContent = "\ud83d\udc3e Pet acting next turn!";
-      } else if (petBtn && petBtn.dataset.armed === "true") {
-        toggleText.textContent = "\ud83d\udc3e Pet acting next turn!";
-      } else if (me.pet === "magic" && !me.hasRolled) {
-        toggleText.textContent = "\u26D4 Roll dice first";
-      } else {
-        toggleText.innerHTML =
-          me.pet === "energy" || me.pet === "strong" || me.pet === "magic"
-              ? "Use Pet"
-              : "Use Pet Next Turn";
-      }
-    }
-
-    // Magic pet needs a target selector when toggle is on
-    const autoPetChecked = petBtn && petBtn.dataset.armed === "true";
-    if (false) {
-      targetSel.style.display = autoPetChecked ? "" : "none";
-      if (autoPetChecked && targetSel.options.length === 0) {
-        targetSel.innerHTML = "";
-        const opponents = gs.players.filter((p) => {
-          if (p.id === myId || p.bankrupt) return false;
-          if (gs.gameMode === "2v2" && gs.teams) {
-            const myTeam = gs.teams.A.includes(myId) ? "A" : "B";
-            return !gs.teams[myTeam].includes(p.id);
-          }
-          return true;
-        });
-        opponents.forEach((p) => {
-          const opt = document.createElement("option");
-          opt.value = p.id;
-          opt.textContent = `${MONKEY_EMOJI[p.color] || "\ud83d\udc35"} ${p.name}`;
-          targetSel.appendChild(opt);
-        });
-      }
-    } else {
-      targetSel.style.display = "none";
     }
   }
 }
@@ -2473,8 +2163,8 @@ function showGame() {
       ? isMyTurnLabel
         ? startPickLabel
           ? "Pick your start tile!"
-          : gs.petUsedThisTurn
-            ? "\ud83d\udc3e Pet used!"
+          : gs.itemMoveThisTurn
+            ? "\ud83c\udf81 Item used!"
             : "Your turn!"
         : startPickLabel
           ? `${cur.name} is picking a tile\u2026`
@@ -2522,7 +2212,6 @@ function showGame() {
     isMyTurn &&
     !gs.diceRolled &&
     !gs.superBananaPending &&
-    !gs.petResolving &&
     !needsStartPick &&
     !window._abilityTargetMode &&
     rollDelayDone;
@@ -2586,21 +2275,19 @@ function showGame() {
   const isStartPickTeleport =
     !!(gs.lastStartPick && gs.lastStartPick.turn === gs.turn) ||
     !!(gs.lastTeleport && gs.lastTeleport.turn === gs.turn);
-  // Magic Dice (the "strong" pet) should walk step-by-step like a
-  // normal roll. It sets petUsedThisTurn, so the regular gate would skip it —
-  // detect it explicitly: a single chosen value > 0 that actually moves.
+  // Roll One should walk step-by-step like a normal roll. It sets
+  // itemMoveThisTurn, so the regular gate would skip it — detect it
+  // explicitly: a single chosen value > 0 that actually moves.
   const isMagicDiceWalk =
-    (gs.gameMode === "classic" || gs.gameMode === "2v2") &&
-    gs.petUsedThisTurn &&
-    gs.lastPetUsed &&
-    gs.lastPetUsed.petType === "strong" &&
+    gs.itemMoveThisTurn &&
+    gs.lastMagicDice &&
     Array.isArray(gs.dice) &&
     gs.dice.length === 1 &&
     gs.dice[0] > 0;
   if (
     diceNotif &&
     gs.diceRolled &&
-    (!gs.petUsedThisTurn || isMagicDiceWalk) &&
+    (!gs.itemMoveThisTurn || isMagicDiceWalk) &&
     !isStartPickTeleport &&
     cur
   ) {
@@ -2758,7 +2445,7 @@ function showGame() {
               : cur.position;
           // Board loop length: 48 (cornerless).
           const BSZ = (gs.boardLayout && gs.boardLayout.length) || 48;
-          // Detect backward movement (e.g. magic pet tails): if forward distance > half the board, walk backward instead
+          // Detect backward movement (e.g. a backward push): if forward distance > half the board, walk backward instead
           const forwardDist = (cur.position - startPos + BSZ) % BSZ;
           const backwardDist = (startPos - cur.position + BSZ) % BSZ;
           const walkBackward = forwardDist > BSZ / 2 && backwardDist <= 3;
@@ -3094,24 +2781,22 @@ function showGame() {
     }
   }
 
-  // Turn notification — show once per turn, keep visible for 1.5s (suppress during pet resolving)
+  // Turn notification — show once per turn, keep visible for 1.5s
   const notif = document.getElementById("turn-notification");
 
-  // Pet used notification — only show to the player who activated the pet
-  const petNotifEl = document.getElementById("pet-used-notification");
-  if (petNotifEl && gs.lastPetUsed && gs.lastPetUsed.playerId === myId) {
-    const petKey = `${gs.turn}-${gs.lastPetUsed.playerName}-${gs.lastPetUsed.petType}`;
-    if (petKey !== window._lastPetNotifKey) {
-      window._lastPetNotifKey = petKey;
-      const emoji = PET_EMOJIS[gs.lastPetUsed.petType] || "\ud83d\udc3e";
-      const name = petDisplayName(gs.lastPetUsed.petType);
-      petNotifEl.textContent = `${emoji} You used ${name}!`;
-      petNotifEl.classList.remove("show");
-      void petNotifEl.offsetWidth;
-      petNotifEl.classList.add("show");
-      clearTimeout(window._petNotifTimer);
-      window._petNotifTimer = setTimeout(
-        () => petNotifEl.classList.remove("show"),
+  // Roll One notification — only shown to the player who used it
+  const itemNotifEl = document.getElementById("item-used-notification");
+  if (itemNotifEl && gs.lastMagicDice && gs.lastMagicDice.playerId === myId) {
+    const itemKey = `${gs.turn}-${gs.lastMagicDice.playerName}`;
+    if (itemKey !== window._lastItemNotifKey) {
+      window._lastItemNotifKey = itemKey;
+      itemNotifEl.textContent = `1\ufe0f\u20e3 You used Roll One!`;
+      itemNotifEl.classList.remove("show");
+      void itemNotifEl.offsetWidth;
+      itemNotifEl.classList.add("show");
+      clearTimeout(window._itemNotifTimer);
+      window._itemNotifTimer = setTimeout(
+        () => itemNotifEl.classList.remove("show"),
         2500,
       );
     }
@@ -3119,11 +2804,7 @@ function showGame() {
 
   if (notif) {
     const turnKey = isMyTurn ? gs.turn : null;
-    if (
-      isMyTurn &&
-      (gs.petTurnDelay || !gs.petResolving) &&
-      turnKey !== window._lastNotifTurn
-    ) {
+    if (isMyTurn && turnKey !== window._lastNotifTurn) {
       window._lastNotifTurn = turnKey;
       notif.classList.remove("show");
       void notif.offsetWidth; // reset animation
@@ -3226,75 +2907,6 @@ function showGame() {
     }
   }
 
-  // Pet coin flip notification
-  const petCoinNotif = document.getElementById("pet-coin-notification");
-  if (petCoinNotif && gs.petCoinFlip) {
-    const flipKey = `${gs.turn}-${gs.petCoinFlip.playerName}-${gs.petCoinFlip.result}`;
-    if (flipKey !== window._lastPetFlipKey) {
-      window._lastPetFlipKey = flipKey;
-      // Capture flip data locally so setTimeout callbacks don't depend on gs
-      const flipData = { ...gs.petCoinFlip };
-      const textEl = document.getElementById("pet-coin-text");
-      const coinFlipEl = document.getElementById("pet-coin-flip");
-      const resultEl = document.getElementById("pet-coin-result");
-      const petEmoji =
-        flipData.petType === "energy" ? "\ud83d\udc06" : "\ud83e\udd84";
-      textEl.textContent = `${petEmoji} ${flipData.playerName}'s ${flipData.petType === "energy" ? "Energy" : "Magic"} Pet`;
-
-      // Reset coin
-      coinFlipEl.className = "pet-coin-flipper";
-      coinFlipEl.style.animation = "none";
-      coinFlipEl.style.transform = "";
-      resultEl.className = "pet-coin-result";
-      resultEl.textContent = "";
-
-      // Show notification after a short delay so there's a beat before the flip
-      petCoinNotif.classList.remove("show");
-      clearTimeout(window._petCoinShowTimer);
-      window._petCoinShowTimer = setTimeout(() => {
-        petCoinNotif.classList.add("show");
-
-        // Start spin after a brief pause
-        setTimeout(() => {
-          const isHeads = flipData.result === "heads";
-          const animName = isHeads ? "petCoinSpin" : "petCoinSpinTails";
-          void coinFlipEl.offsetWidth;
-          coinFlipEl.style.animation = `${animName} 1.2s cubic-bezier(0.12, 0.75, 0.2, 1) forwards`;
-
-          // Show result after spin settles
-          setTimeout(() => {
-            coinFlipEl.style.animation = "none";
-            coinFlipEl.style.transform = isHeads
-              ? "rotateY(0deg)"
-              : "rotateY(180deg)";
-            if (isHeads) {
-              resultEl.classList.add("heads");
-              if (flipData.petType === "magic") {
-                resultEl.textContent = "\u2705 HEADS \u2014 Moved forward!";
-              } else {
-                resultEl.textContent = "\u2705 HEADS \u2014 Moved forward!";
-              }
-            } else {
-              resultEl.classList.add("tails");
-              if (flipData.petType === "magic") {
-                resultEl.textContent = "\u274c TAILS \u2014 Moved backward!";
-              } else {
-                resultEl.textContent = "\u274c TAILS \u2014 No effect!";
-              }
-            }
-            resultEl.classList.add("visible");
-          }, 1300);
-        }, 150);
-
-        // Auto-hide after spin + result display
-        clearTimeout(window._petCoinTimer);
-        window._petCoinTimer = setTimeout(() => {
-          petCoinNotif.classList.remove("show");
-        }, 3800);
-      }, 400);
-    }
-  }
-
   // Auction win/loss card — driven by the public lastResolvedAuction snapshot
   // so non-landers (who bid blind and never see the farm in gs.auction) still
   // get the BOUGHT/MISSED card with the right name + group colour. Fires once
@@ -3345,16 +2957,8 @@ function showGame() {
       `Position: ${me.position}`;
   }
 
-  // Pet auto-fire condition. There is no End Turn button anymore — the
-  // server advances the turn the moment _ensureEndTurnTicker's anim-complete
-  // signal arrives.
-  const canPetFire =
-    !gs.auction &&
-    !gs.vineSwing &&
-    !gs.poker &&
-    !gs.superBananaPending &&
-    isMyTurn &&
-    gs.diceRolled;
+  // There is no End Turn button anymore — the server advances the turn the
+  // moment _ensureEndTurnTicker's anim-complete signal arrives.
   _ensureEndTurnTicker();
 
   // Auto vine swing: pick a random owned farm when vine swing is active
@@ -3403,96 +3007,6 @@ function showGame() {
   if (!gs.poker || gs.poker.resolved || gs.poker.currentTurn !== myId) {
     window._autoFoldQueued = false;
   }
-
-  // Auto-pet: when toggle is on, arm for next turn. Fire after roll resolves (and after auction if applicable).
-  const petBtn = document.getElementById("btn-auto-pet");
-  if (petBtn) {
-    // Energy/Strong pet: fire immediately when toggled off-turn (server handles off-turn activation)
-    const petArmedNow = petBtn.dataset.armed === "true";
-    if (
-      me &&
-      (me.pet === "energy" || me.pet === "strong" || me.pet === "magic") &&
-      petArmedNow &&
-      !isMyTurn &&
-      !me.pendingPet &&
-      !window._autoPetQueued
-    ) {
-      const mePetReady = me.petCooldown <= 0;
-      if (mePetReady) {
-        window._autoPetQueued = true;
-        setTimeout(() => {
-          window._autoPetQueued = false;
-          const meNow = gs && _gsPlayerMap[myId];
-          const petStillReady =
-            meNow &&
-            (meNow.pet === "energy" ||
-              meNow.pet === "strong" ||
-              meNow.pet === "magic") &&
-            !meNow.pendingPet &&
-            meNow.petCooldown <= 0;
-          if (petStillReady && petBtn.dataset.armed === "true") {
-            usePet();
-            // Toggle stays on until effect resolves at start of next turn
-          }
-        }, 200);
-      }
-    }
-
-    // Energy/Strong pet: auto-uncheck toggle once pendingPet resolves on their turn
-    if (
-      me &&
-      (me.pet === "energy" || me.pet === "strong" || me.pet === "magic") &&
-      me.pendingPet &&
-      petBtn.dataset.armed === "true"
-    ) {
-      petBtn.dataset.armed = "false";
-      window._petArmedForTurn = null;
-    }
-
-    // Devil: arm for next turn, fire after roll resolves
-    if (
-      me &&
-      me.pet !== "energy" &&
-      me.pet !== "strong" &&
-      me.pet !== "magic"
-    ) {
-      // Detect toggle being turned on: arm for the current turn (effect is deferred to next turn)
-      if (petBtn.dataset.armed === "true" && window._petArmedForTurn == null) {
-        // Arm: pet will fire this turn after rolling (effect queued for next turn)
-        window._petArmedForTurn = gs.turn || 0;
-      } else if (petBtn.dataset.armed !== "true") {
-        // Toggle turned off — disarm
-        window._petArmedForTurn = null;
-      }
-
-      // Fire auto-pet when armed turn has arrived, pet is ready
-      if (
-        canPetFire &&
-        petBtn.dataset.armed === "true" &&
-        window._petArmedForTurn != null &&
-        (gs.turn || 0) >= window._petArmedForTurn
-      ) {
-        const mePetReady = me && me.pet && me.petCooldown <= 0;
-        if (mePetReady && !window._autoPetQueued) {
-          window._autoPetQueued = true;
-          setTimeout(() => {
-            window._autoPetQueued = false;
-            const meNow = gs && _gsPlayerMap[myId];
-            const petStillReady =
-              meNow && meNow.pet && meNow.petCooldown <= 0;
-            if (petStillReady && petBtn.dataset.armed === "true") {
-              usePet();
-              petBtn.dataset.armed = "false";
-              window._petArmedForTurn = null;
-            }
-          }, 400);
-        }
-      }
-    }
-  }
-
-  // Pet ability panel
-  updatePetAbilityBox(me, isMyTurn);
 
   // Sell button: hidden entirely in classic mode (sell feature is 2v2-only).
   // Visible but enabled in other modes; the panel handles its own gating.
@@ -3570,7 +3084,6 @@ function showGame() {
       !gs.poker &&
       !gs.vineSwing &&
       !gs.superBananaPending &&
-      !gs.petResolving &&
       !gs.itemAuction;
     if (!stillValid) cancelAbilityTargeting();
   }
@@ -3636,15 +3149,12 @@ function showGame() {
         const isMe = p.id === myId;
         div.className = "pstat" + (isMe ? " pstat-me" : "") + (p.ghost ? " pstat-ghost" : "");
         div.setAttribute("data-player-id", p.id);
-        // Magic Dice is a consumable shown separately under Special Items;
-        // no pet badge surfaces here.
-        const petTag = "";
         const pileTag = playerPiles[p.id]
           ? `<span class="pstat-pile">${playerPiles[p.id]}🍌</span>`
           : "";
         div.innerHTML =
           `<div class="pstat-monkey c-${p.color}">${p.ghost ? GHOST_EMOJI : (MONKEY_EMOJI[p.color] || "\uD83D\uDC35")}</div>` +
-          `<span>${p.name}${p.ghost ? " " + GHOST_EMOJI : ""}<span class="team-badge team-${teamKey}">T${teamKey}</span>${petTag}</span>` +
+          `<span>${p.name}${p.ghost ? " " + GHOST_EMOJI : ""}<span class="team-badge team-${teamKey}">T${teamKey}</span></span>` +
           pileTag +
           `<span class="pstat-money">${frozenPlayerMoney && frozenPlayerMoney[p.id] != null ? frozenPlayerMoney[p.id] : p.money}🍌</span>`;
         teamDiv.appendChild(div);
@@ -3657,19 +3167,12 @@ function showGame() {
       const isMe = p.id === myId;
       div.className = "pstat" + (isMe ? " pstat-me" : "") + (p.ghost ? " pstat-ghost" : "");
       div.setAttribute("data-player-id", p.id);
-      // No cooldown-pet badge (Magic Dice is a won consumable shown in
-      // the Your Special Items box), so no pet badge is rendered there.
-      const petCd = p.petCooldown > 0 ? p.petCooldown : "✓";
-      const petTag =
-        p.pet && gs.gameMode !== "classic"
-          ? `<span class="pstat-pet">${PET_EMOJIS[p.pet] || ""}${petCd}</span>`
-          : "";
       const pileTag = playerPiles[p.id]
         ? `<span class="pstat-pile">${playerPiles[p.id]}🍌</span>`
         : "";
       div.innerHTML =
         `<div class="pstat-monkey c-${p.color}">${p.ghost ? GHOST_EMOJI : (MONKEY_EMOJI[p.color] || "\uD83D\uDC35")}</div>` +
-        `<span>${p.name}${p.ghost ? " " + GHOST_EMOJI : ""}${petTag}</span>` +
+        `<span>${p.name}${p.ghost ? " " + GHOST_EMOJI : ""}</span>` +
         pileTag +
         `<span class="pstat-money">${frozenPlayerMoney && frozenPlayerMoney[p.id] != null ? frozenPlayerMoney[p.id] : p.money}🍌</span>`;
       plist.appendChild(div);
@@ -4235,10 +3738,6 @@ function debugMove() {
 
 function debugShuffle() {
   socket.emit("debug_shuffle", { gameId });
-}
-
-function debugResetPet() {
-  socket.emit("debug_reset_pet", { gameId });
 }
 
 function debugAddBananas() {
@@ -5826,7 +5325,6 @@ function updateSpecialItems(me, isMyTurn) {
     !gs.poker &&
     !gs.vineSwing &&
     !gs.superBananaPending &&
-    !gs.petResolving &&
     !gs.itemAuction &&
     !window._abilityTargetMode;
   // You can arm/disarm at any point except during the first-pick phase or
@@ -7002,39 +6500,6 @@ window.addEventListener("DOMContentLoaded", () => {
     if (icon && !icon.contains(e.target)) icon.classList.remove("open");
   });
 
-  // Pet toggle button handler
-  const petToggleBtn = document.getElementById("btn-auto-pet");
-  if (petToggleBtn) {
-    petToggleBtn.addEventListener("click", () => {
-      const txt = document.getElementById("pet-toggle-text");
-      const armed = petToggleBtn.dataset.armed === "true";
-      const now = !armed;
-      petToggleBtn.dataset.armed = now ? "true" : "false";
-      if (txt) {
-        if (now) {
-          txt.textContent = "\ud83d\udc3e Pet acting next turn!";
-        } else {
-          txt.innerHTML = "Use Pet Next Turn";
-        }
-      }
-      // Energy/Strong/Magic pets activate off-turn — fire usePet immediately when toggled on
-      if (now && gs) {
-        const me = _gsPlayerMap[myId];
-        if (
-          me &&
-          (me.pet === "energy" || me.pet === "strong" || me.pet === "magic") &&
-          !me.pendingPet
-        ) {
-          usePet();
-        }
-      }
-      // Cancel pending pet when toggled off
-      if (!now) {
-        cancelPet();
-      }
-    });
-  }
-
   // Clear auto-filled bid value on first keystroke so typing replaces it
   const bidAmountInput = document.getElementById("bid-amount");
   if (bidAmountInput) {
@@ -7705,26 +7170,26 @@ const TUTORIAL_STEPS = [
         <div class="tut-icon">🎁</div>
         <h2>Special Items</h2>
         <p>Every few rolls a random <span class="tut-highlight">Item Auction</span> fires — bid bananas to win one of these consumables. You start with one of each.</p>
-        <div class="tut-pets-grid">
-          <div class="tut-pet-item">
-            <span class="tut-pet-icon">🐢</span>
-            <div class="tut-pet-name">Turtle Dice</div>
-            <div class="tut-pet-desc">Roll 1 die instead of 2</div>
+        <div class="tut-items-grid">
+          <div class="tut-item-item">
+            <span class="tut-item-icon">🐢</span>
+            <div class="tut-item-name">Turtle Dice</div>
+            <div class="tut-item-desc">Roll 1 die instead of 2</div>
           </div>
-          <div class="tut-pet-item">
-            <span class="tut-pet-icon">🐇</span>
-            <div class="tut-pet-name">Rabbit Dice</div>
-            <div class="tut-pet-desc">Roll 3 dice instead of 2</div>
+          <div class="tut-item-item">
+            <span class="tut-item-icon">🐇</span>
+            <div class="tut-item-name">Rabbit Dice</div>
+            <div class="tut-item-desc">Roll 3 dice instead of 2</div>
           </div>
-          <div class="tut-pet-item">
-            <span class="tut-pet-icon">1️⃣</span>
-            <div class="tut-pet-name">Roll One</div>
-            <div class="tut-pet-desc">Move exactly 1 space</div>
+          <div class="tut-item-item">
+            <span class="tut-item-icon">1️⃣</span>
+            <div class="tut-item-name">Roll One</div>
+            <div class="tut-item-desc">Move exactly 1 space</div>
           </div>
-          <div class="tut-pet-item">
-            <span class="tut-pet-icon">🌿</span>
-            <div class="tut-pet-name">Vine Swing</div>
-            <div class="tut-pet-desc">Teleport to any tile of your choice</div>
+          <div class="tut-item-item">
+            <span class="tut-item-icon">🌿</span>
+            <div class="tut-item-name">Vine Swing</div>
+            <div class="tut-item-desc">Teleport to any tile of your choice</div>
           </div>
         </div>
         <div class="tut-tip"><strong>Tip:</strong> You can <span class="tut-highlight">arm</span> an item to fire when YOUR next turn starts — useful when you're playing around an opponent's roll.</div>`;

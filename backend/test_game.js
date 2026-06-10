@@ -1,5 +1,5 @@
 // Comprehensive game mechanics test suite
-const { MonkeyBusinessGame, PET_TYPES } = require("./gameLogic");
+const { MonkeyBusinessGame } = require("./gameLogic");
 
 let passed = 0;
 let failed = 0;
@@ -19,7 +19,7 @@ function section(name) {
   console.log(`\n=== ${name} ===`);
 }
 
-// Helper: create a game with N players, all with strong pet, and start it
+// Helper: create a game with N players and start it
 function createStartedGame(n = 2, opts = {}) {
   const game = new MonkeyBusinessGame(
     "TEST",
@@ -32,10 +32,6 @@ function createStartedGame(n = 2, opts = {}) {
   const players = [];
   for (let i = 0; i < n; i++) {
     players.push(game.addPlayer(`p${i}`, `Player${i}`));
-  }
-  // Select pets for all players
-  for (let i = 0; i < n; i++) {
-    game.selectPet(`p${i}`, opts.pet || "strong");
   }
   // Start game
   game.startGame("p0");
@@ -123,18 +119,13 @@ section("2. Settings Update");
 }
 
 // ============================================================
-section("3. Pet Selection & Game Start");
+section("3. Game Start");
 // ============================================================
 
 {
   const game = new MonkeyBusinessGame("G3", 2, 2222, "classic", true, true, true);
-  const p1 = game.addPlayer("s1", "Alice");
-  const p2 = game.addPlayer("s2", "Bob");
-
-  // Strong pet (Magic Dice) is auto-assigned on add — no lobby pet picker.
-  assert(p1.pet === "strong" && p2.pet === "strong", "Players auto-get strong pet");
-  // Only strong is selectable; alternatives are rejected.
-  assert(!game.selectPet("s1", "energy"), "Non-strong pets are rejected");
+  game.addPlayer("s1", "Alice");
+  game.addPlayer("s2", "Bob");
 
   assert(game.startGame("s1"), "Can start once 2+ players have joined");
   assert(game.state === "revealing", "State changes to revealing");
@@ -1061,7 +1052,6 @@ section("30. Team Mode - Game Setup");
 
   for (let i = 0; i < 4; i++) {
     game.addPlayer(`t${i}`, `Team${i}`);
-    game.selectPet(`t${i}`, "strong");
   }
 
   // Teams requires exactly 4 players
@@ -1140,8 +1130,6 @@ section("34. Reveal Phase");
   const game = new MonkeyBusinessGame("R1", 2, 2222, "classic", "cooldown", false, true, true);
   game.addPlayer("r0", "R0");
   game.addPlayer("r1", "R1");
-  game.selectPet("r0", "strong");
-  game.selectPet("r1", "strong");
 
   game.startGame("r0");
   assert(game.state === "revealing", "Game enters reveal phase");
@@ -1182,19 +1170,6 @@ section("36. Debug Shuffle");
   assert(game.debugShuffle(), "Debug shuffle works");
   // Properties should be cleared
   assert(cur.properties.length === 0, "Player properties cleared after reshuffle");
-}
-
-// ============================================================
-section("37. Debug Reset Pet Cooldown");
-// ============================================================
-
-{
-  const { game } = createStartedGame(2, { pet: "strong" });
-  const cur = game.getCurrentPlayer();
-  cur.petCooldown = 10;
-
-  assert(game.debugResetPetCooldown(cur.id), "Debug reset pet cooldown works");
-  assert(cur.petCooldown === 0, "Pet cooldown reset to 0");
 }
 
 // ============================================================
@@ -1333,28 +1308,6 @@ section("42. Broke Player - Property Goes to Opponent");
       assert(prop.owner === other.id, "Broke player's property goes to rich opponent");
     }
   }
-}
-
-// ============================================================
-section("43. Pet Cooldown Ticking");
-// ============================================================
-
-{
-  const { game } = createStartedGame(2, { pet: "strong" });
-  const p0 = game.players.find(p => p.id === "p0");
-  const p1 = game.players.find(p => p.id === "p1");
-
-  // Set cooldown manually
-  p0.petCooldown = 5;
-  p1.petCooldown = 3;
-
-  // Roll dice (ticks cooldowns)
-  const cur = game.getCurrentPlayer();
-  game.rollDice(cur.id);
-  game._cancelAutoEnd();
-
-  assert(p0.petCooldown === 4, "P0 cooldown decremented on dice roll");
-  assert(p1.petCooldown === 2, "P1 cooldown decremented on dice roll");
 }
 
 // ============================================================
@@ -2026,25 +1979,6 @@ section("58. Poker - Real Poker (Texas Hold'em)");
 }
 
 // ============================================================
-section("59. Pet Hidden in Lobby");
-// ============================================================
-
-{
-  const game = new MonkeyBusinessGame("H1", 2, 2222, "classic", "cooldown", false, true, true);
-  game.addPlayer("h0", "H0");
-  game.addPlayer("h1", "H1");
-  game.selectPet("h0", "strong");
-  game.selectPet("h1", "energy");
-
-  const state = game.getState("h0");
-  const p0State = state.players.find(p => p.id === "h0");
-  const p1State = state.players.find(p => p.id === "h1");
-
-  assert(p0State.pet === "strong", "Own pet visible in lobby");
-  assert(p1State.pet === "hidden", "Other's pet hidden in lobby");
-}
-
-// ============================================================
 section("60. Bomb Visibility - Only Own Bombs");
 // ============================================================
 
@@ -2186,7 +2120,6 @@ section("64. Classic - Rolled grow fires BEFORE move (path collection)");
   game.superBananaPending = null;
   game.itemAuction = null;
   game.diceRolled = false;
-  game.petResolving = false;
   const BSZ = game.boardSize;
 
   // Force a default 2d6 roll summing to 4 (two 2s). face = floor(r*6)+1; for
@@ -2465,14 +2398,12 @@ section("67. Classic - Roll One item (guaranteed move of 1)");
 
   const cur = game.getCurrentPlayer();
   cur.startPickPending = false;
-  cur.petCooldown = 0;
   cur.position = 0;
   for (const p of game.players) p.startPickPending = false;
   game.auction = game.poker = game.vineSwing = null;
   game.superBananaPending = null;
   game.itemAuction = null;
   game.diceRolled = false;
-  game.petResolving = false;
 
   // Players start with one of each special item.
   assert(cur.cards.magicDice === 1, "Players start with one Roll One item");
@@ -2492,7 +2423,6 @@ section("67. Classic - Roll One item (guaranteed move of 1)");
   assert(cur.position === (startPos + 1) % game.boardSize, "Roll One moves exactly 1 space");
   assert(game.diceRolled === true, "Roll One consumed the roll");
   assert(cur.cards.magicDice === 1, "Roll One spends exactly one item");
-  assert((cur.petCooldown || 0) === 0, "Roll One sets no cooldown");
 
   // Upgrades are gone: upgradeMagicDice is a no-op.
   const upgrader = game.players[1];
@@ -2510,9 +2440,7 @@ section("68. Classic - Vine Swing ability (your OWN farms only)");
   const cur = game.getCurrentPlayer();
   const other = game.players.find((p) => p.id !== cur.id);
   for (const p of game.players) p.startPickPending = false;
-  cur.petCooldown = 0;
   game.diceRolled = false;
-  game.petResolving = false;
   game.cardUsedThisTurn = false;
   game.auction = game.poker = game.vineSwing = null;
   game.superBananaPending = null;
@@ -2657,7 +2585,6 @@ section("68b. Classic - Arming abilities (off-turn, private, server-side)");
   cur.cards.rabbitDice = 1;
   cur.startPickPending = false;
   game.diceRolled = false;
-  game.petResolving = false;
   game.auction = game.poker = game.vineSwing = null;
   game.superBananaPending = null;
   game.itemAuction = null;

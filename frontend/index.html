@@ -880,46 +880,7 @@
               </div>
               <div id="lobby-players" class="lobby-players-grid"></div>
             </div>
-            <div class="lobby-pet-section" id="lobby-pet-section">
-              <div class="lobby-pet-title">🐾 Choose Your Pet</div>
-              <div class="lobby-pet-grid" id="lobby-pet-grid">
-                <button
-                  class="lobby-pet-card"
-                  data-pet="strong"
-                  onclick="selectPet('strong')"
-                >
-                  <div class="lobby-pet-emoji">🦁</div>
-                  <div class="lobby-pet-name">Strong Pet</div>
-                  <div class="lobby-pet-desc">
-                    Move forward 1 space (guaranteed). 15 roll cooldown.
-                  </div>
-                </button>
-                <button
-                  class="lobby-pet-card"
-                  data-pet="energy"
-                  onclick="selectPet('energy')"
-                >
-                  <div class="lobby-pet-emoji">🐆</div>
-                  <div class="lobby-pet-name">Energy Pet</div>
-                  <div class="lobby-pet-desc">
-                    Flip a coin to move forward 1. 7 roll cooldown.
-                  </div>
-                </button>
-                <button
-                  class="lobby-pet-card"
-                  data-pet="magic"
-                  onclick="selectPet('magic')"
-                >
-                  <div class="lobby-pet-emoji">🦄</div>
-                  <div class="lobby-pet-name">Magic Pet</div>
-                  <div class="lobby-pet-desc">
-                    Flip a coin: heads forward 1, tails backward 1. 15 roll
-                    cooldown.
-                  </div>
-                </button>
-              </div>
             </div>
-          </div>
           <!-- end lobby-middle-row -->
           <div class="lobby-bottom-row">
             <div class="lobby-waiting" id="lobby-waiting">
@@ -1139,20 +1100,6 @@
             <div id="super-banana-notification" class="super-banana-notification">
               <div id="super-banana-notif-text">⭐ Super Banana Found! ⭐</div>
             </div>
-            <div id="pet-coin-notification" class="pet-coin-notification">
-              <div id="pet-coin-text" class="pet-coin-text"></div>
-              <div class="pet-coin-scene">
-                <div id="pet-coin-flip" class="pet-coin-flipper">
-                  <div class="pet-coin-face pet-coin-heads">
-                    <span class="coin-icon">🍌</span>
-                  </div>
-                  <div class="pet-coin-face pet-coin-tails">
-                    <span class="coin-icon">💀</span>
-                  </div>
-                </div>
-              </div>
-              <div id="pet-coin-result" class="pet-coin-result"></div>
-            </div>
             <div id="bomb-win-notification" class="bomb-win-notification">
               💥 You have eliminated the last player and won the game! 👑
             </div>
@@ -1160,7 +1107,7 @@
               id="dice-roll-notification"
               class="dice-roll-notification"
             ></div>
-            <div id="pet-used-notification" class="pet-used-notification"></div>
+            <div id="item-used-notification" class="item-used-notification"></div>
             <div
               id="auction-tied-notification"
               class="auction-tied-notification"
@@ -2022,67 +1969,6 @@
             </div>
 
             <div class="action-box">
-              <div
-                class="pet-ability-box"
-                id="pet-ability-box"
-                style="display: none"
-              >
-                <div class="pet-ability-info" id="pet-ability-info"></div>
-                <div
-                  class="pet-flip-result"
-                  id="pet-flip-result"
-                  style="display: none"
-                ></div>
-                <select
-                  class="pet-target-select"
-                  id="pet-target"
-                  style="display: none"
-                ></select>
-                <label class="pet-toggle" id="pet-toggle-label">
-                  <button
-                    id="btn-auto-pet"
-                    class="pet-toggle-button"
-                    data-armed="false"
-                  >
-                    <span class="pet-toggle-text" id="pet-toggle-text"
-                      >Use Pet Next Turn</span
-                    >
-                  </button>
-                </label>
-              </div>
-              <!-- Magic Dice (replaces pet-ability-box) -->
-              <div
-                class="magic-dice-box"
-                id="magic-dice-box"
-                style="display: none"
-              >
-                <div class="magic-dice-runes" aria-hidden="true"></div>
-                <div class="magic-dice-top">
-                  <div class="magic-dice-gauge" id="magic-dice-gauge">
-                    <svg class="magic-dice-ring-svg" viewBox="0 0 64 64" aria-hidden="true">
-                      <circle class="magic-dice-ring-track" cx="32" cy="32" r="27" />
-                      <circle
-                        class="magic-dice-ring-fill"
-                        id="magic-dice-ring-fill"
-                        cx="32"
-                        cy="32"
-                        r="27"
-                      />
-                    </svg>
-                    <div class="magic-dice-gauge-center" id="magic-dice-gauge-center">🎲</div>
-                  </div>
-                  <div class="magic-dice-titleblock">
-                    <div class="magic-dice-title">Magic Dice</div>
-                    <div class="magic-dice-status" id="magic-dice-status">Ready</div>
-                  </div>
-                </div>
-                <div class="magic-dice-picker-label" id="magic-dice-picker-label">
-                  Choose your roll
-                </div>
-                <div class="magic-dice-picker" id="magic-dice-picker"></div>
-                <!-- Magic Dice is permanently level 6 — no upgrades. -->
-              </div>
-
               <!-- Your Special Items. Arm ONE during other
                    players' turns; it fires when your turn starts. Counts /
                    armed state filled in by updateSpecialItems(). -->
@@ -2473,15 +2359,6 @@
               >
                 <span class="debug-btn-icon">🔀</span>
                 <span class="debug-btn-label">Reshuffle</span>
-              </button>
-              <button
-                type="button"
-                class="btn debug-btn"
-                onclick="debugResetPet()"
-                title="Reset pet cooldown"
-              >
-                <span class="debug-btn-icon">🐾</span>
-                <span class="debug-btn-label">Reset Pet</span>
               </button>
               <button
                 type="button"
