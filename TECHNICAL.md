@@ -52,8 +52,8 @@ Lobby: `auth_socket`, `create_game`, `join_game`, `get_public_lobbies`,
 `update_settings`, `toggle_no_timer`, `start_game`.
 
 Turn flow: `roll_dice`, `pick_start_tile`,
-`use_magic_dice`, `upgrade_magic_dice`, `arm_ability`, `use_card`, `buy_card`,
-`vine_swing_move`, `end_turn`, `turn_anims_complete`.
+`use_magic_dice`, `arm_ability`, `use_card`, `buy_card`,
+`end_turn`, `turn_anims_complete`.
 
 Auctions: `start_auction`, `place_bid`, `auction_buy_now`, `pass_bid`,
 `respond_auction`, `submit_silent_bid`; item auctions: `pitch_item_price`,

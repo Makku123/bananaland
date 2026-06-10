@@ -320,14 +320,6 @@ function _setupBoardDelegation() {
         socket.emit("pick_super_banana_swap", { gameId, position: i });
       return;
     }
-    // Vine swing mode
-    if (gs.vineSwing && gs.vineSwing === myId && !window._tokenWalking) {
-      if (tile.classList.contains("space-pickable")) {
-        if (socket && gameId)
-          socket.emit("vine_swing_move", { gameId, position: i });
-        return;
-      }
-    }
     // Bomb placement mode
     if (window._bombPlacementMode && tile.classList.contains("bomb-target")) {
       if (socket && gameId) {
@@ -369,8 +361,6 @@ function walkStepUpdate(gs) {
   window._gs = gs;
   const _boardLen =
     (gs && gs.boardLayout && gs.boardLayout.length) || BOARD_SIZE;
-  // Capture flag before pile detection clears it — used for steal suppression
-  const vineSwingLanding = !!window._vineSwingJustLanded;
   const board = document.getElementById("board");
   if (!board) return;
 
@@ -475,7 +465,7 @@ function walkStepUpdate(gs) {
         (gs.currentPlayer && gs.currentPlayer.id);
       // Flying banana burst for pile collection — delayed to sync with token arrival
       const stolenProp = _propById[Number(idx)];
-      const isSteal = stolenProp && stolenProp.owner && stolenProp.owner !== collectorId && !gs.vineSwing && !vineSwingLanding && !_stealShown.has(Number(idx));
+      const isSteal = stolenProp && stolenProp.owner && stolenProp.owner !== collectorId && !_stealShown.has(Number(idx));
       if (isSteal) _stealShown.add(Number(idx));
       // Leave-steal: the squatter is departing and just stole the tile's pile.
       // Rain the bananas on the TILE the player is leaving (not the moving
@@ -522,7 +512,6 @@ function walkStepUpdate(gs) {
     }
   }
   _prevBananaPiles = currentPiles;
-  window._vineSwingJustLanded = false;
 
   // Update token positions (reuse persistent token layer)
   let tokenLayer = document.getElementById("token-layer");
@@ -637,9 +626,6 @@ function renderBoard(gs) {
   window._gs = gs;
   const _boardLen =
     (gs && gs.boardLayout && gs.boardLayout.length) || BOARD_SIZE;
-  // Capture vine-swing-just-landed flag before pile detection clears it —
-  // needed later for token no-transition (teleport) and steal suppression.
-  const vineSwingLanding = !!window._vineSwingJustLanded;
   // Teleport card: token jumps to the destination without a walk animation.
   const teleportLanding = !!(gs && gs.lastTeleport && gs.lastTeleport.turn === gs.turn);
   // Capture bomb-pending state BEFORE the explosion animation block sets
@@ -855,13 +841,6 @@ function renderBoard(gs) {
       if (gs && gs.superBananaHintPos != null && i === gs.superBananaHintPos) {
         el.classList.add("superbanana-hint");
       }
-      // Vine Swing: hidden tiles are also clickable (only own properties)
-      if (gs && gs.vineSwing && gs.vineSwing === myId && !window._tokenWalking) {
-        const ownsProp = _propById[i] && _propById[i].owner === myId;
-        if (ownsProp) {
-          el.classList.add("space-pickable");
-        }
-      }
       if (startPickActive && !_occupiedPositions.has(i)) {
         el.classList.add("space-pickable", "start-pick-target");
       }
@@ -972,14 +951,6 @@ function renderBoard(gs) {
         const displayName = rawName === "Vine Swing" ? "Vine" : rawName;
         el.innerHTML = `<span class="sname">${displayName}</span>`;
         if (displayName !== rawName) el.title = rawName;
-      }
-    }
-
-    // Vine Swing: make revealed owned tiles clickable
-    if (gs && gs.vineSwing && gs.vineSwing === myId && !window._tokenWalking) {
-      const ownsProp = _propById[i] && _propById[i].owner === myId;
-      if (ownsProp) {
-        el.classList.add("space-pickable");
       }
     }
 
@@ -1244,7 +1215,7 @@ function renderBoard(gs) {
         (gs.currentPlayer && gs.currentPlayer.id);
       // Flying banana burst for pile collection — delayed to sync with token arrival
       const stolenProp = _propById[Number(idx)];
-      const isSteal = stolenProp && stolenProp.owner && stolenProp.owner !== collectorId && !gs.vineSwing && !vineSwingLanding && !_stealShown.has(Number(idx));
+      const isSteal = stolenProp && stolenProp.owner && stolenProp.owner !== collectorId && !_stealShown.has(Number(idx));
       if (isSteal) _stealShown.add(Number(idx));
       // Leave-steal: the squatter is departing and just stole the tile's pile.
       // Rain the bananas on the TILE the player is leaving (not the moving
@@ -1291,7 +1262,6 @@ function renderBoard(gs) {
     }
   }
   _prevBananaPiles = currentPiles;
-  window._vineSwingJustLanded = false;
 
   {
     // Reset dedup sets when a NEW walk starts (not when walk ends, because
@@ -1803,10 +1773,8 @@ function renderBoard(gs) {
         if (gs.currentPlayer && gs.currentPlayer.id === p.id)
           tok.classList.add("token-active");
 
-        // Disable transition for vine swing (teleport) or brand new tokens
-        // vineSwingLanding catches the completion frame where gs.vineSwing is
-        // already null but the player just teleported to a new tile.
-        if (gs.vineSwing || vineSwingLanding || teleportLanding || isNew) {
+        // Disable transition for teleports (Vine Swing item) or brand new tokens
+        if (teleportLanding || isNew) {
           tok.classList.add("token-notransition");
         }
 
@@ -1820,7 +1788,7 @@ function renderBoard(gs) {
         if (!tok.parentNode) tokenLayer.appendChild(tok);
 
         // Re-enable transition after layout paint
-        if (gs.vineSwing || vineSwingLanding || teleportLanding || isNew) {
+        if (teleportLanding || isNew) {
           void tok.offsetWidth;
           tok.classList.remove("token-notransition");
         }

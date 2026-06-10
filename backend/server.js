@@ -432,15 +432,6 @@ io.on("connection", (socket) => {
     }
   });
 
-  // ── Vine Swing move ──────────────────────────────────────────
-  socket.on("vine_swing_move", (data) => {
-    const game = games.get(data.gameId);
-    if (!game) return;
-    if (game.vineSwingMove(socket.id, data.position)) {
-      emitGameUpdate(data.gameId, game);
-    }
-  });
-
   // ── Pick starting tile (first turn only) ─────────────────────
   socket.on("pick_start_tile", (data) => {
     const game = games.get(data.gameId);
@@ -500,15 +491,6 @@ io.on("connection", (socket) => {
           }
         }, 30000);
       }
-    }
-  });
-
-  // ── Upgrade Magic Dice (+1 step, 1000🍌) ─────────────────────
-  socket.on("upgrade_magic_dice", (data) => {
-    const game = games.get(data.gameId);
-    if (!game) return;
-    if (game.upgradeMagicDice(socket.id)) {
-      emitGameUpdate(data.gameId, game);
     }
   });
 

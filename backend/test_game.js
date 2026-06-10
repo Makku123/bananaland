@@ -735,35 +735,6 @@ section("19. Bomb Detonation");
 }
 
 // ============================================================
-section("20. Vine Swing");
-// ============================================================
-
-{
-  const { game } = createStartedGame(2);
-  const cur = game.getCurrentPlayer();
-
-  // Give player a property
-  const propPos = 5;
-  const prop = game.properties.get(propPos);
-  if (prop) {
-    prop.owner = cur.id;
-    cur.properties.push(propPos);
-
-    // Simulate vine swing state
-    game.vineSwing = cur.id;
-
-    // Can swing to own property
-    assert(game.vineSwingMove(cur.id, propPos), "Can swing to own property");
-    assert(cur.position === propPos, "Player moved to property");
-    assert(game.vineSwing === null, "Vine swing cleared");
-
-    // Can't swing to non-owned tile
-    game.vineSwing = cur.id;
-    assert(!game.vineSwingMove(cur.id, propPos + 1), "Can't swing to non-owned tile");
-  }
-}
-
-// ============================================================
 section("21. GROW Mechanics");
 // ============================================================
 
@@ -1183,34 +1154,6 @@ section("38. Debug Add Bananas");
 
   assert(game.debugAddBananas(cur.id), "Debug add bananas works");
   assert(cur.money === before + 10000, "10000 bananas added");
-}
-
-// ============================================================
-section("39. Tax Tile");
-// ============================================================
-
-{
-  const { game } = createStartedGame(2, { startingMoney: 5000 });
-  const cur = game.getCurrentPlayer();
-
-  // Find a tax tile
-  let taxPos = -1;
-  for (let i = 0; i < 48; i++) {
-    if (game.board[i].type === "tax10") {
-      taxPos = i;
-      break;
-    }
-  }
-
-  if (taxPos >= 0) {
-    cur.position = taxPos;
-    const before = cur.money;
-    game._processLanding(cur);
-    const expected = Math.floor(before * 0.9);
-    assert(cur.money === expected, `Tax 10% applied correctly (${before} -> ${cur.money}, expected ${expected})`);
-  } else {
-    console.log("  (No tax tile found)");
-  }
 }
 
 // ============================================================
@@ -1748,72 +1691,6 @@ section("51c. Super Banana - player chooses the hideout + private rainbow hint")
 }
 
 // ============================================================
-section("52. Vine Swing - No Properties");
-// ============================================================
-
-{
-  const { game } = createStartedGame(2);
-  const cur = game.getCurrentPlayer();
-
-  // Find bus/vine swing tile
-  let busPos = -1;
-  for (let i = 0; i < 48; i++) {
-    if (game.board[i].type === "bus") {
-      busPos = i;
-      break;
-    }
-  }
-
-  if (busPos >= 0) {
-    cur.position = busPos;
-    cur.properties = []; // No properties
-    game.vineSwing = null;
-    game._processLanding(cur);
-    // When player has no properties, vine swing should NOT be set
-    // The game logs a message but doesn't set vineSwing
-    assert(game.vineSwing === null || game.vineSwing === undefined,
-      "Vine swing not set when player has no properties");
-  }
-}
-
-// ============================================================
-section("53. Vine Swing - Has Properties");
-// ============================================================
-
-{
-  const { game } = createStartedGame(2);
-  const cur = game.getCurrentPlayer();
-
-  // Give property first
-  let farmPos = -1;
-  for (let i = 1; i < 48; i++) {
-    const prop = game.properties.get(i);
-    if (prop && prop.group !== "superBanana") {
-      farmPos = i;
-      break;
-    }
-  }
-
-  let busPos = -1;
-  for (let i = 0; i < 48; i++) {
-    if (game.board[i].type === "bus") {
-      busPos = i;
-      break;
-    }
-  }
-
-  if (farmPos >= 0 && busPos >= 0) {
-    const prop = game.properties.get(farmPos);
-    prop.owner = cur.id;
-    cur.properties.push(farmPos);
-
-    cur.position = busPos;
-    game._processLanding(cur);
-    assert(game.vineSwing === cur.id, "Vine swing activated when player has properties");
-  }
-}
-
-// ============================================================
 section("54. Auction - Price Cap");
 // ============================================================
 
@@ -2116,7 +1993,7 @@ section("64. Classic - Rolled grow fires BEFORE move (path collection)");
     p.revealedTiles = new Set();
     p.startPickPending = false;
   }
-  game.auction = game.poker = game.vineSwing = null;
+  game.auction = game.poker = null;
   game.superBananaPending = null;
   game.itemAuction = null;
   game.diceRolled = false;
@@ -2353,22 +2230,20 @@ section("66. Classic - Cornerless 48-tile board");
   assert(game.board.length === 48, "Board has 48 tiles");
   assert(game.boardSize === 48, "boardSize is 48");
 
-  const counts = { grow: 0, bus: 0, special: 0, tax10: 0, desert: 0, farm: 0 };
+  const counts = { grow: 0, special: 0, desert: 0, farm: 0, other: 0 };
   for (let i = 0; i < game.board.length; i++) {
     const t = game.board[i];
     if (t.type === "grow") counts.grow++;
-    else if (t.type === "bus") counts.bus++;
     else if (t.type === "special") counts.special++;
-    else if (t.type === "tax10") counts.tax10++;
     else if (t.type === "desert") counts.desert++;
     else if (t.buyable && t.buyable.group === "farm") counts.farm++;
+    else counts.other++;
   }
   assert(counts.grow === 6, "Board has 6 GROW tiles");
   assert(counts.farm === 40, "Board has 40 farm tiles");
-  assert(counts.bus === 0, "Board has no Vine Swing tile (now an ability)");
   assert(counts.special === 1, "Board has 1 Super Banana tile");
-  assert(counts.tax10 === 0, "Board has no -10% tax tile");
   assert(counts.desert === 1, "Board has 1 Desert tile");
+  assert(counts.other === 0, "Board has no legacy tile types");
 
   // Grow tiles are labelled 1..6 (no 0, no 7).
   const labels = [...game.growTileLabels.values()].sort((a, b) => a - b);
@@ -2400,7 +2275,7 @@ section("67. Classic - Roll One item (guaranteed move of 1)");
   cur.startPickPending = false;
   cur.position = 0;
   for (const p of game.players) p.startPickPending = false;
-  game.auction = game.poker = game.vineSwing = null;
+  game.auction = game.poker = null;
   game.superBananaPending = null;
   game.itemAuction = null;
   game.diceRolled = false;
@@ -2423,12 +2298,6 @@ section("67. Classic - Roll One item (guaranteed move of 1)");
   assert(cur.position === (startPos + 1) % game.boardSize, "Roll One moves exactly 1 space");
   assert(game.diceRolled === true, "Roll One consumed the roll");
   assert(cur.cards.magicDice === 1, "Roll One spends exactly one item");
-
-  // Upgrades are gone: upgradeMagicDice is a no-op.
-  const upgrader = game.players[1];
-  upgrader.money = 5000;
-  assert(game.upgradeMagicDice(upgrader.id) === false, "Upgrade is a no-op (returns false)");
-  assert(upgrader.money === 5000, "Upgrade does not charge bananas");
 }
 
 // ============================================================
@@ -2442,7 +2311,7 @@ section("68. Classic - Vine Swing ability (your OWN farms only)");
   for (const p of game.players) p.startPickPending = false;
   game.diceRolled = false;
   game.cardUsedThisTurn = false;
-  game.auction = game.poker = game.vineSwing = null;
+  game.auction = game.poker = null;
   game.superBananaPending = null;
   game.itemAuction = null;
   const BSZ = game.boardSize;
@@ -2585,7 +2454,7 @@ section("68b. Classic - Arming abilities (off-turn, private, server-side)");
   cur.cards.rabbitDice = 1;
   cur.startPickPending = false;
   game.diceRolled = false;
-  game.auction = game.poker = game.vineSwing = null;
+  game.auction = game.poker = null;
   game.superBananaPending = null;
   game.itemAuction = null;
   game.rollDice(cur.id, 2);

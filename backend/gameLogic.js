@@ -570,7 +570,6 @@ class MonkeyBusinessGame {
     if (
       this.auction ||
       this.poker ||
-      this.vineSwing ||
       this.superBananaPending ||
       this.itemAuction ||
       this.superBananaWin
@@ -851,7 +850,6 @@ class MonkeyBusinessGame {
       this.diceRolled = false;
       this.itemMoveThisTurn = false;
       this.lastMagicDice = null;
-      if (this.vineSwing === socketId) this.vineSwing = null;
       if (this.superBananaPending && this.superBananaPending.playerId === socketId)
         this.superBananaPending = null;
       if (this.superBananaHint && this.superBananaHint.playerId === socketId)
@@ -954,12 +952,12 @@ class MonkeyBusinessGame {
     // 5) Nothing blocking and they haven't rolled → auto-roll a plain 2d6.
     if (
       this.diceRolled || this.auction || this.poker ||
-      this.itemAuction || this.vineSwing || this.superBananaPending
+      this.itemAuction || this.superBananaPending
     ) return;
     this._deferredSetTimeout(() => {
       const c = this.getCurrentPlayer();
       if (!c || c.id !== cur.id || !c.ghost || this.diceRolled || this.state !== "playing") return;
-      if (this.auction || this.poker || this.itemAuction || this.superBananaPending || this.vineSwing) return;
+      if (this.auction || this.poker || this.itemAuction || this.superBananaPending) return;
       this.rollDice(c.id, 2);
       if (this.onUpdate) this.onUpdate();
       // Resolve anything the roll triggered (poker / super-banana / etc.).
@@ -1144,7 +1142,6 @@ class MonkeyBusinessGame {
     this.bombWinner = null;
     this.bananaLoser = null;
     this.poker = null;
-    this.vineSwing = null;
     this.lastExplosion = null;
     this.lastDefuse = null;
     this.diceMatchTiles = null;
@@ -1465,7 +1462,7 @@ class MonkeyBusinessGame {
       }
     }
 
-    // Auto-end turn if no auction, vine swing, or poker was started
+    // Auto-end turn if no auction or poker was started
     // Delay accounts for frontend dice animation (550ms) + dice-match anim (1200ms if applicable) + token walk (steps*150ms) + post-walk pause (500ms) + buffer
     const diceMatchDelayMs =
       this.diceMatchTiles && this.diceMatchTiles.length > 0 ? 1200 : 0;
@@ -1473,7 +1470,6 @@ class MonkeyBusinessGame {
     const walkAnimMs = 550 + diceMatchDelayMs + earlyPickupDelayMs + diceSum * 150 + 500;
     if (
       !this.auction &&
-      !this.vineSwing &&
       !this.poker &&
       !this.superBananaPending
     ) {
@@ -1492,7 +1488,7 @@ class MonkeyBusinessGame {
     if (!cur || cur.id !== socketId || cur.bankrupt) return null;
     if (this.diceRolled) return null;
     if (cur.startPickPending) return null;
-    if (this.auction || this.poker || this.vineSwing || this.superBananaPending)
+    if (this.auction || this.poker || this.superBananaPending)
       return null;
     if (this.itemAuction) return null;
     // Must hold a won Roll One item to use it.
@@ -1563,19 +1559,12 @@ class MonkeyBusinessGame {
     const walkAnimMs = 550 + n * 150 + 500;
     if (
       !this.auction &&
-      !this.vineSwing &&
       !this.poker &&
       !this.superBananaPending
     ) {
       this._scheduleAutoEnd(cur, walkAnimMs + 3000, 2000);
     }
     return { dice: this.dice, moved: true };
-  }
-
-  // Magic Dice no longer upgrades — it's fixed at level 6 (all numbers 1..6).
-  // Kept as a no-op so the legacy upgrade_magic_dice event does nothing.
-  upgradeMagicDice() {
-    return false;
   }
 
   // -- Special Items (won via the item auction) --------
@@ -1662,7 +1651,7 @@ class MonkeyBusinessGame {
     if (!cur || cur.id !== socketId) return null;
     if (this.diceRolled) return null;
     if (cur.startPickPending) return null;
-    if (this.auction || this.poker || this.vineSwing || this.superBananaPending)
+    if (this.auction || this.poker || this.superBananaPending)
       return null;
     if (this.itemAuction) return null;
     if (this.cardUsedThisTurn) return null;
@@ -1745,7 +1734,7 @@ class MonkeyBusinessGame {
       }
     }
     this._processLanding(cur);
-    if (!this.auction && !this.vineSwing && !this.poker && !this.superBananaPending) {
+    if (!this.auction && !this.poker && !this.superBananaPending) {
       this._scheduleAutoEnd(cur, 1500, 2000);
     }
     return { card: "teleport", moved: true };
@@ -2245,7 +2234,6 @@ class MonkeyBusinessGame {
     const debugWalkMs = 550 + debugSteps * 150 + 500;
     if (
       !this.auction &&
-      !this.vineSwing &&
       !this.poker &&
       !this.superBananaPending
     ) {
@@ -2318,35 +2306,6 @@ class MonkeyBusinessGame {
 
     // GROW already handled above
     if (space.type === "grow") return;
-
-    // Reveal non-buyable event tiles to all players immediately
-    if (["bus", "tax10"].includes(space.type)) {
-      for (const p of this.players) p.revealedTiles.add(player.position);
-    }
-
-    if (space.type === "bus") {
-      const hasOwned = player.properties.length > 0;
-      if (!hasOwned) {
-        this._log(
-          `${player.name} grabbed the Vine Swing but owns no farms to swing to! 🌿`,
-        );
-        return;
-      }
-      this.vineSwing = player.id;
-      this._log(
-        `${player.name} grabbed the Vine Swing! \ud83e\udea2 Pick any tile to swing to!`,
-      );
-      return;
-    }
-
-    if (space.type === "tax10") {
-      const taxAmount = Math.min(Math.floor(player.money * 0.1), player.money);
-      player.money -= taxAmount;
-      this._log(
-        `${player.name} slipped on ${space.name}: ${taxAmount}\ud83c\udf4c (10%).`,
-      );
-      return;
-    }
 
     const prop = this.properties.get(player.position);
     if (!prop) return;
@@ -2466,9 +2425,9 @@ class MonkeyBusinessGame {
     }
   }
 
-  // Passive landing — only handles non-interactive effects (tax, rent, grow).
+  // Passive landing — only handles non-interactive effects (grow, reveals).
   // Used when a player is pushed onto a tile by an external effect so it
-  // doesn't trigger poker, vine swing, auctions, or super banana swaps.
+  // doesn't trigger poker, auctions, or super banana swaps.
   _processLandingPassive(player, magicUserId = null) {
     const space = this.board[player.position];
     if (!space) return;
@@ -2476,21 +2435,6 @@ class MonkeyBusinessGame {
     // GROW fires passively
     if (space.type === "grow") {
       this._fireGrowAt(player, player.position, "land");
-      return;
-    }
-
-    // Reveal non-buyable tiles
-    if (["bus", "tax10"].includes(space.type)) {
-      for (const p of this.players) p.revealedTiles.add(player.position);
-    }
-
-    // Tax effects apply passively
-    if (space.type === "tax10") {
-      const taxAmount = Math.min(Math.floor(player.money * 0.1), player.money);
-      player.money -= taxAmount;
-      this._log(
-        `${player.name} slipped on ${space.name}: ${taxAmount}\ud83c\udf4c (10%).`,
-      );
       return;
     }
 
@@ -2503,7 +2447,7 @@ class MonkeyBusinessGame {
       return;
     }
 
-    // Rent applies passively (but no auction/poker/vine/super banana)
+    // Rent applies passively (but no auction/poker/super banana)
     const prop = this.properties.get(player.position);
     if (!prop) return;
     // No rent in this game
@@ -2649,7 +2593,6 @@ class MonkeyBusinessGame {
 
     // Auction the tile that swapped into this position (if buyable & unowned)
     const newProp = this.properties.get(superBananaPos);
-    const newSpace = this.board[superBananaPos];
     if (newProp && !newProp.owner && player) {
       // Open an auction for the swapped-in tile (or award it for free when 0 or
       // 1 players can bid). Honors the 0-banana exclusion rule; auto-end fires
@@ -2657,17 +2600,6 @@ class MonkeyBusinessGame {
       this.startAuction(player.id);
       if (!this.auction) this._scheduleAutoEnd(player, 1000);
     } else {
-      // Apply peel tax if the swapped-in tile is a tax tile
-      if (player && newSpace && newSpace.type === "tax10") {
-        const taxAmount = Math.min(
-          Math.floor(player.money * 0.1),
-          player.money,
-        );
-        player.money -= taxAmount;
-        this._log(
-          `${player.name} slipped on ${newSpace.name}: ${taxAmount}\ud83c\udf4c (10%).`,
-        );
-      }
       // Non-buyable tile swapped in, or player left � schedule auto-end
       if (player) {
         this._scheduleAutoEnd(player, 1000);
@@ -3331,39 +3263,6 @@ class MonkeyBusinessGame {
     return true;
   }
 
-  vineSwingMove(socketId, position) {
-    if (!this.vineSwing || this.vineSwing !== socketId) return false;
-    const player = this.players.find((p) => p.id === socketId);
-    if (!player) return false;
-    if (position < 0 || position >= this.boardSize) return false;
-
-    // Can only swing to a property the player owns
-    const prop = this.properties.get(position);
-    if (!prop || prop.owner !== socketId) return false;
-
-    this.vineSwing = null;
-    // Clear any lingering grow-squatter-steal state from this turn so the
-    // frontend doesn't re-trigger the steal animation on the vine landing.
-    this.growSquatterSteals = null;
-    this.lastGrowFired = null;
-    this.lastGrowActivated = null;
-    player.position = position;
-    player.revealedTiles.add(position);
-    // Reveal the vine-swing destination to all players
-    for (const p of this.players) p.revealedTiles.add(position);
-    this._log(`${player.name} swung to tile ${position}! \ud83e\udea2`);
-
-    // Vine Swing is a teleport — only steal/collect at landing tile, no crossing
-    this._collectBananasAtTile(player, position);
-
-    this._processLanding(player);
-
-    if (!this.auction && !this.vineSwing && !this.poker) {
-      this._scheduleAutoEnd(player, 1000);
-    }
-    return true;
-  }
-
   // Note: a player's first turn is picking any tile to start on.
   // The chosen tile is treated like a normal landing (auction if a farm, etc).
   pickStartTile(socketId, position) {
@@ -3371,7 +3270,7 @@ class MonkeyBusinessGame {
     const cur = this.getCurrentPlayer();
     if (!cur || cur.id !== socketId) return false;
     if (!cur.startPickPending) return false;
-    if (this.auction || this.poker || this.vineSwing || this.superBananaPending)
+    if (this.auction || this.poker || this.superBananaPending)
       return false;
     if (typeof position !== "number" || position < 0 || position >= this.boardSize)
       return false;
@@ -3397,7 +3296,7 @@ class MonkeyBusinessGame {
     // Treat the chosen tile as a landing — same flow as a regular roll.
     this._processLanding(cur);
 
-    if (!this.auction && !this.vineSwing && !this.poker && !this.superBananaPending) {
+    if (!this.auction && !this.poker && !this.superBananaPending) {
       this._scheduleAutoEnd(cur, 1000);
     }
     return true;
@@ -4129,7 +4028,7 @@ class MonkeyBusinessGame {
       if (!this.poker || !this.poker.resolved) return;
       this.poker = null;
       const cur = this.getCurrentPlayer();
-      if (cur && !this.auction && !this.vineSwing) {
+      if (cur && !this.auction) {
         this._scheduleAutoEnd(cur, 2000);
       }
       if (this.onUpdate) this.onUpdate();
@@ -4147,7 +4046,7 @@ class MonkeyBusinessGame {
     }
     this.poker = null;
     const cur = this.getCurrentPlayer();
-    if (cur && !this.auction && !this.vineSwing) {
+    if (cur && !this.auction) {
       this._scheduleAutoEnd(cur, 2000);
     }
     return true;
@@ -5137,7 +5036,6 @@ class MonkeyBusinessGame {
         this.superBananaHint && this.superBananaHint.playerId === viewerId
           ? this.superBananaHint.pos
           : null,
-      vineSwing: this.vineSwing || null,
       autoEndDelay: this.autoEndDelay || false,
       autoEndDelayMs: this.autoEndDelayMs || 0,
       itemMoveThisTurn: this.itemMoveThisTurn || false,

@@ -578,12 +578,6 @@ function initSocket() {
         window._prevPlayerMoney[p.id] = p.money;
       }
     }
-    // Detect vine swing completion: previous state had vineSwing, new one doesn't
-    if (gs && gs.vineSwing && !state.vineSwing) {
-      playVineSwing();
-      window._vineSwingJustLanded = true;
-    }
-
     // Ghost notification: a player who just turned into a ghost (left/disconnected
     // mid-game). Show a toast so the change is unmistakable.
     if (gs && gs.players && Array.isArray(state.players)) {
@@ -604,18 +598,15 @@ function initSocket() {
         if (typeof playShuffleSound === "function") playShuffleSound();
       }
     }
-    // Detect vine swing activation: animate the vine tile
-    if (state.vineSwing && (!gs || !gs.vineSwing)) {
-      const vinePlayer = state.players && state.players.find(p => p.id === state.vineSwing);
-      if (vinePlayer) {
-        const vineEl = document.getElementById("space-" + vinePlayer.position);
-        if (vineEl) {
-          vineEl.classList.remove("vine-activate");
-          void vineEl.offsetWidth;
-          vineEl.classList.add("vine-activate");
-          vineEl.addEventListener("animationend", () => vineEl.classList.remove("vine-activate"), { once: true });
-        }
-      }
+    // Vine Swing (teleport item): play the swing sound when a new teleport arrives
+    if (
+      state.lastTeleport &&
+      (!gs ||
+        !gs.lastTeleport ||
+        gs.lastTeleport.turn !== state.lastTeleport.turn ||
+        gs.lastTeleport.playerId !== state.lastTeleport.playerId)
+    ) {
+      playVineSwing();
     }
 
     gs = state;
@@ -1440,11 +1431,6 @@ function useMagicDice(steps) {
   socket.emit("use_magic_dice", { gameId, steps });
 }
 
-function upgradeMagicDice() {
-  if (!socket || !gameId) return;
-  socket.emit("upgrade_magic_dice", { gameId });
-}
-
 // ── GROW pulse animation ──────────────────────────────
 // When a grow tile fires on a rolled number (pre-move), a glow of the roller's
 // colour starts on that grow tile and chains clockwise, one tile at a time, to
@@ -1677,7 +1663,6 @@ function _tickEndTurnCountdown() {
     gs.currentPlayer && gs.currentPlayer.id === myId && !gs.gameOver;
   const overlayOpen =
     !!gs.auction ||
-    !!gs.vineSwing ||
     !!gs.poker ||
     !!gs.superBananaPending ||
     !!gs.itemAuction ||
@@ -2961,31 +2946,6 @@ function showGame() {
   // moment _ensureEndTurnTicker's anim-complete signal arrives.
   _ensureEndTurnTicker();
 
-  // Auto vine swing: pick a random owned farm when vine swing is active
-  // Gate on !_tokenWalking so the emit waits until the walk animation finishes
-  // (matches the manual vine-click guard in board.js)
-  if (
-    gs.vineSwing &&
-    gs.vineSwing === myId &&
-    !window._tokenWalking &&
-    document.getElementById("chk-auto-vine").checked &&
-    !window._autoVineQueued
-  ) {
-    const ownedProps = (gs.properties || []).filter((p) => p.owner === myId);
-    if (ownedProps.length > 0) {
-      window._autoVineQueued = true;
-      const pick = ownedProps[Math.floor(Math.random() * ownedProps.length)];
-      setTimeout(() => {
-        window._autoVineQueued = false;
-        if (socket && gameId)
-          socket.emit("vine_swing_move", { gameId, position: pick.id });
-      }, 300);
-    }
-  }
-  if (!gs.vineSwing || gs.vineSwing !== myId) {
-    window._autoVineQueued = false;
-  }
-
   // Auto fold poker: fold when it's our turn
   if (
     gs.poker &&
@@ -3082,7 +3042,6 @@ function showGame() {
       !me.startPickPending &&
       !gs.auction &&
       !gs.poker &&
-      !gs.vineSwing &&
       !gs.superBananaPending &&
       !gs.itemAuction;
     if (!stillValid) cancelAbilityTargeting();
@@ -3529,11 +3488,9 @@ function updateTileLegend() {
   if (!el || !gs || !gs.boardLayout) return;
   el.innerHTML = "";
 
-  // Notable non-farm tiles: vine swing, the Desert (its own category), -10%
-  // tax, and super banana. GROW tiles have their own Grow Chart.
+  // Notable non-farm tiles: the Desert and the Super Banana. GROW tiles have
+  // their own Grow Chart.
   const counts = {
-    bus: 0,
-    tax10: 0,
     desert: 0,
     special: 0,
   };
@@ -3542,13 +3499,11 @@ function updateTileLegend() {
   }
 
   const entries = [
-    { icon: "🌿", name: "Vine Swing", count: counts.bus },
     {
       icon: "🌵",
       name: "Desert",
       count: counts.desert,
     },
-    { icon: "🍌", name: "-10% Peel", count: counts.tax10 },
     { icon: "\u2b50", name: "Super Banana", count: counts.special },
   ];
 
@@ -5323,7 +5278,6 @@ function updateSpecialItems(me, isMyTurn) {
   const noBlockingState =
     !gs.auction &&
     !gs.poker &&
-    !gs.vineSwing &&
     !gs.superBananaPending &&
     !gs.itemAuction &&
     !window._abilityTargetMode;
