@@ -68,8 +68,8 @@ Super Banana: `pick_super_banana_swap`.
 
 Misc: `chat_message`, `player_reaction`, `return_to_lobby`, `leave_game`,
 plus `debug_*` events (`debug_move`, `debug_shuffle`,
-`debug_add_bananas`). Note: the debug events are currently not gated by
-environment — consider disabling them in production.
+`debug_add_bananas`). The debug events are only wired up when
+`NODE_ENV !== "production"` (see `DEBUG_TOOLS` in server.js).
 
 The server responds with full `game_update` snapshots plus targeted events for
 animations (dice, grow pulses, auctions, poker, explosions).

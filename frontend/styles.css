@@ -4267,13 +4267,6 @@ body {
 }
 
 /* ── Special space types ──────────────────────────────────────── */
-.space.type-chest {
-  background:
-    radial-gradient(circle at 35% 30%, rgba(255, 240, 150, 0.2) 0%, transparent 50%),
-    linear-gradient(160deg, #dcc050 0%, #c8a430 50%, #a88820 100%);
-  color: #fff;
-  font-size: clamp(6px, 1cqw, 9px);
-}
 .space.type-special {
   background:
     radial-gradient(
@@ -4321,27 +4314,6 @@ body {
   font-size: clamp(6px, 1.1cqw, 10px);
   opacity: 0.9;
   font-weight: 700;
-}
-.space.type-tax {
-  background:
-    radial-gradient(
-      circle at 50% 50%,
-      rgba(60, 20, 0, 0.15) 0%,
-      transparent 70%
-    ),
-    linear-gradient(160deg, #2a2218 0%, #181008 100%);
-  color: #fff;
-  border-color: rgba(100, 80, 40, 0.4);
-}
-.space.type-auction {
-  background:
-    radial-gradient(circle at 35% 30%, rgba(200, 160, 255, 0.15) 0%, transparent 50%),
-    linear-gradient(160deg, #9c72c4 0%, #7c58a8 50%, #644890 100%);
-  color: #fff;
-}
-.space.type-birthday {
-  background: linear-gradient(160deg, #d4b830 0%, #b89818 100%);
-  color: #fff;
 }
 
 /* ── Banana Piles on Tiles ─────────────────────────────────────── */
