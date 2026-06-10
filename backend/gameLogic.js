@@ -1107,10 +1107,6 @@ class MonkeyBusinessGame {
     return true;
   }
 
-  isLobbyReady() {
-    return this.state === "waiting";
-  }
-
   _resetToLobby() {
     this.state = "waiting";
     this._lobbyReady = null;
@@ -1673,14 +1669,6 @@ class MonkeyBusinessGame {
     const prop = this.properties.get(pos);
     if (!prop || prop.owner !== player.id || prop.group !== "farm") return false;
     return true;
-  }
-
-  // True if any player has revealed this board position.
-  _isRevealedToAnyone(pos) {
-    for (const p of this.players) {
-      if (p.revealedTiles && p.revealedTiles.has(pos)) return true;
-    }
-    return false;
   }
 
   // Vine Swing (internal key "teleport"): jump to ANY tile without walking, then
@@ -3277,16 +3265,6 @@ class MonkeyBusinessGame {
     return false;
   }
 
-  // The set of all board positions revealed by any player.
-  _globalGenuineRevealed() {
-    const set = new Set();
-    for (const p of this.players) {
-      if (!p.revealedTiles) continue;
-      for (const pos of p.revealedTiles) set.add(pos);
-    }
-    return set;
-  }
-
   // Grow-tile positions that are revealed by any player. The Owned-Farms chart
   // groups farms by the nearest such grow.
   _genuineRevealedGrowPositions() {
@@ -4550,14 +4528,6 @@ class MonkeyBusinessGame {
     return null;
   }
 
-  getTeamBananas(teamKey) {
-    if (!this.teams || !this.teams[teamKey]) return 0;
-    return this.teams[teamKey].reduce((sum, id) => {
-      const p = this.players.find((pl) => pl.id === id);
-      return sum + (p ? p.money : 0);
-    }, 0);
-  }
-
   tradeBananas(senderId, recipientId, amount) {
     if (this.state !== "playing") return false;
     // Trading only allowed in team modes
@@ -4585,45 +4555,6 @@ class MonkeyBusinessGame {
     recipient.money += amount;
     this._log(
       `\uD83D\uDCE6 ${sender.name} sent ${amount}\uD83C\uDF4C to ${recipient.name} (fee: ${TRADE_FEE}\uD83C\uDF4C)`,
-    );
-    return true;
-  }
-
-  // -- Trade property between any players (1-for-1 swap, no fee) --
-
-  tradeProperty(senderId, recipientId, senderPropPos, recipientPropPos) {
-    if (this.state !== "playing") return false;
-    // Can't trade on your own turn
-    const cur = this.getCurrentPlayer();
-    if (cur && cur.id === senderId) return false;
-    const sender = this.players.find((p) => p.id === senderId);
-    const recipient = this.players.find((p) => p.id === recipientId);
-    if (!sender || !recipient) return false;
-    if (sender.bankrupt || recipient.bankrupt) return false;
-    if (senderId === recipientId) return false;
-
-    senderPropPos = Math.floor(senderPropPos);
-    recipientPropPos = Math.floor(recipientPropPos);
-    if (!sender.properties.includes(senderPropPos)) return false;
-    if (!recipient.properties.includes(recipientPropPos)) return false;
-
-    const senderProp = this.properties.get(senderPropPos);
-    const recipientProp = this.properties.get(recipientPropPos);
-    if (!senderProp || !recipientProp) return false;
-
-    // Swap ownership
-    senderProp.owner = recipientId;
-    recipientProp.owner = senderId;
-
-    sender.properties = sender.properties.filter((p) => p !== senderPropPos);
-    sender.properties.push(recipientPropPos);
-    recipient.properties = recipient.properties.filter(
-      (p) => p !== recipientPropPos,
-    );
-    recipient.properties.push(senderPropPos);
-
-    this._log(
-      `\uD83E\uDD1D ${sender.name} swapped ${senderProp.name} for ${recipient.name}'s ${recipientProp.name}`,
     );
     return true;
   }
