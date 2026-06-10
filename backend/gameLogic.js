@@ -1054,7 +1054,6 @@ class MonkeyBusinessGame {
 
     if (this.admin === oldId) this.admin = newId;
     if (this.bombWinner === oldId) this.bombWinner = newId;
-    if (this.bananaLoser === oldId) this.bananaLoser = newId;
     if (this._itemAuctionStarterId === oldId) this._itemAuctionStarterId = newId;
 
     for (const [, prop] of this.properties) scalar(prop, "owner");
@@ -1137,7 +1136,6 @@ class MonkeyBusinessGame {
     this.revealAccepted = null;
     this.teamCoinFlip = null;
     this.bombWinner = null;
-    this.bananaLoser = null;
     this.poker = null;
     this.lastExplosion = null;
     this.lastDefuse = null;
@@ -2383,19 +2381,14 @@ class MonkeyBusinessGame {
           `\u2b50 ${player.name} found the Super Banana but can't afford it! They must hide it on a tile of their choice.`,
         );
       } else {
-        // No hidden tiles left - richest player wins
+        // Nowhere left to hide it — the Super Banana stays exposed to everyone
+        // and play continues until someone lands on it with enough bananas
+        // (rules.md: there is no richest-player win).
         for (const p of this.players) p.revealedTiles.add(superBananaPos);
+        this.superBananaHint = null;
         this._log(
-          `? ${player.name} can't afford the Super Banana and there's nowhere to hide it!`,
+          `\u2b50 ${player.name} found the Super Banana but can't afford it — and there's nowhere left to hide it! It stays exposed for anyone to claim. \ud83c\udf4c`,
         );
-        const activePlayers = this.players.filter((p) => !p.bankrupt);
-        const winner = activePlayers.sort((a, b) => b.money - a.money)[0];
-        this.state = "finished";
-        this.bananaLoser = player.id;
-        if (winner) {
-          this._log(`?? ${winner.name} is the richest monkey and wins! ???`);
-        }
-        this._revealAllTiles();
       }
       return;
     }
@@ -4882,7 +4875,6 @@ class MonkeyBusinessGame {
       teams: this.teams,
       teamCoinFlip: this.teamCoinFlip || null,
       bombWinner: this.bombWinner || null,
-      bananaLoser: this.bananaLoser || null,
       bombs: this.bombs
         .filter((b) => b.placedBy === viewerId)
         .map((b) => ({

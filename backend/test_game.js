@@ -3426,6 +3426,42 @@ section("79d. Last live monkey among ghosts wins (grace window)");
 }
 
 // ============================================================
+section("80. Super Banana with no hiding spot stays exposed; game continues");
+// ============================================================
+// rules.md: a broke lander hides the Super Banana under a hidden tile; when
+// every other tile is revealed it is simply exposed to all. There is no
+// richest-player win — play continues until someone can afford it.
+
+{
+  const { game } = createStartedGame(2, { startingMoney: 500 });
+  const cur = game.getCurrentPlayer();
+  const other = game.players.find((p) => p.id !== cur.id);
+  let sbPos = -1;
+  for (let i = 0; i < game.boardSize; i++) {
+    const prop = game.properties.get(i);
+    if (prop && prop.group === "superBanana") { sbPos = i; break; }
+  }
+  for (let i = 0; i < game.boardSize; i++) {
+    if (i !== sbPos) cur.revealedTiles.add(i);
+  }
+  cur.position = sbPos;
+  other.position = (sbPos + 1) % game.boardSize;
+  game._processLanding(cur);
+
+  assert(game.state === "playing", "Game continues when the broke lander has nowhere to hide the Super Banana");
+  assert(!game.superBananaPending, "No hideout pick is pending when no hidden tiles remain");
+  assert(game.players.every((p) => p.revealedTiles.has(sbPos)), "Super Banana is exposed to every player");
+  assert(game.superBananaHint === null, "Private rainbow hint is cleared once the Super Banana is public");
+
+  // The exposed Super Banana can still be bought later for the win.
+  cur.position = (sbPos + 2) % game.boardSize;
+  other.money = 5000;
+  other.position = sbPos;
+  game._processLanding(other);
+  assert(game.superBananaWin && game.superBananaWin.playerId === other.id, "Exposed Super Banana can still be bought to win");
+}
+
+// ============================================================
 // SUMMARY
 // ============================================================
 

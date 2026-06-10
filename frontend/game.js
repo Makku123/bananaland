@@ -908,15 +908,10 @@ function showGameOver() {
     el.addEventListener("animationend", () => el.remove());
   }
 
-  // Find the winner (player who owns the super banana property, bomb winner, or banana loser)
+  // Find the winner (player who owns the super banana property, or bomb winner)
   let winnerPlayer;
   if (gs.bombWinner) {
     winnerPlayer = _gsPlayerMap[gs.bombWinner];
-  } else if (gs.bananaLoser) {
-    // Winner is the opponent with the most money
-    winnerPlayer = [...gs.players]
-      .filter((p) => p.id !== gs.bananaLoser && !p.bankrupt)
-      .sort((a, b) => b.money - a.money)[0];
   } else {
     winnerPlayer = gs.players.find((p) =>
       p.properties.some((pos) => {
@@ -930,10 +925,6 @@ function showGameOver() {
   if (winnerPlayer && gs.bombWinner) {
     const emoji = MONKEY_EMOJI[winnerPlayer.color] || "\uD83D\uDC35";
     winnerEl.innerHTML = `${emoji} <span class="winner-name">${winnerPlayer.name}</span><br>is the Monkey King! \uD83D\uDC51\uD83D\uDCA5`;
-  } else if (winnerPlayer && gs.bananaLoser) {
-    const loser = _gsPlayerMap[gs.bananaLoser];
-    const emoji = MONKEY_EMOJI[winnerPlayer.color] || "\uD83D\uDC35";
-    winnerEl.innerHTML = `${emoji} <span class="winner-name">${winnerPlayer.name}</span><br>is the richest monkey and wins! \u2b50\uD83D\uDC51`;
   } else if (winnerPlayer) {
     const emoji = MONKEY_EMOJI[winnerPlayer.color] || "\uD83D\uDC35";
     winnerEl.innerHTML = `${emoji} <span class="winner-name">${winnerPlayer.name}</span><br>is the Monkey God! \uD83D\uDC51\u2b50`;
@@ -2832,19 +2823,6 @@ function showGame() {
         const name = buyer ? buyer.name : "Someone";
         if (textEl)
           textEl.textContent = `\u2b50 ${name} can afford it! ${name} bought the Super Banana and became Monkey God! \ud83d\udc51`;
-      } else if (
-        gs.superBananaWin.phase === "cantafford" &&
-        !window._superBananaCantAffordShown
-      ) {
-        window._superBananaCantAffordShown = true;
-        const loser = _gsPlayerMap[gs.superBananaWin.playerId];
-        const winner = gs.superBananaWin.winnerId
-          ? _gsPlayerMap[gs.superBananaWin.winnerId]
-          : null;
-        const loserName = loser ? loser.name : "Someone";
-        const winnerName = winner ? winner.name : "the richest monkey";
-        if (textEl)
-          textEl.textContent = `\u2b50 ${loserName} can't afford it! Nowhere to hide it! ${winnerName} is the richest monkey and wins! \ud83d\udc51`;
       }
     } else if (
       gs.superBananaPending &&
@@ -2886,7 +2864,6 @@ function showGame() {
       window._sbNotifShown = false;
       window._superBananaFoundShown = false;
       window._superBananaBoughtShown = false;
-      window._superBananaCantAffordShown = false;
       sbNotif.classList.remove("show");
       clearTimeout(window._mushPhase2Timer);
     }

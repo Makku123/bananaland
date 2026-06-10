@@ -817,9 +817,7 @@ io.on("connection", (socket) => {
     const isWinner =
       gme.state === "finished" &&
       (gme.bombWinner === sid ||
-        (gme.bananaLoser && gme.bananaLoser !== sid) ||
         (!gme.bombWinner &&
-          !gme.bananaLoser &&
           player.properties.some((pos) => {
             const prop = gme.properties.get(pos);
             return prop && prop.group === "superBanana" && prop.owner === sid;
