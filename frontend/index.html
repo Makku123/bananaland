@@ -7,10 +7,10 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@400;500;600;700;800&family=Bungee&family=Fredoka:wght@400;500;600;700&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@400;500;600;700;800&family=Bungee&family=Fredoka:wght@400;500;600;700&family=Orbitron:wght@500;600;700;800;900&family=Press+Start+2P&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="styles.css?v=5" />
+    <link rel="stylesheet" href="styles.css?v=30" />
   </head>
   <body>
     <!-- Loading overlay (shown until app is ready) -->
@@ -435,9 +435,9 @@
       <div id="screen-menu" class="screen active">
         <div class="card menu-card">
           <div class="menu-logo"><span class="monkey-caller">🐒<span class="monkey-shades">🕶️</span><span class="monkey-phone">📱</span></span></div>
-          <h1>🍍💣 MONKEY BUSINESS 💰</h1>
+          <h1>🍌 MONKEY BUSINESS 💰</h1>
           <p class="menu-tagline">
-            🌴 Buy farms. Grow bananas. Bomb monkeys. Achieve the
+            🌴 Buy farms. Grow bananas. Cast spells. Achieve the
             <span class="rainbow-text">super banana</span>. 🌴
           </p>
           <div class="menu-monkeys">🙈🙉🙊</div>
@@ -504,7 +504,7 @@
             <h2>New Game</h2>
           </div>
           <div class="create-grid">
-            <div class="form-section">
+            <div class="form-section" style="grid-column: 1 / -1">
               <div class="form-section-title">🐒 Your Monkey</div>
               <label
                 >Name<input
@@ -513,8 +513,56 @@
                   placeholder="Your name"
               /></label>
             </div>
-            <div class="form-section">
-              <div class="form-section-title">⚙️ Game Settings</div>
+            <div class="form-section" style="grid-column: 1 / -1">
+              <div class="form-section-title">🎮 Game Mode</div>
+              <div class="mode-chooser" id="mode-chooser">
+                <button
+                  type="button"
+                  class="mode-card mode-card--classic active"
+                  data-mode="classic"
+                  onclick="selectGameMode('classic')"
+                >
+                  <span class="mode-card-icon">🐵</span>
+                  <span class="mode-card-title">Classic</span>
+                  <span class="mode-card-sub">2–6 monkeys, free-for-all</span>
+                </button>
+                <div
+                  class="mode-card mode-card--team"
+                  data-mode="team"
+                  role="button"
+                  tabindex="0"
+                  onclick="selectTeamMode()"
+                  onkeydown="if(event.target===this&&(event.key==='Enter'||event.key===' ')){event.preventDefault();selectTeamMode();}"
+                >
+                  <span class="mode-card-icon">🤝</span>
+                  <span class="mode-card-title">Team</span>
+                  <span class="mode-card-sub">Two teams — pick a size</span>
+                  <select
+                    id="team-size"
+                    class="mode-card-select"
+                    aria-label="Team size"
+                    onclick="event.stopPropagation()"
+                    onchange="selectTeamMode(this.value)"
+                  >
+                    <option value="2v2">2v2 — 4 monkeys, two teams</option>
+                    <option value="3v3">3v3 — 6 monkeys, two teams</option>
+                  </select>
+                </div>
+              </div>
+              <!-- Hidden select keeps existing JS (`document.getElementById('create-mode').value`) working. -->
+              <select id="create-mode" onchange="toggleModeSettings()" style="display:none">
+                <option value="classic" selected>Classic (2-6 players)</option>
+                <option value="2v2">Team Mode — 2v2 (4 players)</option>
+                <option value="3v3">Team Mode — 3v3 (6 players)</option>
+              </select>
+              <div id="team-settings" style="display: none">
+                <p class="mode-hint">Team Mode: two teams. Buy the Super Banana (10000🍌) to win for your whole team!</p>
+              </div>
+            </div>
+            <div class="form-section options-section" style="grid-column: 1 / -1">
+              <div class="form-section-title">⚙️ Game Settings &amp; Options</div>
+
+              <!-- Players + starting bananas (folded in from Game Settings) -->
               <label class="players-label"
                 >Players
                 <select
@@ -523,6 +571,8 @@
                   <option value="2">2</option>
                   <option value="3">3</option>
                   <option value="4" selected>4</option>
+                  <option value="5">5</option>
+                  <option value="6">6</option>
                 </select>
                 <span class="auction-info-icon" tabindex="0" onclick="event.preventDefault(); event.stopPropagation(); this.classList.toggle('open');">?
                   <div class="auction-tooltip">
@@ -536,119 +586,28 @@
                         <li>If everyone rejects or time runs out → lander buys at their own price</li>
                       </ol>
                     </div>
-                    <div class="auction-tooltip-note">Players who can't afford the pitched price are excluded. Only the lander sees a keypad — everyone else sees accept/reject. In 2v2 teams, the lander's teammate must wait 2s before they can accept.</div>
+                    <div class="auction-tooltip-note">Players who can't afford the pitched price are excluded. Free-for-all: the lander names a price, everyone else accepts/rejects in secret. 2v2: same idea, but only ONE opponent (whoever accepts first) can take it; if an opponent and the lander's teammate both accept, they settle it with a silent bid (a tie goes to the lander). You can see your teammate's choice but not the other team's.</div>
                   </div>
                 </span>
               </label>
               <label
-                >Starting Bananas 🍌 <span id="bananas-display">333</span>
+                >Starting Bananas 🍌 <span id="bananas-display">5000</span>
                 <input
                   id="create-bananas"
                   type="range"
                   min="100"
-                  max="4000"
+                  max="20000"
                   step="1"
-                  value="333"
+                  value="5000"
                   oninput="
                     document.getElementById('bananas-display').textContent =
                       this.value
                   "
                 />
               </label>
-            </div>
-            <div class="form-section" style="grid-column: 1 / -1">
-              <div class="form-section-title">🎮 Game Mode</div>
-              <div class="mode-chooser" id="mode-chooser">
-                <button
-                  type="button"
-                  class="mode-card mode-card--classic active"
-                  data-mode="classic"
-                  onclick="selectGameMode('classic')"
-                >
-                  <span class="mode-card-icon">🐵</span>
-                  <span class="mode-card-title">Classic</span>
-                  <span class="mode-card-sub">2–4 monkeys, free-for-all</span>
-                </button>
-                <button
-                  type="button"
-                  class="mode-card mode-card--2v2"
-                  data-mode="2v2"
-                  onclick="selectGameMode('2v2')"
-                >
-                  <span class="mode-card-icon">🤝</span>
-                  <span class="mode-card-title">2v2 Teams</span>
-                  <span class="mode-card-sub">4 monkeys, two teams</span>
-                </button>
-              </div>
-              <!-- Hidden select keeps existing JS (`document.getElementById('create-mode').value`) working. -->
-              <select id="create-mode" onchange="toggleModeSettings()" style="display:none">
-                <option value="classic" selected>Classic (2-4 players)</option>
-                <option value="2v2">2v2 (4 players)</option>
-              </select>
-              <div id="team-settings" style="display: none">
-                <p class="mode-hint">Buy the Super Banana (777🍌) to win!</p>
-              </div>
-            </div>
-            <div class="form-section options-section" style="grid-column: 1 / -1">
-              <div class="form-section-title">🔧 Options</div>
 
-              <!-- Item Auction options at the top -->
-              <div class="options-group options-group--item-auction">
-                <label class="toggle-card toggle-card--featured">
-                  <input
-                    type="checkbox"
-                    id="create-item-auction-enabled"
-                    checked
-                    onchange="toggleItemAuctionFields()"
-                  />
-                  <span class="toggle-card-switch"></span>
-                  <span class="toggle-card-label">
-                    <span class="toggle-card-icon">🎡</span>
-                    <span class="toggle-card-text">
-                      <strong>Item Auctions</strong>
-                      <small>Spin the wheel &amp; silent-bid for items</small>
-                    </span>
-                  </span>
-                </label>
-                <div class="options-numbers options-numbers--inline">
-                  <label class="item-auction-sub number-field">
-                    <span class="number-field-label">🎯 Counter Start</span>
-                    <input
-                      type="number"
-                      id="create-item-auction-start"
-                      min="5"
-                      max="500"
-                      value="50"
-                    />
-                  </label>
-                  <label class="item-auction-sub number-field">
-                    <span class="number-field-label">⏱️ Item Bid Timer (sec)</span>
-                    <input
-                      type="number"
-                      id="create-item-auction-timer"
-                      min="5"
-                      max="60"
-                      value="15"
-                    />
-                  </label>
-                </div>
-                <p class="options-group-hint">
-                  Every roll subtracts from a shared counter; at 0 a wheel spins and players silent-bid on the chosen item.
-                </p>
-              </div>
-
-              <!-- Cost & timer adjusters in the middle -->
+              <!-- Cost & timer adjusters -->
               <div class="options-numbers options-numbers--middle">
-                <label class="number-field">
-                  <span class="number-field-label">🍍 Bomb Cost</span>
-                  <input
-                    type="number"
-                    id="create-bomb-cost"
-                    min="0"
-                    max="99999"
-                    value="666"
-                  />
-                </label>
                 <label class="number-field">
                   <span class="number-field-label">⭐ Super Banana</span>
                   <input
@@ -656,7 +615,7 @@
                     id="create-super-banana-price"
                     min="100"
                     max="99999"
-                    value="777"
+                    value="10000"
                   />
                 </label>
                 <label class="number-field">
@@ -674,28 +633,6 @@
               <!-- Remaining toggles at the bottom -->
               <div class="options-toggles">
                 <label class="toggle-card">
-                  <input type="checkbox" id="create-bomb-mode" checked />
-                  <span class="toggle-card-switch"></span>
-                  <span class="toggle-card-label">
-                    <span class="toggle-card-icon">🍍</span>
-                    <span class="toggle-card-text">
-                      <strong>Pineapple Bomb Mode</strong>
-                      <small>Buy bombs to eliminate opponents</small>
-                    </span>
-                  </span>
-                </label>
-                <label class="toggle-card">
-                  <input type="checkbox" id="create-monkey-poker" checked />
-                  <span class="toggle-card-switch"></span>
-                  <span class="toggle-card-label">
-                    <span class="toggle-card-icon">🐵</span>
-                    <span class="toggle-card-text">
-                      <strong>Monkey Poker</strong>
-                      <small>Squat on rivals' farms to start a poker duel</small>
-                    </span>
-                  </span>
-                </label>
-                <label class="toggle-card">
                   <input type="checkbox" id="create-public" />
                   <span class="toggle-card-switch"></span>
                   <span class="toggle-card-label">
@@ -703,6 +640,28 @@
                     <span class="toggle-card-text">
                       <strong>Public Lobby</strong>
                       <small>Let anyone find &amp; join your game</small>
+                    </span>
+                  </span>
+                </label>
+                <label class="toggle-card">
+                  <input type="checkbox" id="create-dodecahedron" checked />
+                  <span class="toggle-card-switch"></span>
+                  <span class="toggle-card-label">
+                    <span class="toggle-card-icon">🎲</span>
+                    <span class="toggle-card-text">
+                      <strong>Hex</strong>
+                      <small>single d12 curse — first to land on the unrevealed Super Banana is hexed; passes by landing</small>
+                    </span>
+                  </span>
+                </label>
+                <label class="toggle-card">
+                  <input type="checkbox" id="create-mega-mode" checked />
+                  <span class="toggle-card-switch"></span>
+                  <span class="toggle-card-label">
+                    <span class="toggle-card-icon">⚡</span>
+                    <span class="toggle-card-text">
+                      <strong>Mega Mode</strong>
+                      <small>spell cards become Mega Turtle (grows matched piles 5×) &amp; Mega Rabbit (a +6 leap that vacuums &amp; steals every pile on its path)</small>
                     </span>
                   </span>
                 </label>
@@ -793,14 +752,14 @@
             style="display: none"
           >
             <label
-              >🍌 Starting Bananas <span id="lobby-bananas-display">3333</span>
+              >🍌 Starting Bananas <span id="lobby-bananas-display">5000</span>
               <input
                 id="lobby-bananas"
                 type="range"
                 min="100"
-                max="4000"
+                max="20000"
                 step="50"
-                value="3333"
+                value="5000"
                 oninput="
                   document.getElementById('lobby-bananas-display').textContent =
                     this.value;
@@ -813,7 +772,8 @@
                 >🎮 Game Mode
                 <select id="lobby-mode" onchange="updateLobbySettings()">
                   <option value="classic">Classic</option>
-                  <option value="2v2">2v2</option>
+                  <option value="2v2">Team · 2v2</option>
+                  <option value="3v3">Team · 3v3</option>
                 </select>
               </label>
               <label
@@ -822,32 +782,19 @@
                   <option value="2">2</option>
                   <option value="3">3</option>
                   <option value="4" selected>4</option>
+                  <option value="5">5</option>
+                  <option value="6">6</option>
                 </select>
               </label>
             </div>
             <div class="lobby-toggles-row" style="display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end">
-              <label class="toggle-label">
-                <input type="checkbox" id="lobby-bomb-mode" onchange="updateLobbySettings()" />
-                <span>Pineapple Bomb Mode 🍍</span>
-              </label>
-              <label>Bomb Cost 🍌
-                <input
-                  type="number"
-                  id="lobby-bomb-cost"
-                  min="0"
-                  max="99999"
-                  value="666"
-                  style="width: 80px"
-                  onchange="updateLobbySettings()"
-                />
-              </label>
               <label>Super Banana ⭐
                 <input
                   type="number"
                   id="lobby-super-banana-price"
                   min="100"
                   max="99999"
-                  value="777"
+                  value="10000"
                   style="width: 80px"
                   onchange="updateLobbySettings()"
                 />
@@ -864,12 +811,16 @@
                 />
               </label>
               <label class="toggle-label">
-                <input type="checkbox" id="lobby-monkey-poker" onchange="updateLobbySettings()" />
-                <span>Monkey Poker 🐵</span>
-              </label>
-              <label class="toggle-label">
                 <input type="checkbox" id="lobby-public" onchange="updateLobbySettings()" />
                 <span>🌐 Public Lobby</span>
+              </label>
+              <label class="toggle-label" title="single d12 curse — first to land on the unrevealed Super Banana is hexed; passes by landing">
+                <input type="checkbox" id="lobby-dodecahedron" checked onchange="updateLobbySettings()" />
+                <span>🎲 Hex</span>
+              </label>
+              <label class="toggle-label" title="Spell cards become Mega Turtle (grows matched piles 5×) & Mega Rabbit (a +6 leap that vacuums & steals every pile on its path)">
+                <input type="checkbox" id="lobby-mega-mode" checked onchange="updateLobbySettings()" />
+                <span>⚡ Mega Mode</span>
               </label>
             </div>
           </div>
@@ -930,46 +881,6 @@
           </div>
         </div>
 
-        <!-- Bomb Placement Banner -->
-        <div
-          id="bomb-placement-overlay"
-          class="bomb-placement-banner"
-          style="display: none"
-        >
-          <span class="bomb-placement-banner-text"
-            >🍍 Click a tile on the board to plant your pineapple bomb</span
-          >
-          <button class="btn btn-alt btn-sm" onclick="closeBombPlacement()">
-            Cancel
-          </button>
-        </div>
-
-        <!-- Buy Bomb Confirmation Modal -->
-        <div
-          id="buy-bomb-confirm"
-          class="bomb-confirm-overlay"
-          style="display: none"
-          onclick="if (event.target === this) closeBuyBombConfirm()"
-        >
-          <div class="bomb-confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="buy-bomb-confirm-title">
-            <div class="bomb-confirm-icon">🍍</div>
-            <h2 id="buy-bomb-confirm-title" class="bomb-confirm-title">Buy Pineapple Bomb?</h2>
-            <p class="bomb-confirm-body">
-              This will cost <span class="bomb-confirm-price">666🍌</span>.
-            </p>
-            <p class="bomb-confirm-subtext">
-              Plant it on any tile to eliminate opponents who land on it.
-            </p>
-            <div class="bomb-confirm-actions">
-              <button class="btn btn-alt" onclick="closeBuyBombConfirm()">
-                Cancel
-              </button>
-              <button class="btn btn-bomb" onclick="confirmBuyBomb()">
-                🍍 Buy for 666🍌
-              </button>
-            </div>
-          </div>
-        </div>
 
         <div class="game-layout">
           <!-- Left: Ownership Panel -->
@@ -989,6 +900,9 @@
             <h3>Owned Farms</h3>
             <div id="owner-list"></div>
             <hr class="panel-divider" />
+            <h3>⭐ Super Banana</h3>
+            <div id="tile-legend"></div>
+            <hr class="panel-divider" />
             <h3
               class="panel-collapsible"
               role="button"
@@ -997,7 +911,7 @@
               onclick="toggleChartCollapse(this)"
               onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleChartCollapse(this);}"
             >
-              Farm Chart<span class="panel-collapse-caret" aria-hidden="true">▾</span>
+              Farms Left<span class="panel-collapse-caret" aria-hidden="true">▾</span>
             </h3>
             <div id="property-chart"></div>
             <div id="grow-chart-section" style="display: none">
@@ -1014,74 +928,11 @@
               </h3>
               <div id="grow-chart"></div>
             </div>
-            <hr class="panel-divider" />
-            <h3>Special Tile Legend</h3>
-            <div id="tile-legend"></div>
           </aside>
 
           <!-- Center: Board -->
           <main class="board-wrap">
             <div id="board-floaters" class="board-floaters"></div>
-            <!-- Item-ability reference popover: opens when the
-                 board-center auction counter is clicked. -->
-            <div id="abilities-popover" class="abilities-popover">
-              <div class="abilities-popover-header">
-                <span>🎡 Item Abilities</span>
-                <button
-                  class="abilities-popover-close"
-                  title="Close"
-                  onclick="toggleAbilitiesPopover(false)"
-                >
-                  ✕
-                </button>
-              </div>
-              <div class="abilities-popover-sub">
-                Everyone starts with one of each. ARM one during another player's
-                turn — it fires when your turn starts. Win more at the Item
-                Auction (when the countdown hits 0, everyone secretly bids).
-              </div>
-              <div class="ability-row">
-                <span class="ability-emoji">🐢</span>
-                <div>
-                  <div class="ability-name">Turtle Dice</div>
-                  <div class="ability-desc">
-                    Arm it before your turn — your turn rolls just 1 die instead
-                    of the usual 2. Spent on the roll.
-                  </div>
-                </div>
-              </div>
-              <div class="ability-row">
-                <span class="ability-emoji">🐇</span>
-                <div>
-                  <div class="ability-name">Rabbit Dice</div>
-                  <div class="ability-desc">
-                    Arm it before your turn — your turn rolls 3 dice instead of
-                    the usual 2. Spent on the roll.
-                  </div>
-                </div>
-              </div>
-              <div class="ability-row">
-                <span class="ability-emoji">1️⃣</span>
-                <div>
-                  <div class="ability-name">Roll One</div>
-                  <div class="ability-desc">
-                    Arm it before your turn — your turn moves you exactly 1 space
-                    (guaranteed), firing GROW 1 if it's revealed. Spent on use.
-                  </div>
-                </div>
-              </div>
-              <div class="ability-row">
-                <span class="ability-emoji">🌿</span>
-                <div>
-                  <div class="ability-name">Vine Swing</div>
-                  <div class="ability-desc">
-                    Arm it before your turn — when your turn starts you pick one of
-                    YOUR OWN farms and swing there with no walking (collect that
-                    farm's bananas; poker if a monkey squats there).
-                  </div>
-                </div>
-              </div>
-            </div>
             <div id="turn-notification" class="turn-notification">
               <span class="turn-notif-banana turn-notif-banana-l">🍌</span>
               <span class="turn-notif-text">
@@ -1100,14 +951,10 @@
             <div id="super-banana-notification" class="super-banana-notification">
               <div id="super-banana-notif-text">⭐ Super Banana Found! ⭐</div>
             </div>
-            <div id="bomb-win-notification" class="bomb-win-notification">
-              💥 You have eliminated the last player and won the game! 👑
-            </div>
             <div
               id="dice-roll-notification"
               class="dice-roll-notification"
             ></div>
-            <div id="item-used-notification" class="item-used-notification"></div>
             <div
               id="auction-tied-notification"
               class="auction-tied-notification"
@@ -1127,6 +974,28 @@
               </div>
             </div>
             <div id="board" class="board">
+              <!-- Start-pick prompt + Random Start button, centered in the board
+                   (shown only on the viewer's first-turn tile pick). -->
+              <div id="board-random-start" class="board-center-prompt" style="display: none">
+                <div class="board-center-prompt-text">🐒 Pick your starting tile</div>
+                <div class="board-center-prompt-sub">Tap any tile on the board, or…</div>
+                <button class="btn btn-random-start" id="btn-random-start" onclick="pickRandomStart()">
+                  <span class="rs-die">🎲</span> Random Start Tile
+                </button>
+              </div>
+              <!-- Proxy rune deck: a face-down draw pile centered in the board.
+                   Purely a visual indicator — when any player gains a spell card
+                   (cancel HIT, Super-Banana award/auction, …) a card flies from
+                   here to their token (see flyRuneDraw in game-init.js). Shown by
+                   showGame only during play; preserved across renderBoard. -->
+              <div id="rune-deck" class="rune-deck" style="display: none" aria-hidden="true">
+                <div class="rune-deck-stack">
+                  <span class="rune-deck-card"></span>
+                  <span class="rune-deck-card"></span>
+                  <span class="rune-deck-card rune-deck-top">🔮</span>
+                </div>
+                <div class="rune-deck-label">Cards</div>
+              </div>
               <!-- Auction Overlay (rendered in board center) -->
               <div id="auction-box" class="auction-box" style="display: none">
                 <h4 id="auction-title">🍌 BANANA BID 🍌</h4>
@@ -1248,140 +1117,6 @@
                 </div>
                 <div id="auction-bids" class="auction-bids"></div>
                 <div id="bid-toast" class="bid-toast"></div>
-              </div>
-
-              <!-- Item Auction Overlay (wheel + silent bid) -->
-              <div
-                id="item-auction-box"
-                class="item-auction-box"
-                style="display: none"
-              >
-                <div class="item-auction-inner">
-                  <h4 class="item-auction-title">🎡 Item Auction 🎡</h4>
-
-                  <!-- Wheel phase -->
-                  <div id="item-auction-wheel-phase" class="item-auction-wheel-phase">
-                    <div id="item-auction-pointer" class="item-auction-pointer">
-                      <svg viewBox="0 0 32 40" width="32" height="40" aria-hidden="true">
-                        <path d="M16 38 L2 6 Q16 14 30 6 Z" />
-                      </svg>
-                    </div>
-                    <div class="item-auction-rim">
-                      <div id="item-auction-wheel" class="item-auction-wheel">
-                        <div class="item-auction-wheel-bg"></div>
-                        <div class="item-auction-wheel-spokes"></div>
-                        <div class="item-auction-rim-studs"></div>
-                        <div class="item-auction-wheel-slot slot-rabbitDice" data-item="rabbitDice">
-                          <div class="slot-emoji">🐢</div>
-                          <div class="slot-name">Turtle<br>Dice</div>
-                        </div>
-                        <div class="item-auction-wheel-slot slot-cheetahDice" data-item="cheetahDice">
-                          <div class="slot-emoji">🐇</div>
-                          <div class="slot-name">Rabbit<br>Dice</div>
-                        </div>
-                        <div class="item-auction-wheel-slot slot-magicDice" data-item="magicDice">
-                          <div class="slot-emoji">1️⃣</div>
-                          <div class="slot-name">Roll<br>One</div>
-                        </div>
-                        <div class="item-auction-wheel-slot slot-teleport" data-item="teleport">
-                          <div class="slot-emoji">🌿</div>
-                          <div class="slot-name">Vine Swing</div>
-                        </div>
-                      </div>
-                      <div class="item-auction-hub" aria-hidden="true">🍌</div>
-                    </div>
-                  </div>
-
-                  <!-- Bidding phase -->
-                  <div
-                    id="item-auction-bid-phase"
-                    class="item-auction-bid-phase"
-                    style="display: none"
-                  >
-                    <div class="item-auction-item" id="item-auction-item">
-                      <div class="item-auction-item-emoji" id="item-auction-item-emoji">🌲</div>
-                      <div class="item-auction-item-name" id="item-auction-item-name">Vine Swing Card</div>
-                    </div>
-                    <!-- Blind bidders (everyone but the starter) see the possible items, not the actual one -->
-                    <div class="item-auction-possible" id="item-auction-possible" style="display: none">
-                      <div class="item-auction-possible-label">🙈 Hidden item — you might win one of:</div>
-                      <div class="item-auction-possible-grid" id="item-auction-possible-grid"></div>
-                    </div>
-                    <div class="item-auction-context" id="item-auction-context"></div>
-                    <div
-                      class="item-auction-respond-controls auction-respond-controls"
-                      id="item-auction-respond-controls"
-                      style="display: none"
-                    >
-                      <button class="btn btn-sm btn-accept" onclick="respondItemAuction(true)">✅ Accept</button>
-                      <button class="btn btn-sm btn-decline" onclick="respondItemAuction(false)">❌ Decline</button>
-                    </div>
-                    <div class="item-auction-timer">
-                      <div class="item-auction-timer-bar-bg">
-                        <div class="item-auction-timer-bar" id="item-auction-timer-bar"></div>
-                      </div>
-                      <div class="item-auction-timer-text" id="item-auction-timer-text">15s</div>
-                    </div>
-                    <div class="item-auction-bid-controls" id="item-auction-bid-controls">
-                      <label class="item-auction-bid-label">Your bid</label>
-                      <div class="bid-input-row">
-                        <input
-                          type="text"
-                          id="item-auction-bid-input"
-                          class="bid-input"
-                          inputmode="numeric"
-                          value="0"
-                          readonly
-                        />
-                        <span class="bid-input-label">🍌</span>
-                      </div>
-                      <div class="bid-keypad">
-                        <button class="bid-key" onclick="itemBidKey('1')">1</button>
-                        <button class="bid-key" onclick="itemBidKey('2')">2</button>
-                        <button class="bid-key" onclick="itemBidKey('3')">3</button>
-                        <button class="bid-key" onclick="itemBidKey('4')">4</button>
-                        <button class="bid-key" onclick="itemBidKey('5')">5</button>
-                        <button class="bid-key" onclick="itemBidKey('6')">6</button>
-                        <button class="bid-key" onclick="itemBidKey('7')">7</button>
-                        <button class="bid-key" onclick="itemBidKey('8')">8</button>
-                        <button class="bid-key" onclick="itemBidKey('9')">9</button>
-                        <button class="bid-key bid-key-wide" onclick="itemBidClear()">C</button>
-                        <button class="bid-key" onclick="itemBidKey('0')">0</button>
-                        <button class="bid-key bid-key-wide" onclick="itemBidBackspace()">⌫</button>
-                      </div>
-                      <div class="bid-btn-row">
-                        <button
-                          class="btn btn-sm"
-                          id="item-auction-bid-submit"
-                          onclick="submitItemBid()"
-                        >
-                          Submit
-                        </button>
-                        <button class="btn btn-sm btn-preset" onclick="setItemBidPreset('half')">½</button>
-                        <button class="btn btn-sm btn-preset" onclick="setItemBidPreset('max')">MAX</button>
-                      </div>
-                    </div>
-                    <div class="item-auction-bid-locked" id="item-auction-bid-locked" style="display: none">
-                      🔒 Bid locked in
-                    </div>
-                  </div>
-
-                  <!-- Result phase -->
-                  <div
-                    id="item-auction-result-phase"
-                    class="item-auction-result-phase"
-                    style="display: none"
-                  >
-                    <div class="item-auction-item">
-                      <div class="item-auction-item-emoji" id="item-auction-result-emoji">🌲</div>
-                      <div class="item-auction-item-name" id="item-auction-result-name">Vine Swing Card</div>
-                    </div>
-                    <div class="item-auction-result-headline" id="item-auction-result-headline">
-
-                    </div>
-                    <div class="item-auction-result-bids" id="item-auction-result-bids"></div>
-                  </div>
-                </div>
               </div>
 
               <!-- Poker Table Overlay (rendered in board center) -->
@@ -1586,6 +1321,50 @@
                     >
                       ALL IN
                     </button>
+                    <button
+                      class="btn btn-sm poker-keypad-toggle"
+                      id="poker-keypad-toggle"
+                      onclick="togglePokerKeypad()"
+                      title="Open bet keypad"
+                    >
+                      🔢
+                    </button>
+                  </div>
+                  <div class="poker-keypad" id="poker-keypad">
+                    <button onclick="pokerKeypadPress('7')">7</button>
+                    <button onclick="pokerKeypadPress('8')">8</button>
+                    <button onclick="pokerKeypadPress('9')">9</button>
+                    <button onclick="pokerKeypadPress('4')">4</button>
+                    <button onclick="pokerKeypadPress('5')">5</button>
+                    <button onclick="pokerKeypadPress('6')">6</button>
+                    <button onclick="pokerKeypadPress('1')">1</button>
+                    <button onclick="pokerKeypadPress('2')">2</button>
+                    <button onclick="pokerKeypadPress('3')">3</button>
+                    <button
+                      class="poker-keypad-clear"
+                      onclick="pokerKeypadPress('clear')"
+                    >
+                      C
+                    </button>
+                    <button onclick="pokerKeypadPress('0')">0</button>
+                    <button
+                      class="poker-keypad-back"
+                      onclick="pokerKeypadPress('back')"
+                    >
+                      ⌫
+                    </button>
+                    <button
+                      class="poker-keypad-min"
+                      onclick="pokerKeypadPress('min')"
+                    >
+                      Min
+                    </button>
+                    <button
+                      class="poker-keypad-max"
+                      onclick="pokerKeypadPress('max')"
+                    >
+                      Max
+                    </button>
                   </div>
                 </div>
                 <div
@@ -1594,6 +1373,14 @@
                   style="display: none"
                 >
                   <div id="poker-result-text"></div>
+                  <button
+                    id="poker-btn-dismiss"
+                    class="btn btn-sm poker-btn-call"
+                    style="display: none"
+                    onclick="pokerDismiss()"
+                  >
+                    Continue
+                  </button>
                 </div>
               </div>
               <button
@@ -1609,20 +1396,6 @@
                 title="Open Jungle Log"
               >
                 📜
-              </button>
-              <button
-                id="board-trade-deals-toggle"
-                class="board-trade-deals-toggle"
-                title="Sell Listings"
-                onclick="toggleSellListingsPanel()"
-              >
-                🏷️
-                <span
-                  id="trade-deals-badge"
-                  class="trade-deals-badge"
-                  style="display: none"
-                  >0</span
-                >
               </button>
               <button
                 id="board-help-toggle"
@@ -1677,30 +1450,6 @@
               >
                 📱
               </button>
-              <div
-                id="board-trade-deals"
-                class="board-trade-deals board-trade-deals-hidden"
-              >
-                <div
-                  class="board-trade-deals-header"
-                  id="board-trade-deals-header"
-                >
-                  <span class="board-trade-deals-header-title"
-                    >🏷️ Sell Listings</span
-                  >
-                  <button
-                    class="board-trade-deals-close"
-                    title="Close"
-                    onclick="toggleSellListingsPanel()"
-                  >
-                    ✕
-                  </button>
-                </div>
-                <div
-                  id="trade-deals-messages"
-                  class="trade-deals-messages"
-                ></div>
-              </div>
               <div id="board-help" class="board-help board-help-hidden">
                 <div class="board-help-header" id="board-help-header">
                   <span class="board-help-header-title">📖 How to Play</span>
@@ -1715,37 +1464,21 @@
                 <div class="board-help-body">
                   <!-- Quick Reference Banner -->
                   <div class="help-quickref" id="help-sec-quickref">
-                    <div class="help-qr-row"><span class="help-qr-icon">🎯</span><span><b>Win:</b> Buy ⭐ Super Banana (777🍌) — or bomb an opponent (Bomb Mode)</span></div>
-                    <div class="help-qr-row"><span class="help-qr-icon">🎲</span><span><b>Roll:</b> 2 dice (2–12). Pay 300🍌 for 1 or 3 dice</span></div>
+                    <div class="help-qr-row"><span class="help-qr-icon">🎯</span><span><b>Win:</b> Buy the ⭐ Super Banana (10000🍌)</span></div>
+                    <div class="help-qr-row"><span class="help-qr-icon">🎲</span><span><b>Roll:</b> 2 dice (2–12), or play a spell card</span></div>
                     <div class="help-qr-row"><span class="help-qr-icon">💰</span><span><b>Start:</b> 2,222🍌 · 52 tiles, 48 shuffled each game</span></div>
-                    <div class="help-qr-row"><span class="help-qr-icon">🌽</span><span><b>Income:</b> Auto-collect from your farms as you pass; land on opponent's farm to <b>steal</b></span></div>
+                    <div class="help-qr-row"><span class="help-qr-icon">🌽</span><span><b>Income:</b> Collect ALL your farms' piles as you pass; <b>squat</b> on an opponent's farm (land) and <b>take all</b> when you leave (landing/crossing alone takes nothing)</span></div>
                   </div>
 
-                  <!-- Farms & Chains -->
+                  <!-- Farms -->
                   <div class="help-section">
                     <div class="help-section-header">
                       <span class="help-section-icon">🌴</span>
-                      <h3>Farms & Chains</h3>
+                      <h3>Farms</h3>
                     </div>
                     <div class="help-tile-list">
-                      <div class="help-tile-row"><span class="help-tile-icon">🔗</span>Adjacent same-color farms <b>chain</b>: 2× / 3× / 4× yield</div>
                       <div class="help-tile-row"><span class="help-tile-icon">🎯</span>Roll matches farm's number → instant <b>100% grow</b></div>
-                      <div class="help-tile-row"><span class="help-tile-icon">📐</span>Growth = Yield × GROW% × Chain</div>
                       <div class="help-tile-row"><span class="help-tile-icon">🐒</span><b>Squatter:</b> opponent on your farm steals the growth</div>
-                    </div>
-                  </div>
-
-                  <!-- Corners (fixed GROW%) -->
-                  <div class="help-section">
-                    <div class="help-section-header">
-                      <span class="help-section-icon">🗺️</span>
-                      <h3>Corners (fixed)</h3>
-                    </div>
-                    <div class="help-corners-grid">
-                      <div class="help-corner"><span class="help-corner-pct">100%</span><span class="help-corner-label">BL · Start</span></div>
-                      <div class="help-corner"><span class="help-corner-pct">25%</span><span class="help-corner-label">TL</span></div>
-                      <div class="help-corner"><span class="help-corner-pct">50%</span><span class="help-corner-label">TR</span></div>
-                      <div class="help-corner"><span class="help-corner-pct">75%</span><span class="help-corner-label">BR</span></div>
                     </div>
                   </div>
 
@@ -1756,8 +1489,7 @@
                       <h3>Special Tiles</h3>
                     </div>
                     <div class="help-tile-list">
-                      <div class="help-tile-row"><span class="help-tile-icon">⭐</span><b>Super Banana</b> — buy for 777🍌 to win</div>
-                      <div class="help-tile-row"><span class="help-tile-icon">🌿</span><b>Vine Swing</b> — won item; teleport to any tile</div>
+                      <div class="help-tile-row"><span class="help-tile-icon">⭐</span><b>Super Banana</b> — land on it &amp; afford 10000🍌 to win (can't afford? auction off a mystery 0–2 card draw)</div>
                       <div class="help-tile-row"><span class="help-tile-icon">🌵</span><b>Desert</b> — won at auction like a farm, but grows nothing</div>
                       <div class="help-tile-row"><span class="help-tile-icon">🌴</span><b>GROW (1–6)</b> — fires when you land here, or the die face matches its label</div>
                     </div>
@@ -1772,42 +1504,16 @@
                     <p>Land on unowned farm → set a price → 15s for anyone to accept. No takers? You buy it.</p>
                   </div>
 
-                  <!-- Combat -->
+                  <!-- Spell Cards -->
                   <div class="help-section">
                     <div class="help-section-header">
-                      <span class="help-section-icon">⚔️</span>
-                      <h3>Poker & Bombs</h3>
+                      <span class="help-section-icon">🔮</span>
+                      <h3>Spell Cards</h3>
                     </div>
                     <div class="help-tile-list">
-                      <div class="help-tile-row"><span class="help-tile-icon">🃏</span><b>Poker</b> — 2 non-teammates share a tile</div>
-                      <div class="help-tile-row"><span class="help-tile-icon">🍍</span><b>Bomb</b> — 666🍌 (1000🍌 in 2v2) · spawns when your next turn ends · 3-turn fuse · blasts corner-to-corner · opponent = elim</div>
-                      <div class="help-tile-row"><span class="help-tile-icon">💥</span><b>Self/teammate</b> — immune; stepping on the placer's bomb defuses it (no damage)</div>
-                    </div>
-                  </div>
-
-                  <!-- Items -->
-                  <div class="help-section">
-                    <div class="help-section-header">
-                      <span class="help-section-icon">🎁</span>
-                      <h3>Special Items <small>(won via item auction)</small></h3>
-                    </div>
-                    <div class="help-tile-list">
-                      <div class="help-tile-row"><span class="help-tile-icon">🐢</span><b>Turtle Dice</b> — roll 1 die instead of 2</div>
-                      <div class="help-tile-row"><span class="help-tile-icon">🐇</span><b>Rabbit Dice</b> — roll 3 dice instead of 2</div>
-                      <div class="help-tile-row"><span class="help-tile-icon">1️⃣</span><b>Roll One</b> — move exactly 1 space</div>
-                      <div class="help-tile-row"><span class="help-tile-icon">🌿</span><b>Vine Swing</b> — teleport to any tile</div>
-                    </div>
-                  </div>
-
-                  <!-- Trading -->
-                  <div class="help-section">
-                    <div class="help-section-header">
-                      <span class="help-section-icon">🏪</span>
-                      <h3>Trading</h3>
-                    </div>
-                    <div class="help-tile-list">
-                      <div class="help-tile-row"><span class="help-tile-icon">🏷️</span><b>Sell Listings</b> — list a farm at any price, first to buy wins</div>
-                      <div class="help-tile-row"><span class="help-tile-icon">🤝</span><b>2v2</b> — send 🍌 to teammate (fee = 5% of starting 🍌, cap = half your bananas)</div>
+                      <div class="help-tile-row"><span class="help-tile-icon">🔮</span>Everyone starts with <b>7 spell cards</b> (each a hidden 1–6)</div>
+                      <div class="help-tile-row"><span class="help-tile-icon">▶️</span>On your turn, before rolling, <b>play a card</b> to move <b>7 − its value</b> (cards are 1–6, so they always invert)</div>
+                      <div class="help-tile-row"><span class="help-tile-icon">🚫</span><b>Cancel Opponent Card</b> (unlimited, needs 3+ cards) — predict a rival plays a card next turn. HIT → it's wasted, they roll normally &amp; you draw a card. MISS → you lose two cards (with one deny)</div>
                     </div>
                   </div>
                 </div>
@@ -1860,6 +1566,15 @@
             <div class="turn-info">
               <div class="turn-label">Current Turn</div>
               <div id="turn-name" class="turn-name">—</div>
+            </div>
+
+            <!-- Guaranteed-win hint: shown to a player who can afford the revealed
+                 Super Banana, holds a rune that lands exactly on it, and where no
+                 one can cancel (everyone holds < 3 runes). Driven by
+                 updateWinHint() each frame. -->
+            <div id="win-hint" class="win-hint" style="display: none">
+              <div class="win-hint-title">🏆 WINNING MOVE!</div>
+              <div class="win-hint-body" id="win-hint-body"></div>
             </div>
 
             <div class="dice-box">
@@ -1954,6 +1669,52 @@
                     <div class="coin-face coin-back">-1</div>
                   </div>
                 </div>
+                <!-- A played SPELL CARD is shown as a big die face bearing its
+                     number. Toggled in place of the rolled dice when
+                     gs.dice.length === 1. -->
+                <div class="roll-card-scene" id="roll-card-scene" style="display: none">
+                  <div class="roll-play-card" id="roll-play-card">
+                    <span class="roll-play-card-pip">🔮</span>
+                    <span class="roll-play-card-num">?</span>
+                    <span class="roll-play-card-label">Spell Card</span>
+                  </div>
+                </div>
+                <!-- HEX roll: rendered as an ACTUAL dodecahedron — the iconic
+                     face-on pentagon-of-pentagons d12, shaded for depth. The hex
+                     rolls a single d12 (1..12, stamped on settle); the tumble
+                     slot-machines 1..12 for d12 flavor. Shown in place of the dice /
+                     rune card when gs.diceIsD12 is set (also a length-1 gs.dice). -->
+                <div class="d12-scene" id="d12-scene" style="display: none">
+                  <svg class="d12-die" id="d12-die" viewBox="0 0 100 100" role="img" aria-label="Dodecahedron roll">
+                    <title>Dodecahedron</title>
+                    <defs>
+                      <radialGradient id="d12FrontGrad" cx="50%" cy="36%" r="72%">
+                        <stop offset="0%" stop-color="#cfe6ff" />
+                        <stop offset="52%" stop-color="#4f9ae8" />
+                        <stop offset="100%" stop-color="#1f5fb0" />
+                      </radialGradient>
+                    </defs>
+                    <g class="d12-solid">
+                      <polygon class="d12-face" fill="#5aa6ee" points="50,10 26.49,17.64 11.96,37.64 31.93,44.13 50,31" />
+                      <polygon class="d12-face" fill="#3f88d8" points="11.96,37.64 11.96,62.36 26.49,82.36 38.84,65.37 31.93,44.13" />
+                      <polygon class="d12-face" fill="#214a93" points="26.49,82.36 50,90 73.51,82.36 61.16,65.37 38.84,65.37" />
+                      <polygon class="d12-face" fill="#2a5cae" points="73.51,82.36 88.04,62.36 88.04,37.64 68.07,44.13 61.16,65.37" />
+                      <polygon class="d12-face" fill="#4f9ae8" points="88.04,37.64 73.51,17.64 50,10 50,31 68.07,44.13" />
+                      <polygon class="d12-face d12-front" fill="url(#d12FrontGrad)" points="50,31 31.93,44.13 38.84,65.37 61.16,65.37 68.07,44.13" />
+                    </g>
+                    <text class="d12-num" id="d12-num" x="50" y="51.5" text-anchor="middle" dominant-baseline="central">?</text>
+                  </svg>
+                </div>
+                <!-- Cute speed indicator beside the dice/card: 🐢 when the move
+                     value is below 7 (<=6), 🐰 when it's 7+. Shows for EVERY roll —
+                     2d6, the d12 hex, and a played spell card. Toggled in JS. -->
+                <span class="dice-animal" id="dice-animal" aria-hidden="true"></span>
+              </div>
+              <!-- Clear running TOTAL — revealed when the dice settle for a 2d6
+                   roll or the dodecahedron (d12); hidden for a played spell card. -->
+              <div class="dice-sum" id="dice-sum" aria-live="polite">
+                <span class="dice-sum-label">Total</span>
+                <span class="dice-sum-num" id="dice-sum-num">0</span>
               </div>
               <button class="btn" id="btn-roll" onclick="rollDice()" disabled>
                 Roll Dice
@@ -1961,257 +1722,102 @@
             </div>
 
             <div class="action-box">
-              <!-- Your Special Items. Arm ONE during other
-                   players' turns; it fires when your turn starts. Counts /
-                   armed state filled in by updateSpecialItems(). -->
-              <div id="special-items" class="special-items" style="display: none">
-                <div class="special-items-title">🎒 Your Special Items</div>
-                <div class="special-items-sub" id="special-items-sub">
-                  Arm one for your next turn
+              <!-- Your Spell Cards. Play ONE on your own turn before
+                   rolling to move 7 - its value (cards are 1-6). Buttons are
+                   populated by the per-frame render from me.rollCards (your
+                   CONCEALED, private hand); each button calls useRollCard(index).
+                   Container ids are fixed; per-card buttons are built
+                   dynamically. -->
+              <div id="magic-dice" class="magic-dice" style="display: none">
+                <div class="magic-dice-title">🔮 Spell Cards <span class="magic-dice-mode" id="magic-dice-mode"></span></div>
+                <div class="magic-dice-sub" id="magic-dice-sub">
+                  Play one — walks 7 − its value
                 </div>
-
-                <div
-                  class="special-item-row"
-                  id="special-row-rabbitDice"
-                  data-tip-title="🐢 Turtle Dice"
-                  data-tip-body="Roll just 1 die instead of 2. Arm it on any turn before you roll — it fires on your next roll."
+                <div id="magic-dice-list"></div>
+                <!-- Rabbit/Turtle mode toggle ("+6 mode") — lives INSIDE the
+                     spell-card box as a footer control. ON = 🐇 rabbit mode:
+                     a played spell card of value N rolls N+6 (full move 7-12, no
+                     7-N inversion, no grow-match). OFF = 🐢 turtle mode: the
+                     default 1-6 roll. Label (🐇/🐢) + pressed state set
+                     per-frame by the render. -->
+                <button
+                  class="btn btn-plus-six"
+                  id="btn-plus-six"
+                  onclick="togglePlusSix()"
+                  aria-pressed="false"
+                  style="display: none"
                 >
-                  <span class="special-item-icon">🐢</span>
-                  <span class="special-item-label">Turtle Dice</span>
-                  <span class="special-item-count" id="special-count-rabbitDice">×0</span>
-                  <button
-                    class="btn special-item-btn"
-                    id="special-btn-rabbitDice"
-                    onclick="armSpecialAbility('rabbitDice')"
-                  >
-                    Arm
-                  </button>
-                </div>
-
-                <div
-                  class="special-item-row"
-                  id="special-row-cheetahDice"
-                  data-tip-title="🐇 Rabbit Dice"
-                  data-tip-body="Roll 3 dice instead of 2. Arm it before you roll — your next roll uses three dice."
-                >
-                  <span class="special-item-icon">🐇</span>
-                  <span class="special-item-label">Rabbit Dice</span>
-                  <span class="special-item-count" id="special-count-cheetahDice">×0</span>
-                  <button
-                    class="btn special-item-btn"
-                    id="special-btn-cheetahDice"
-                    onclick="armSpecialAbility('cheetahDice')"
-                  >
-                    Arm
-                  </button>
-                </div>
-
-                <div
-                  class="special-item-row"
-                  id="special-row-magicDice"
-                  data-tip-title="1️⃣ Roll One"
-                  data-tip-body="Move exactly 1 space — no dice roll. Arm it to fire instead of the next roll."
-                >
-                  <span class="special-item-icon">1️⃣</span>
-                  <span class="special-item-label">Roll One</span>
-                  <span class="special-item-count" id="special-count-magicDice">×0</span>
-                  <button
-                    class="btn special-item-btn"
-                    id="special-btn-magicDice"
-                    onclick="armSpecialAbility('magicDice')"
-                  >
-                    Arm
-                  </button>
-                </div>
-
-                <div
-                  class="special-item-row"
-                  id="special-row-teleport"
-                  data-tip-title="🌿 Vine Swing"
-                  data-tip-body="Teleport to any tile you've revealed. Arm it to choose a destination on your next turn instead of rolling."
-                >
-                  <span class="special-item-icon">🌿</span>
-                  <span class="special-item-label">Vine Swing</span>
-                  <span class="special-item-count" id="special-count-teleport">×0</span>
-                  <button
-                    class="btn special-item-btn"
-                    id="special-btn-teleport"
-                    onclick="armSpecialAbility('teleport')"
-                  >
-                    Arm
-                  </button>
-                </div>
+                  🐢 Turtle / 🐇 Rabbit — tap to switch
+                </button>
               </div>
+              <!-- Pre-roll "Teleport to Farm" button removed — teleport is now the
+                   post-roll "Vine Swing" ability in the centered ability modal. -->
               <button
-                class="btn btn-alt"
-                id="btn-send-bananas"
-                onclick="toggleSendBananas()"
+                class="btn btn-cancel-items"
+                id="btn-cancel-items"
+                onclick="useCancelItems()"
                 style="display: none"
               >
-                🍌 Send Bananas
+                🚫 Cancel Opponent Card
               </button>
-
-              <!-- Send Bananas Panel (teams only) -->
-              <div
-                id="send-bananas-panel"
-                class="trade-panel"
-                style="display: none"
-              >
-                <div class="trade-panel-header">
-                  🍌 Send Bananas
-                  <button
-                    class="trade-panel-close"
-                    onclick="closeSendBananas()"
-                  >
-                    ✕
-                  </button>
+              <!-- Banana Gadget: set a hypothetical travel distance (1–47) and
+                   see how many bananas you'd collect from YOUR OWN farm piles on
+                   that path. Pure preview — computed client-side from gs. The
+                   Path Preview toggle (YELLOW next-N highlight) lives in here and
+                   uses this same distance. Placed below the Cancel Opponent Card
+                   button per request. -->
+              <div id="banana-gadget" class="banana-gadget" style="display: none">
+                <button
+                  type="button"
+                  class="banana-gadget-close"
+                  id="banana-gadget-close"
+                  onclick="toggleBananaGadget(false)"
+                  title="Close"
+                  aria-label="Close Banana Gadget"
+                >
+                  ✕
+                </button>
+                <span class="banana-gadget-leaf" aria-hidden="true">🍃</span>
+                <div class="banana-gadget-title">🍌 Banana Gadget</div>
+                <div class="banana-gadget-row">
+                  <input
+                    type="range"
+                    id="banana-gadget-range"
+                    class="banana-gadget-range"
+                    min="1"
+                    max="47"
+                    value="6"
+                    step="1"
+                    oninput="setBananaGadget(this.value)"
+                    aria-label="Travel distance to preview"
+                  />
+                  <span class="banana-gadget-steps" id="banana-gadget-steps">6</span>
                 </div>
-                <div class="trade-section">
-                  <div class="trade-fee-notice" id="send-banana-fee-notice">Transfer fee: 5% of starting 🍌</div>
-                  <div class="sell-price-header">Amount to Send</div>
-                  <div class="sell-price-display" id="send-banana-display">
-                    0🍌
-                  </div>
-                  <div class="sell-calculator" id="send-banana-calculator">
-                    <input
-                      type="text"
-                      id="send-banana-numpad"
-                      class="sell-calc-input"
-                      value=""
-                      placeholder="Type amount..."
-                      oninput="onSendCalcInput(this.value)"
-                      autocomplete="off"
-                    />
-                    <div class="sell-calc-grid">
-                      <button class="sell-calc-btn" onclick="sendCalcPress('1')">1</button>
-                      <button class="sell-calc-btn" onclick="sendCalcPress('2')">2</button>
-                      <button class="sell-calc-btn" onclick="sendCalcPress('3')">3</button>
-                      <button class="sell-calc-btn" onclick="sendCalcPress('4')">4</button>
-                      <button class="sell-calc-btn" onclick="sendCalcPress('5')">5</button>
-                      <button class="sell-calc-btn" onclick="sendCalcPress('6')">6</button>
-                      <button class="sell-calc-btn" onclick="sendCalcPress('7')">7</button>
-                      <button class="sell-calc-btn" onclick="sendCalcPress('8')">8</button>
-                      <button class="sell-calc-btn" onclick="sendCalcPress('9')">9</button>
-                      <button class="sell-calc-btn sell-calc-clear" onclick="sendCalcClear()">C</button>
-                      <button class="sell-calc-btn" onclick="sendCalcPress('0')">0</button>
-                      <button class="sell-calc-btn sell-calc-back" onclick="sendCalcBackspace()">⌫</button>
-                    </div>
-                  </div>
-                  <input type="hidden" id="send-banana-input" value="0" />
-                  <div class="trade-total" id="send-banana-total">
-                    Total cost: 150🍌
-                  </div>
-                  <button
-                    class="btn btn-glow"
-                    id="btn-send-trade"
-                    onclick="sendTrade()"
-                  >
-                    Send to Teammate
-                  </button>
-                </div>
+                <div class="banana-gadget-result" id="banana-gadget-result"></div>
+                <!-- Steps from your position to the Super Banana — shown ONLY once
+                     you've revealed it (fog-safe: the tile carries no group until
+                     then). Clockwise distance, matching the direction you move. -->
+                <div class="banana-gadget-sb" id="banana-gadget-sb" style="display: none"></div>
+                <!-- Path Preview: a YELLOW highlight of your next N tiles, where N
+                     is the Banana Gadget distance above. Layers over the green reach. -->
+                <label class="gadget-switch path-preview-switch">
+                  <input type="checkbox" id="path-preview-on" onchange="togglePathPreview(this.checked)" />
+                  <span class="gadget-switch-track"><span class="gadget-switch-thumb"></span></span>
+                  <span class="gadget-switch-label">Path Preview</span>
+                </label>
               </div>
-
-              <!-- Sell Panel -->
-              <div id="trade-panel" class="trade-panel" style="display: none">
-                <div class="trade-panel-header">
-                  🏷️ Sell Farm
-                  <button class="trade-panel-close" onclick="closeSellPanel()">
-                    ✕
-                  </button>
-                </div>
-
-                <div class="trade-section" id="sell-property-section">
-                  <div class="trade-phase-hint" id="sell-phase-hint">
-                    Click one of your farms on the board to select it
-                  </div>
-                  <div class="trade-selected-list" id="sell-selected-display">
-                    <div class="trade-selected-label">Farm to sell:</div>
-                    <div class="trade-selected-items" id="sell-selected-item">
-                      None selected
-                    </div>
-                  </div>
-                  <div
-                    class="sell-price-section"
-                    id="sell-price-label"
-                    style="display: none"
-                  >
-                    <div class="sell-price-header">Asking Price</div>
-                    <div class="sell-price-display" id="sell-price-display">
-                      0🍌
-                    </div>
-                    <div class="sell-calculator" id="sell-calculator">
-                      <input
-                        type="text"
-                        id="sell-price-numpad"
-                        class="sell-calc-input"
-                        value=""
-                        placeholder="Type price..."
-                        oninput="onSellCalcInput(this.value)"
-                        autocomplete="off"
-                      />
-                      <div class="sell-calc-grid">
-                        <button class="sell-calc-btn" onclick="sellCalcPress('1')">1</button>
-                        <button class="sell-calc-btn" onclick="sellCalcPress('2')">2</button>
-                        <button class="sell-calc-btn" onclick="sellCalcPress('3')">3</button>
-                        <button class="sell-calc-btn" onclick="sellCalcPress('4')">4</button>
-                        <button class="sell-calc-btn" onclick="sellCalcPress('5')">5</button>
-                        <button class="sell-calc-btn" onclick="sellCalcPress('6')">6</button>
-                        <button class="sell-calc-btn" onclick="sellCalcPress('7')">7</button>
-                        <button class="sell-calc-btn" onclick="sellCalcPress('8')">8</button>
-                        <button class="sell-calc-btn" onclick="sellCalcPress('9')">9</button>
-                        <button class="sell-calc-btn sell-calc-clear" onclick="sellCalcClear()">C</button>
-                        <button class="sell-calc-btn" onclick="sellCalcPress('0')">0</button>
-                        <button class="sell-calc-btn sell-calc-back" onclick="sellCalcBackspace()">⌫</button>
-                      </div>
-                    </div>
-                    <input type="hidden" id="sell-price-input" value="100" />
-                  </div>
-                  <div class="trade-prop-actions">
-                    <button
-                      class="btn btn-glow"
-                      id="btn-sell-confirm"
-                      onclick="confirmSell()"
-                      disabled
-                    >
-                      Confirm Listing
-                    </button>
-                    <button
-                      class="btn btn-alt"
-                      id="btn-sell-reset"
-                      onclick="resetSellSelection()"
-                    >
-                      Reset
-                    </button>
-                  </div>
-                </div>
-
-              </div>
-
+              <!-- Collapsed reopen control: shown in the gadget's OWN slot when the
+                   gadget is closed (via its ×), so it reopens in place — not Toggles. -->
               <button
-                class="btn btn-bomb"
-                id="btn-buy-bomb"
-                onclick="buyBomb()"
+                type="button"
+                class="banana-gadget-open"
+                id="banana-gadget-open"
+                onclick="toggleBananaGadget(true)"
                 style="display: none"
+                title="Open Banana Gadget"
               >
-                🍍 Buy Pineapple Bomb 666🍌
+                🍌 Banana Gadget
               </button>
-              <button
-                class="btn btn-bomb"
-                id="btn-place-bomb"
-                onclick="openBombPlacement()"
-                style="display: none"
-              >
-                🍍 Place Pineapple Bomb
-              </button>
-              <!-- Sell button — placed below the bomb buttons -->
-              <button
-                class="btn btn-alt"
-                id="btn-sell"
-                onclick="openSellPanel()"
-              >
-                🏷️ Sell
-              </button>
-
               <button
                 type="button"
                 class="btn btn-toggles"
@@ -2250,6 +1856,20 @@
                   <input type="checkbox" id="chk-auto-roll" />
                   Auto Roll
                 </label>
+                <label
+                  class="auto-toggle"
+                  title="Automatically Continue (walk your roll) after you roll"
+                >
+                  <input type="checkbox" id="chk-auto-continue" />
+                  Auto Continue
+                </label>
+                <label
+                  class="auto-toggle"
+                  title="Automatically predict No on opponents' rolls"
+                >
+                  <input type="checkbox" id="chk-auto-no" />
+                  Auto No
+                </label>
                 <label class="toggle-reveal"
                   ><input
                     type="checkbox"
@@ -2264,17 +1884,10 @@
                 </label>
                 <label
                   class="toggle-reveal"
-                  title="Auto accept in Price It & item auctions"
+                  title="Auto accept in Price It auctions"
                 >
                   <input type="checkbox" id="chk-auto-accept" />
                   Auto Accept
-                </label>
-                <label
-                  class="toggle-reveal"
-                  title="Auto fold when it's your turn in poker"
-                >
-                  <input type="checkbox" id="chk-auto-fold" />
-                  Auto Fold
                 </label>
                 <label
                   class="toggle-reveal"
@@ -2420,9 +2033,17 @@
     <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@twemoji/api@15.1.0/dist/twemoji.min.js"></script>
     <script src="toast.js?v=1"></script>
-    <script src="board.js?v=3"></script>
-    <script src="auth.js?v=2"></script>
-    <script src="game.js?v=4"></script>
+    <script src="board.js?v=11"></script>
+    <script src="auth.js?v=3"></script>
+    <!-- game.js split into sequential modules (load order matters) -->
+    <script src="game-core.js?v=2"></script>
+    <script src="game-socket.js?v=6"></script>
+    <script src="game-lobby.js?v=3"></script>
+    <script src="game-screen.js?v=14"></script>
+    <script src="game-poker.js?v=3"></script>
+    <script src="game-items.js?v=6"></script>
+    <script src="game-init.js?v=3"></script>
+    <script src="game-tutorial.js?v=4"></script>
     <script src="twemoji-init.js?v=1"></script>
   </body>
 </html>

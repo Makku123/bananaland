@@ -29,7 +29,7 @@ done
 
 echo ""
 echo "Checking frontend files..."
-frontend_files=("frontend/index.html" "frontend/styles.css" "frontend/game.js" "frontend/board.js")
+frontend_files=("frontend/index.html" "frontend/styles.css" "frontend/board.js" "frontend/game-core.js" "frontend/game-socket.js" "frontend/game-lobby.js" "frontend/game-screen.js" "frontend/game-poker.js" "frontend/game-items.js" "frontend/game-init.js" "frontend/game-tutorial.js")
 for file in "${frontend_files[@]}"; do
     if [ -f "$file" ]; then
         echo "✓ $file"

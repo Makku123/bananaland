@@ -193,7 +193,7 @@ function generateCode() {
   return String(Math.floor(100000 + Math.random() * 900000));
 }
 
-// Send personalized game state to each player (for poker card privacy)
+// Send personalized game state to each player (for spell-card privacy)
 function emitGameUpdate(gameId, game) {
   const room = io.sockets.adapter.rooms.get(gameId);
   if (!room) return;
@@ -229,15 +229,9 @@ io.on("connection", (socket) => {
       data.maxPlayers,
       data.startingMoney,
       data.gameMode,
-      data.bombMode,
+      undefined, // bombMode removed (bombs no longer exist)
       data.monkeyPoker,
       data.isPublic,
-      {
-        enabled: data.itemAuctionEnabled,
-        timerSec: data.itemAuctionTimer,
-        startValue: data.itemAuctionStartValue,
-      },
-      data.bombCost,
     );
     games.set(code, game);
     game.onUpdate = () => emitGameUpdate(code, game);
@@ -247,7 +241,7 @@ io.on("connection", (socket) => {
     // _initProperties run before the admin opens the lobby settings panel.
     if (data.superBananaPrice != null) {
       game.superBananaPrice = Math.min(
-        Math.max(Math.floor(data.superBananaPrice) || 777, 100),
+        Math.max(Math.floor(data.superBananaPrice) || 10000, 100),
         99999,
       );
     }
@@ -257,6 +251,11 @@ io.on("connection", (socket) => {
         60,
       );
     }
+    // Dodecahedron is ON by default; absent (older clients) keeps it on.
+    game.dodecahedron = data.dodecahedron !== false;
+    // Mega Mode is ON by default (MEGA TURTLE/RABBIT — 5× grow + path vacuum);
+    // absent (older clients) keeps it on. Only an explicit false opts into normal.
+    game.megaMode = data.megaMode !== false;
 
     const player = game.addPlayer(socket.id, data.playerName, data.clientId);
     if (!player || player.error)
@@ -385,6 +384,8 @@ io.on("connection", (socket) => {
         game.auction.respondStartTime = null;
         game.auction.silentDeadline = null;
         game.auction.silentStartTime = null;
+        game.auction.stepDeadline = null;
+        game.auction.stepStartTime = null;
       }
     } else if (!game.noAuctionTimer && wasOn && game.auction) {
       // Turning the timer back ON mid-auction: re-schedule the timer for
@@ -392,7 +393,11 @@ io.on("connection", (socket) => {
       // forever after a toggle-off / toggle-on, because the deadline that
       // got cleared above is never restored.
       const a = game.auction;
-      if (a.phase === "respond") {
+      if (a.teamFlow) {
+        // 2v2 sequential phases re-arm their own step timer (correct passive
+        // action + the configured farm timer).
+        game._2v2RearmStepTimer();
+      } else if (a.phase === "respond") {
         a.respondDeadline = Date.now() + 15000;
         a.respondStartTime = Date.now();
         game._auctionTimer = setTimeout(() => {
@@ -416,13 +421,29 @@ io.on("connection", (socket) => {
     emitGameUpdate(data.gameId, game);
   });
 
+  // ── Reveal All Tiles (DEBUG builds only) ─────────────────────
+  // A per-viewer fog bypass: when on, getState sends THIS player the unredacted
+  // board (incl. the hidden Super Banana). Gated by DEBUG_TOOLS so it can never be
+  // enabled in production — the frontend also hides the toggle there. Re-send just
+  // this socket's state so the (un)redacted board arrives immediately.
+  socket.on("set_reveal_all", (data) => {
+    if (!DEBUG_TOOLS) return;
+    const game = games.get(data && data.gameId);
+    if (!game) return;
+    const p = game.players.find((pl) => pl.id === socket.id);
+    if (!p) return;
+    p.revealAllView = !!(data && data.on);
+    io.to(socket.id).emit("game_update", game.getState(socket.id));
+  });
+
   // ── Start game ───────────────────────────────────────────────
   socket.on("start_game", (data) => {
     const game = games.get(data.gameId);
     if (!game) return;
     if (game.startGame(socket.id)) {
       emitGameUpdate(data.gameId, game);
-      // Auto-complete reveal after 5 seconds
+      // Auto-complete the reveal after a fixed 5s window (players inspect the board
+      // + their 7 starting runes; the dealt hand is final — no re-rolls).
       setTimeout(() => {
         if (game.state === "revealing") {
           game.completeReveal();
@@ -441,119 +462,121 @@ io.on("connection", (socket) => {
       // First-turn pick can land on the Super Banana; if the player can't
       // afford it they must hide it on a tile of their choice. Arm the AFK
       // fallback so the turn never hangs if they don't pick.
-      if (game.superBananaPending) {
-        // Only this exact pending may be auto-resolved (avoid a stale timer
-        // force-hiding a later, different Super Banana relocation).
-        const pendingRef = game.superBananaPending;
-        setTimeout(() => {
-          if (
-            game.superBananaPending === pendingRef &&
-            game.superBananaPending.awaitingPick
-          ) {
-            game.forceSuperBananaSwap();
-            emitGameUpdate(data.gameId, game);
-          }
-        }, 30000);
-      }
     }
   });
 
-  // ── Hide the Super Banana on a chosen tile ───────────────────
-  // When a player can't afford the Super Banana, they pick which hidden tile
-  // to hide it under (instead of a random swap). Only the landing player may
-  // pick; the swap completes immediately and the rainbow hint is set for them.
-  socket.on("pick_super_banana_swap", (data) => {
+  // ── Random starting tile (the player presses "Random") ───────
+  // Server picks a random tile that no other on-board player occupies, so the
+  // 2nd/3rd/4th picks never land on someone. Mirrors the Super Banana AFK
+  // fallback in case the random tile turns out to be the Super Banana.
+  socket.on("pick_start_tile_random", (data) => {
     const game = games.get(data.gameId);
     if (!game) return;
-    if (game.pickSuperBananaSwap(socket.id, data.position)) {
+    if (game.pickStartTileRandom(socket.id)) {
       emitGameUpdate(data.gameId, game);
     }
   });
 
-  // ── Magic Dice (replaces dice roll) ──────────────────────────
-  socket.on("use_magic_dice", (data) => {
+  // ── Use a Spell Card (plays card at index instead of rolling) ──
+  socket.on("use_roll_card", (data) => {
     const game = games.get(data.gameId);
     if (!game) return;
-    const result = game.useMagicDice(socket.id, data.steps);
-    if (result) {
-      emitGameUpdate(data.gameId, game);
-      if (game.superBananaPending) {
-        // Only this exact pending may be auto-resolved (avoid a stale timer
-        // force-hiding a later, different Super Banana relocation).
-        const pendingRef = game.superBananaPending;
-        setTimeout(() => {
-          if (
-            game.superBananaPending === pendingRef &&
-            game.superBananaPending.awaitingPick
-          ) {
-            game.forceSuperBananaSwap();
-            emitGameUpdate(data.gameId, game);
-          }
-        }, 30000);
-      }
-    }
-  });
-
-  // ── Arm a special item for your next turn ───────────────────────
-  socket.on("arm_ability", (data) => {
-    const game = games.get(data.gameId);
-    if (!game) return;
-    const ability = data && data.ability != null ? data.ability : null;
-    if (game.armAbility(socket.id, ability)) {
+    if (game.useRollCard(socket.id, data.index)) {
       emitGameUpdate(data.gameId, game);
     }
   });
 
-  // ── Use an ability card (refresh/swap/scout/teleport) ───────────────
-  socket.on("use_card", (data) => {
+  // ── Arm / disarm a spell card (pre-selection) ───────────────
+  // Off-turn convenience: pick a roll to play on your turn. Private to the
+  // owner; does NOT auto-play. Disarm any time.
+  socket.on("arm_roll_card", (data) => {
     const game = games.get(data.gameId);
     if (!game) return;
-    const result = game.useCard(socket.id, data.cardType, data);
-    if (result) {
+    if (game.armRollCard(socket.id, data && data.value)) {
       emitGameUpdate(data.gameId, game);
-      if (game.superBananaPending) {
-        // Only this exact pending may be auto-resolved (avoid a stale timer
-        // force-hiding a later, different Super Banana relocation).
-        const pendingRef = game.superBananaPending;
-        setTimeout(() => {
-          if (
-            game.superBananaPending === pendingRef &&
-            game.superBananaPending.awaitingPick
-          ) {
-            game.forceSuperBananaSwap();
-            emitGameUpdate(data.gameId, game);
-          }
-        }, 30000);
-      }
+    }
+  });
+  socket.on("disarm_roll_card", (data) => {
+    const game = games.get(data.gameId);
+    if (!game) return;
+    if (game.disarmRollCard(socket.id)) {
+      emitGameUpdate(data.gameId, game);
     }
   });
 
-  // ── Roll dice ────────────────────────────────────────────────
+  // ── +6 mode: while ON, playing a spell card of value N rolls N+6 ─────
+  socket.on("set_plus_six", (data) => {
+    const game = games.get(data.gameId);
+    if (!game) return;
+    if (game.setPlusSixRolls(socket.id, !!(data && data.on))) {
+      emitGameUpdate(data.gameId, game);
+    }
+  });
+
+  // ── Post-roll ability: teleport / switch pets / steady walk ──────
+  // After rolling, the active player STAKES cards on ONE ability. The choice is
+  // held secret until the Predict window resolves (see submit_prediction).
+  socket.on("use_post_roll_ability", (data) => {
+    const game = games.get(data.gameId);
+    if (!game) return;
+    if (game.usePostRollAbility(socket.id, data && data.ability, data || {})) {
+      emitGameUpdate(data.gameId, game);
+    }
+  });
+
+  // ── Pass the post-roll ability window (walk the plain roll) ──────
+  socket.on("pass_post_roll", (data) => {
+    const game = games.get(data.gameId);
+    if (!game) return;
+    if (game.passPostRoll(socket.id)) {
+      emitGameUpdate(data.gameId, game);
+    }
+  });
+
+  // ── Predict Ability: an opponent guesses yes/no whether the active player
+  // did something special this turn. Correct "yes" → draw a card; wrong "yes"
+  // → owe a 2-card chosen discard. Replaces the old armed-cancel mechanic.
+  socket.on("submit_prediction", (data) => {
+    const game = games.get(data.gameId);
+    if (!game) return;
+    if (game.submitPrediction(socket.id, !!(data && data.predict))) {
+      emitGameUpdate(data.gameId, game);
+    }
+  });
+
+  // ── Roll dice (always 2d6) ───────────────────────────────────
   socket.on("roll_dice", (data) => {
     const game = games.get(data.gameId);
     if (!game) return;
-    const dc = data.diceCount;
-    const result = game.rollDice(
-      socket.id,
-      dc === 1 || dc === 2 || dc === 3 ? dc : undefined,
-    );
-    if (result) {
+    if (game.rollDice(socket.id)) {
       emitGameUpdate(data.gameId, game);
-      if (game.superBananaPending) {
-        // Only this exact pending may be auto-resolved (avoid a stale timer
-        // force-hiding a later, different Super Banana relocation).
-        const pendingRef = game.superBananaPending;
-        setTimeout(() => {
-          if (
-            game.superBananaPending === pendingRef &&
-            game.superBananaPending.awaitingPick
-          ) {
-            game.forceSuperBananaSwap();
-            emitGameUpdate(data.gameId, game);
-          }
-        }, 30000);
-      }
     }
+  });
+
+  // ── Teleport to one of your own farms (POST-ROLL ability) ───
+  // Stakes two spell cards (escrowed). Delegates to usePostRollAbility, which
+  // opens the Predict window; an uncaught teleport refunds 1 of the 2 (the
+  // teleport always costs 1 as a nerf), a caught one consumes both.
+  socket.on("teleport_to_farm", (data) => {
+    const game = games.get(data.gameId);
+    if (!game) return;
+    if (game.teleportToFarm(socket.id, data && data.position, data && data.discardIndices)) {
+      emitGameUpdate(data.gameId, game);
+    }
+  });
+
+  // ── Resolve a CHOSEN missed-cancel discard ───────────────────
+  // The caster's cancel missed and they hold >2 cards, so they pick which two to
+  // discard. data.indices are indices into their own hand. Caster-scoped + secret
+  // (per-socket getState redaction keeps the target unaware).
+  socket.on("cancel_discard_pick", (data) => {
+    const game = games.get(data.gameId);
+    if (!game) return;
+    // Always refresh the caster: a successful pick clears the debt; a rejected or
+    // stale pick (e.g. the owed count grew from a 2nd missed cancel) re-syncs their
+    // client so the picker re-opens with the correct count instead of latching.
+    game.resolveCancelMissDiscard(socket.id, data && data.indices);
+    emitGameUpdate(data.gameId, game);
   });
 
   if (DEBUG_TOOLS) {
@@ -564,20 +587,6 @@ io.on("connection", (socket) => {
       const result = game.debugMove(socket.id, data.position);
       if (result) {
         emitGameUpdate(data.gameId, game);
-        if (game.superBananaPending) {
-          // Only this exact pending may be auto-resolved (avoid a stale timer
-          // force-hiding a later, different Super Banana relocation).
-          const pendingRef = game.superBananaPending;
-          setTimeout(() => {
-            if (
-              game.superBananaPending === pendingRef &&
-              game.superBananaPending.awaitingPick
-            ) {
-              game.forceSuperBananaSwap();
-              emitGameUpdate(data.gameId, game);
-            }
-          }, 30000);
-        }
       }
     });
 
@@ -646,42 +655,6 @@ io.on("connection", (socket) => {
     }
   });
 
-  // ── Item auction: starter names a price for the mystery item ──
-  socket.on("pitch_item_price", (data) => {
-    const game = games.get(data.gameId);
-    if (!game) return;
-    if (game.pitchItemPrice(socket.id, data.amount)) {
-      emitGameUpdate(data.gameId, game);
-    }
-  });
-
-  // ── Item auction: accept/reject the priced mystery item ──────
-  socket.on("respond_item_auction", (data) => {
-    const game = games.get(data.gameId);
-    if (!game) return;
-    if (game.respondItemAuction(socket.id, data.accept)) {
-      emitGameUpdate(data.gameId, game);
-    }
-  });
-
-  // ── Item auction: submit silent top-up (tie-breaker) ─────────
-  socket.on("submit_item_bid", (data) => {
-    const game = games.get(data.gameId);
-    if (!game) return;
-    if (game.submitItemBid(socket.id, data.amount)) {
-      emitGameUpdate(data.gameId, game);
-    }
-  });
-
-  // ── End turn ─────────────────────────────────────────────────
-  socket.on("end_turn", (data) => {
-    const game = games.get(data.gameId);
-    if (!game) return;
-    if (game.endTurn(socket.id)) {
-      emitGameUpdate(data.gameId, game);
-    }
-  });
-
   // ── Animations-complete signal from the lander ────────────────
   // Emitted by the active player's client once every visible animation for
   // the turn has settled (walk, dice spin, pre-walk grow chain pulse, post-
@@ -693,85 +666,6 @@ io.on("connection", (socket) => {
     if (!game) return;
     const turn = typeof data.turn === "number" ? data.turn : null;
     if (game.notifyAnimsComplete(socket.id, turn)) {
-      emitGameUpdate(data.gameId, game);
-    }
-  });
-
-  // ── Poker action ──────────────────────────────────────────────
-  socket.on("poker_action", (data) => {
-    const game = games.get(data.gameId);
-    if (!game) return;
-    if (game.pokerAction(socket.id, data.action, data.amount)) {
-      emitGameUpdate(data.gameId, game);
-    }
-  });
-
-  // ── Poker dismiss ────────────────────────────────────────────
-  socket.on("poker_dismiss", (data) => {
-    const game = games.get(data.gameId);
-    if (!game) return;
-    if (game.pokerDismiss(socket.id)) {
-      emitGameUpdate(data.gameId, game);
-    }
-  });
-
-  // ── Trade bananas ────────────────────────────────────────────
-  socket.on("trade_bananas", (data) => {
-    const game = games.get(data.gameId);
-    if (!game) return;
-    if (game.tradeBananas(socket.id, data.recipientId, data.amount)) {
-      emitGameUpdate(data.gameId, game);
-    }
-  });
-
-  // ── Buy bomb ─────────────────────────────────────────────────
-  socket.on("buy_bomb", (data) => {
-    const game = games.get(data.gameId);
-    if (!game) return;
-    if (game.buyBomb(socket.id)) {
-      emitGameUpdate(data.gameId, game);
-    }
-  });
-
-  // ── Place bomb ───────────────────────────────────────────────
-  socket.on("place_bomb", (data) => {
-    const game = games.get(data.gameId);
-    if (!game) return;
-    if (game.placeBomb(socket.id, data.position)) {
-      emitGameUpdate(data.gameId, game);
-    }
-  });
-
-  // ── Sell property (list for sale) ─────────────────────────────
-  socket.on("sell_property", (data) => {
-    const game = games.get(data.gameId);
-    if (!game) return;
-    // Sell feature is disabled in classic 2-4 mode — drop bypass attempts.
-    if (game.gameMode === "classic") return;
-    if (game.sellProperty(socket.id, data.propPos, data.price)) {
-      emitGameUpdate(data.gameId, game);
-    }
-  });
-
-  // ── Buy a listed sale ───────────────────────────────────────
-  socket.on("buy_sale", (data) => {
-    const game = games.get(data.gameId);
-    if (!game) return;
-    const result = game.buySale(socket.id, data.saleId);
-    if (result) {
-      io.to(data.gameId).emit("sale_completed", {
-        propPos: result.propPos,
-        buyerColor: result.buyerColor,
-      });
-      emitGameUpdate(data.gameId, game);
-    }
-  });
-
-  // ── Cancel a sale listing ───────────────────────────────────
-  socket.on("cancel_sale", (data) => {
-    const game = games.get(data.gameId);
-    if (!game) return;
-    if (game.cancelSale(socket.id, data.saleId)) {
       emitGameUpdate(data.gameId, game);
     }
   });
@@ -816,8 +710,8 @@ io.on("connection", (socket) => {
     const ownedFarms = (player.properties || []).length;
     const isWinner =
       gme.state === "finished" &&
-      (gme.bombWinner === sid ||
-        (!gme.bombWinner &&
+      (gme.lastStandingWinner === sid ||
+        (!gme.lastStandingWinner &&
           player.properties.some((pos) => {
             const prop = gme.properties.get(pos);
             return prop && prop.group === "superBanana" && prop.owner === sid;

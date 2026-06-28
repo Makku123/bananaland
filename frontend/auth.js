@@ -172,11 +172,8 @@ function updateMenuForAuth() {
   }
 }
 
-function escapeHtml(str) {
-  const div = document.createElement("div");
-  div.textContent = str;
-  return div.innerHTML;
-}
+// escapeHtml lives in game-items.js (shared global scope; that version also
+// escapes quotes, which the attribute interpolations above rely on).
 
 // ── Profile screen ─────────────────────────────────────────────────
 

@@ -46,7 +46,7 @@ list.
 Roll the dice and move. Land on an unowned farm and it goes to **auction**.
 Grow tiles fire **grow chains** that put bananas on farms; collect your own
 piles by crossing your farms, steal others' by squatting and leaving. Buy the
-**Super Banana** (777🍌 default) to win. The in-game tutorial and the **How to
+**Super Banana** (1600🍌 default) to win. The in-game tutorial and the **How to
 Play** button cover the rest, and [rules.md](rules.md) has every detail.
 
 ## Troubleshooting

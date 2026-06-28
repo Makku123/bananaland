@@ -59,11 +59,18 @@ backend/
   email.js       SMTP mail for verification and password reset
   test_game.js   Game-logic test suite (node test_game.js)
 frontend/
-  index.html     Single-page UI (lobby, board, tutorial, help)
-  game.js        Client game flow and socket handling
-  board.js       Board rendering
-  auth.js        Login / signup UI
-  styles.css     All styling
+  index.html       Single-page UI (lobby, board, tutorial, help)
+  game-core.js     Client state, sound, screen helpers
+  game-socket.js   Socket setup, routing, reveal phase
+  game-lobby.js    Lobby UI + dice/grow/money animations
+  game-screen.js   Game screen render, owner panel, actions
+  game-poker.js    Poker UI
+  game-items.js    Special items, ability targeting, item auction
+  game-init.js     Init wiring, emoji reactions, board preview
+  game-tutorial.js Tutorial mode
+  board.js         Board rendering
+  auth.js          Login / signup UI
+  styles.css       All styling
 rules.md         Rules reference — the source of truth for game behavior
 tiles.txt        Board tile listing (initial pre-shuffle layout)
 ```
