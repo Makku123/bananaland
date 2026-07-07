@@ -141,223 +141,6 @@ function togglePathPreview(on) {
   _renderBoardNow();
 }
 
-// GROW-MATCH hop animation: when a rolled number (1..6) matches a REVEALED GROW,
-// the player hops (base - rolled) instead of the rolled number — base is 7 for a
-// dice/d12 roll, 13 for a played spell card. Pop a brief centered overlay showing
-// "base - rolled = hop" and the new walk number, then auto-remove it. Built
-// ASCII-only (decorative glyphs live in CSS) and appended to <body> with fixed
-// positioning over the board, so it survives renderBoard's child-purge and never
-// touches the fragile token-walk timers.
-function _showGrowMatchHop(rolled, hop, base, theme) {
-  document.querySelectorAll(".grow-match-hop").forEach((n) => n.remove());
-  const el = document.createElement("div");
-  // theme: undefined = the gold grow-match overlay (default); "turtle" = a played
-  // card BELOW 7 (turtle mode, walks 7 - N); "rabbit" = a played card ABOVE 7
-  // (rabbit / +6 mode, walks its full value N + 6). The 🐢/🐇 mascot + mode glyphs
-  // are injected by CSS per theme class, so keep this markup ASCII-only.
-  const isRabbit = theme === "rabbit";
-  el.className = "grow-match-hop" + (theme ? " gmh-" + theme : "");
-  const title = isRabbit ? "ABOVE 7!" : "BELOW 7!";
-  const op = isRabbit ? "+" : "-";
-  const verb = isRabbit ? "leaping" : "walking";
-  // Mode label: MEGA Turtle/Rabbit only when the game is in Mega Mode; otherwise
-  // plain Turtle/Rabbit. (The no-theme default-roll overlay shows neither.)
-  const mega = !!(typeof gs !== "undefined" && gs && gs.megaMode);
-  const modeLabel =
-    theme === "turtle" ? (mega ? "Mega Turtle" : "Turtle")
-    : isRabbit ? (mega ? "Mega Rabbit" : "Rabbit")
-    : "";
-  // "Mega" effect blurb — ONLY in Mega Mode (normal turtle/rabbit have no special
-  // payoff to advertise): turtle GROWS 5×, rabbit VACUUMS every pile on its path.
-  const megaEffect = !mega
-    ? ""
-    : theme === "turtle" ? "🌱 Grows piles 5×!"
-    : isRabbit ? "🧹 Steals every pile on the path!"
-    : "";
-  el.innerHTML =
-    '<div class="gmh-flash"></div>' +
-    (theme ? '<span class="gmh-critter" aria-hidden="true"></span>' : "") +
-    (modeLabel ? '<div class="gmh-mode">' + modeLabel + '</div>' : "") +
-    '<div class="gmh-title">' + title + '</div>' +
-    // A turtle right UNDER the "BELOW 7!" title on the default-roll (no-theme)
-    // overlay — that overlay is always the below-7 / slow case.
-    (!theme ? '<div class="gmh-undertitle" aria-hidden="true">🐢</div>' : "") +
-    '<div class="gmh-eq">' +
-    '<span class="gmh-n gmh-seven">' + (base || 7) + '</span>' +
-    '<span class="gmh-op">' + op + '</span>' +
-    '<span class="gmh-n gmh-rolled">' + rolled + '</span>' +
-    '<span class="gmh-arrow"></span>' +
-    '<span class="gmh-hop-wrap"><span class="gmh-n gmh-hop">' + hop + '</span></span>' +
-    '</div>' +
-    '<div class="gmh-walk">' + verb + ' <b>' + hop + '</b></div>' +
-    (megaEffect ? '<div class="gmh-effect">' + megaEffect + '</div>' : "");
-  // Pop the notification in the MIDDLE of the board (the play area) — NOT near the
-  // dice/roll button. Append first so offsetWidth/Height report the panel's natural
-  // size (those ignore the entrance scale transform), then centre it on the board
-  // and clamp into the viewport.
-  document.body.appendChild(el);
-  const board = document.getElementById("board");
-  const r = board && board.getBoundingClientRect();
-  if (r && r.width) {
-    const halfW = el.offsetWidth / 2;
-    const halfH = el.offsetHeight / 2;
-    let cx = r.left + r.width / 2;
-    let cy = r.top + r.height / 2;
-    cx = Math.max(halfW + 8, Math.min(window.innerWidth - halfW - 8, cx));
-    cy = Math.max(halfH + 8, Math.min(window.innerHeight - halfH - 8, cy));
-    el.style.left = cx + "px";
-    el.style.top = cy + "px";
-  } else {
-    el.style.left = "50%";
-    el.style.top = "50%";
-  }
-  el.addEventListener("animationend", (e) => {
-    // Remove ONLY when the panel's own MASTER animation finishes (growMatchHop,
-    // or gmhFadeRM under reduced-motion). The decorative ::before (shockwave
-    // ~0.8s) and ::after (shimmer ~1.3s) are pseudo-element animations whose
-    // animationend ALSO reports e.target === el — without keying on the master
-    // animation NAME, the earliest of them yanked the panel after ~0.8s, so it
-    // only blinked in and out instead of holding for its full ~4.5s.
-    if (e.target === el && (e.animationName === "growMatchHop" || e.animationName === "gmhFadeRM")) el.remove();
-  });
-  // Safety removal in case animationend doesn't fire (e.g. reduced motion).
-  // Kept just above the 4500ms display animation so it never cuts it short.
-  setTimeout(() => { if (el.parentNode) el.remove(); }, 4900);
-}
-
-// ── Win-hint ──────────────────────────────────────────────────────
-// Tell the viewer they have a GUARANTEED win available: the Super Banana is
-// revealed + unowned, they can afford it, they hold a Spell Card that lands
-// EXACTLY on it (you must LAND to buy — crossing doesn't), and NOBODY can cancel
-// the play (every player holds < 3 runes, the cancel minimum). Names the rune to
-// play. Computed client-side each frame.
-function updateWinHint() {
-  const box = document.getElementById("win-hint");
-  if (!box) return;
-  const hide = () => {
-    box.style.display = "none";
-  };
-  if (!gs || gs.state !== "playing" || !gs.boardLayout || !myId) return hide();
-  const me = _gsPlayerMap[myId];
-  if (!me || me.bankrupt || me.ghost) return hide();
-  const myRunes = Array.isArray(me.rollCards) ? me.rollCards : [];
-  if (!myRunes.length) return hide();
-
-  // A rune-play can only be stopped by a Cancel, and only a LIVE, non-teammate
-  // opponent can cast one — and only if they hold >= 3 runes. Count only those
-  // players (a bankrupt/ghost player, a teammate, or yourself can never cancel
-  // your play, so their rune count is irrelevant). If none can cancel, the play
-  // is safe. (Note: a cancel pre-cast on a prior turn is redacted from the
-  // client, so this can't catch that rare case — see the win-hint comment.)
-  const isTeams = gs.gameMode === "2v2" || gs.gameMode === "3v3";
-  const teamOf = (pid) => {
-    const t = gs.teams;
-    if (!t) return null;
-    if (t.A && t.A.includes(pid)) return "A";
-    if (t.B && t.B.includes(pid)) return "B";
-    return null;
-  };
-  const myTeam = isTeams ? teamOf(myId) : null;
-  const runeCount = (p) =>
-    typeof p.rollCardCount === "number"
-      ? p.rollCardCount
-      : Array.isArray(p.rollCards)
-        ? p.rollCards.length
-        : 0;
-  const canCancelMe = (gs.players || []).filter(
-    (p) =>
-      p.id !== myId &&
-      !p.bankrupt &&
-      !p.ghost &&
-      (!isTeams || teamOf(p.id) !== myTeam),
-  );
-  if (!canCancelMe.every((p) => runeCount(p) < 3)) return hide();
-
-  // Find the revealed, unowned Super Banana.
-  const boardLen = gs.boardLayout.length || 48;
-  let sbPos = -1;
-  for (let i = 0; i < gs.boardLayout.length; i++) {
-    const t = gs.boardLayout[i];
-    if (t && t.group === "superBanana") {
-      sbPos = i;
-      break;
-    }
-  }
-  if (sbPos < 0) return hide(); // not revealed to me yet
-  const sbProp = _gsPropMap[sbPos];
-  if (sbProp && sbProp.owner) return hide(); // already bought
-  // Use the ACTUAL charged price — the properties-map value (= the configured
-  // superBananaPrice). boardLayout's SB price is a stale hardcoded number and
-  // must NOT be used for the affordability gate.
-  const sbPrice =
-    sbProp && typeof sbProp.price === "number"
-      ? sbProp.price
-      : gs.superBananaPrice || 0;
-  if ((me.money || 0) < sbPrice) return hide(); // can't afford it
-
-  // Steps to land EXACTLY on the SB (must LAND, not cross). A rune walks 7 - value,
-  // so reachable distances are 1..6 (rune 6 → 1 step … rune 1 → 6 steps).
-  const needed = (((sbPos - me.position) % boardLen) + boardLen) % boardLen;
-  if (needed < 1 || needed > 6) return hide();
-
-  // Which held rune lands there? It walks 7 - value, so to walk `needed` tiles you
-  // play the rune of value 7 - needed (needed is 1..6, so this is 6..1).
-  const winValue = 7 - needed;
-  if (!myRunes.includes(winValue)) return hide();
-
-  const canPlayNow =
-    gs.currentPlayer && gs.currentPlayer.id === myId && !gs.diceRolled;
-  const when = canPlayNow ? "now" : "on your next turn";
-  const body = document.getElementById("win-hint-body");
-  if (body) {
-    body.innerHTML =
-      `Play your <b>${winValue}</b> Spell Card ${when} to land on the ⭐ Super Banana and <b>win the game</b>!`;
-  }
-  box.style.display = "";
-}
-
-// ── Rune session modal (removed) ──────────────────────────────────
-// There is no interactive rune session anymore — spell-card draws AND the
-// missed-cancel penalty (you simply lose two random cards) are both immediate.
-// gs.redraw is always null; this just keeps the overlay hidden.
-function updateRedrawModal() {
-  const ov = document.getElementById("redraw-overlay");
-  if (ov) ov.style.display = "none";
-}
-
-// Spell Cards summary for a player's panel entry. Dice are CONCEALED
-// (private to the owner) — for other players the backend ships only
-// rollCardCount, so we never show the numbers. We show a single face-down
-// mini-die stamped with the count.
-function _rollCardPanelHTML(p) {
-  const concealedCount =
-    typeof p.rollCardCount === "number"
-      ? p.rollCardCount
-      : Array.isArray(p.rollCards)
-        ? p.rollCards.length
-        : 0;
-  if (concealedCount === 0) return "";
-  const noun = concealedCount === 1 ? "Spell Card" : "Spell Cards";
-  // The fancy hover tooltip is a real child (.rune-tip "spell plaque"): an
-  // ornamental header + big count + flavor line, styled in styles.css. Shown on
-  // .pstat-cards:hover; anchored below-right so the left panel's overflow can't
-  // clip it. Public count (own + opponents), so the flavor stays player-neutral.
-  return (
-    `<span class="pstat-cards">` +
-    `<span class="mini-roll-card mini-roll-card-back">` +
-    `<span class="mini-roll-card-back-mark">🔮</span>` +
-    `<span class="mini-roll-card-back-count">${concealedCount}</span>` +
-    `</span>` +
-    `<span class="rune-tip-notch"></span>` +
-    `<span class="rune-tip">` +
-    `<span class="rune-tip-head">${noun}</span>` +
-    `<span class="rune-tip-body">` +
-    `<span class="rune-tip-count">${concealedCount}</span>` +
-    `<span class="rune-tip-flavor">concealed in hand</span>` +
-    `</span></span></span>`
-  );
-}
-
 // Cute speed indicator beside the dice: 🐢 (turtle) for a LOW total (≤6, i.e.
 // below 7), 🐰 (rabbit) for a HIGH one (7+). Used for the 2d6 sum AND the
 // dodecahedron (d12) value. Shows for EVERY player's roll (the gate is
@@ -371,13 +154,22 @@ function _showDiceAnimal(el, sum, pop) {
   el.classList.add("show");
 }
 
-// ── Post-roll abilities + Predict bluff UI ──────────────────────────────────
-// The backend now holds a turn after the roll: turnPhase goes 'ability' →
-// 'predicting' → 'resolved', and diceRolled stays FALSE until commit (so the
-// spin/walk and end-turn are already held by their diceRolled gates). This
-// renders the ACTIVE player's ability choices during 'ability', and every
-// OPPONENT's yes/no Predict prompt during 'predicting'. Panels are built once
-// and shown/hidden per frame. Handlers below emit the matching sockets.
+// The current pendingAction's PUBLIC claim once submitted — {steps, mode} or
+// null. The claim (and its derived turtle/rabbit mode) is the only number a
+// cup roll ever publishes; every viewer's pendingAction carries it.
+function pendingClaimOf(gs) {
+  const pa = gs && gs.pendingAction;
+  return pa && pa.claim != null
+    ? { steps: pa.claim, mode: pa.mode || (pa.claim <= 6 ? "turtle" : "rabbit") }
+    : null;
+}
+
+// ── Claim screen (roller) + Accuse modal (opponents) — Credit Score UI ─────
+// Liar's-dice turn: the roller rolls HIDDEN (cup tier), then during turnPhase
+// 'claiming' picks the steps they ANNOUNCE (1..12) — the token walks the CLAIM.
+// After the walk, turnPhase 'accusing' lets every opponent holding >=1 credit
+// vote Accuse yes/no on the claim. Panels are (re)built per state key and
+// shown/hidden per frame; handlers emit submit_claim / submit_accuse.
 function _renderPostRollUI(gs, me, isMyTurn) {
   const rollBtn = document.getElementById("btn-roll");
   const host = rollBtn && rollBtn.parentNode;
@@ -398,141 +190,105 @@ function _renderPostRollUI(gs, me, isMyTurn) {
     predict.style.display = "none";
     host.appendChild(predict);
   }
-  const myCards = typeof me.rollCardCount === "number" ? me.rollCardCount
-    : Array.isArray(me.rollCards) ? me.rollCards.length : 0;
 
-  // (a) ACTIVE PLAYER — the ability box. ALWAYS visible during play (a fixed
-  // square box with the 3 abilities + Walk in a 2x2 grid); the buttons only become
-  // USABLE after you roll (the post-roll 'ability' window). No pre-roll arming.
-  const inPlay = gs.state === "playing" && me && !me.bankrupt && !me.ghost && !me.startPickPending;
-  if (inPlay) {
-    if (panel.dataset.built !== "1") {
-      panel.dataset.built = "1";
+  // (a) ROLLER — the CLAIM screen, up only during their own claiming window
+  // (the walk + accuse window need the board visible, so no modal after commit).
+  // The per-viewer pendingAction ships rolledTotal only to the roller (or to
+  // everyone when the roll is public-tier), so `truth` is always present here.
+  const pa = gs.pendingAction;
+  const claiming =
+    isMyTurn && gs.turnPhase === "claiming" && gs.state === "playing" &&
+    pa && pa.playerId === myId && !pa.committed &&
+    me && !me.bankrupt && !me.ghost && !me.startPickPending;
+  if (claiming) {
+    const truth = pa.rolledTotal;
+    const cupPublic = !!pa.cupPublic;
+    // Alternative walks (Random / pick-a-tile / any non-true claim): free under
+    // the cup. The cup is only lost at STRICTLY ZERO credit (public tier), and
+    // at 0 the exact roll is the only move — plus the 7→1 Go-1, free in EVERY
+    // tier, matching submitClaim.
+    const altOk = !cupPublic;
+    const key = "claim:" + pa.turn + ":" + truth + ":" + (cupPublic ? "p" : "c");
+    if (panel.dataset.key !== key) {
+      panel.dataset.key = key;
       panel.innerHTML =
-        '<div class="prp-title" id="prp-title"></div>' +
-        '<div class="prp-grid">' +
-          '<button class="btn prp-btn" id="prp-walk" onclick="prPass()"></button>' +
-          '<button class="btn prp-btn" id="prp-switch" onclick="prSwitch()"></button>' +
-          '<button class="btn prp-btn" id="prp-steady" onclick="prSteadyOpen()"></button>' +
-          '<button class="btn prp-btn" id="prp-teleport" onclick="prTeleportOpen()"></button>' +
-          '<button class="btn prp-btn prp-mega" id="prp-mega-match" onclick="prMatchingMega()"></button>' +
-          '<button class="btn prp-btn prp-mega" id="prp-mega-alt" onclick="prAlternativeMega()"></button>' +
-        '</div>' +
-        '<div class="prp-sub" id="prp-sub"></div>' +
+        (cupPublic
+          ? '<div class="prp-public-banner">🔓 0 credit — your roll is public</div>'
+          : "") +
+        '<div class="prp-title" id="prp-title">You rolled <b>' + truth + "</b> — pick your steps</div>" +
+        '<button class="btn prp-btn prp-continue" id="prp-walk" onclick="prClaim(null)">➡️ Continue' +
+          '<span class="prp-note">walk ' + truth + "</span></button>" +
+        '<div class="prp-row">' +
+          (truth === 7
+            ? '<button class="btn prp-btn prp-go1" id="prp-go1" onclick="prClaim(1)">🐢 Go 1 step<span class="prp-note">free on a 7</span></button>'
+            : "") +
+          '<button class="btn prp-btn prp-random" id="prp-random" onclick="prClaimRandom()"' +
+            (altOk ? "" : " disabled") + ">🎲 Random" +
+            '<span class="prp-note">claim 1–12</span></button>' +
+        "</div>" +
+        '<div class="prp-sub" id="prp-sub">' +
+          (altOk
+            ? "…or tap a glowing tile (≤12 ahead) to walk that far"
+            : "0 💳 — you must walk your exact roll" + (truth === 7 ? " (or the free Go 1)" : "")) +
+        "</div>" +
         '<div class="prp-timer" id="prp-rtimer"></div>';
     }
-    const abilityPhase = isMyTurn && gs.turnPhase === "ability";
-    const dice = Array.isArray(gs.dice) ? gs.dice : [];
-    const value = dice.reduce((a, b) => a + b, 0);
-    const ownFarms = (gs.properties || []).filter((p) => p.owner === myId && p.group === "farm");
-    const swBtn = panel.querySelector("#prp-switch");
-    const stBtn = panel.querySelector("#prp-steady");
-    const tpBtn = panel.querySelector("#prp-teleport");
-    const wkBtn = panel.querySelector("#prp-walk");
-    const mmBtn = panel.querySelector("#prp-mega-match");
-    const maBtn = panel.querySelector("#prp-mega-alt");
-    // The two MEGA buttons exist only in Mega Mode (→ a 2×3 grid; otherwise 2×2).
-    const megaOn = !!gs.megaMode;
-    mmBtn.style.display = megaOn ? "" : "none";
-    maBtn.style.display = megaOn ? "" : "none";
-    if (abilityPhase) {
-      const switchTo = value < 7 ? value + 6 : value - 6;
-      const switchWalk = switchTo < 7 ? 7 - switchTo : switchTo;
-      const walk = value < 7 ? 7 - value : value;
-      panel.querySelector("#prp-title").innerHTML = "You rolled <b>" + value + "</b> — use an ability?";
-      wkBtn.textContent = "➡️ Continue (" + walk + ")";
-      swBtn.textContent = "🔀 Switch → " + switchTo + " (walk " + switchWalk + ")";
-      stBtn.textContent = "⚖️ Weighted Dice (1)";
-      tpBtn.textContent = "🌿 Vine Swing (1)";
-      wkBtn.disabled = false;
-      swBtn.disabled = myCards < 1;
-      stBtn.disabled = myCards < 1;
-      tpBtn.disabled = myCards < 1 || ownFarms.length === 0;
-      // MEGA enable mirrors the backend gate: MATCHING needs the roll to FIRE a grow
-      // AND a held card equal to that grow's number (→ redraw); ALTERNATIVE needs any
-      // NON-matching card (every card counts when no grow fires) → no redraw.
-      const handVals = Array.isArray(me.rollCards) ? me.rollCards : [];
-      const firesGrow = _rollFiresGrow(value);
-      const hasMatch = firesGrow && handVals.includes(value);
-      const hasAlt = handVals.some((cv) => !(firesGrow && cv === value));
-      mmBtn.textContent = "⚡ Matching Mega";
-      maBtn.textContent = "⚡ Alternative Mega";
-      mmBtn.disabled = !megaOn || !hasMatch;
-      maBtn.disabled = !megaOn || !hasAlt;
-    } else {
-      const waiting = isMyTurn && gs.turnPhase === "predicting";
-      panel.querySelector("#prp-title").textContent = waiting
-        ? "⏳ Opponents are predicting…"
-        : isMyTurn
-          ? "Abilities — roll first to use"
-          : "Abilities (use after you roll)";
-      wkBtn.textContent = "➡️ Continue";
-      swBtn.textContent = "🔀 Switch Pets (1)";
-      stBtn.textContent = "⚖️ Weighted Dice (1)";
-      tpBtn.textContent = "🌿 Vine Swing (1)";
-      mmBtn.textContent = "⚡ Matching Mega";
-      maBtn.textContent = "⚡ Alternative Mega";
-      swBtn.disabled = stBtn.disabled = tpBtn.disabled = wkBtn.disabled = true;
-      mmBtn.disabled = maBtn.disabled = true;
-      const sub = panel.querySelector("#prp-sub");
-      if (sub && sub.innerHTML) sub.innerHTML = ""; // clear any stale steady/teleport picker
+    _setPredictTimer(panel.querySelector("#prp-rtimer"), pa.claimDeadline);
+    panel.style.display = "";
+    // Auto Continue (toggle): auto-claim the TRUE roll (steps null — free in
+    // every tier, exactly what the idle-roller server timeout does).
+    const autoCont = document.getElementById("chk-auto-continue");
+    if (autoCont && autoCont.checked && !window._autoContinueQueued) {
+      window._autoContinueQueued = true;
+      setTimeout(() => {
+        window._autoContinueQueued = false;
+        if (
+          document.getElementById("chk-auto-continue").checked &&
+          gs && gs.turnPhase === "claiming" &&
+          gs.pendingAction && !gs.pendingAction.committed &&
+          gs.currentPlayer && gs.currentPlayer.id === myId
+        ) prClaim(null);
+      }, 600);
     }
-    // Auto Continue (toggle): the roller auto-passes the post-roll window (walks the
-    // plain roll) instead of clicking Continue — mirrors Auto Roll.
-    if (abilityPhase) {
-      const autoCont = document.getElementById("chk-auto-continue");
-      if (autoCont && autoCont.checked && !window._autoContinueQueued) {
-        window._autoContinueQueued = true;
-        setTimeout(() => {
-          window._autoContinueQueued = false;
-          if (
-            document.getElementById("chk-auto-continue").checked &&
-            gs && gs.turnPhase === "ability" &&
-            gs.currentPlayer && gs.currentPlayer.id === myId
-          ) prPass();
-        }, 600);
-      }
-    }
-    // Shared countdown — the SAME deadline the opponents' predict modal shows.
-    _setPredictTimer(panel.querySelector("#prp-rtimer"), gs.prediction && gs.prediction.respondDeadline);
-    // A centered modal that POPS UP for the roller during their post-roll window
-    // (the ability choice + while opponents predict); hidden for everyone else.
-    const showModal = isMyTurn && (gs.turnPhase === "ability" || gs.turnPhase === "predicting");
-    panel.style.display = showModal ? "" : "none";
   } else {
     panel.style.display = "none";
+    if (panel.dataset.key) panel.dataset.key = "";
   }
 
-  // (b) OPPONENT — Predict prompt. It now opens at ROLL time and runs CONCURRENTLY
-  // with the roller's choice (a centered modal like the farm accept/reject box). After
-  // voting it stays up as a "locked in — waiting" modal (nothing is revealed) until
-  // both sides resolve. Ineligible (<2-card) opponents are auto-no → no modal.
-  const pred = gs.prediction;
-  const myVote = pred && pred.myVote;
-  const iAmOpponent = !!(pred && myVote && gs.currentPlayer && gs.currentPlayer.id !== myId);
-  const rolledSum = Array.isArray(gs.dice) ? gs.dice.reduce((a, b) => a + b, 0) : 0;
+  // (b) OPPONENT — the ACCUSE prompt during 'accusing'. The title quotes the
+  // PUBLIC move record (lastMove) — the real roll stays under the cup. After
+  // voting it locks ("waiting") until every vote is in. Ineligible (0-credit)
+  // opponents are pre-answered server-side, but the disabled-Yes state is kept
+  // defensively.
+  const ac = gs.accuse;
+  const myVote = ac && ac.myVote;
+  const iAmOpponent = !!(ac && myVote && gs.currentPlayer && gs.currentPlayer.id !== myId);
+  const mvAcc = gs.lastMove;
+  const rollerName = gs.currentPlayer ? gs.currentPlayer.name : "They";
   if (iAmOpponent && !myVote.answered) {
-    const canYes = myCards >= 2;
+    const canYes = !!myVote.eligible;
     if (predict.dataset.key !== "vote") {
       predict.dataset.key = "vote";
       predict.innerHTML =
+        '<div class="prp-crystal" aria-hidden="true">🥤</div>' +
         '<div class="prp-title" id="prp-ptitle"></div>' +
-        '<div class="prp-row">' +
-          '<button class="btn prp-btn prp-yes" id="prp-yes" onclick="prPredict(true)">Yes</button>' +
-          '<button class="btn prp-btn prp-no" onclick="prPredict(false)">No</button>' +
+        '<div class="prp-row prp-predict-row">' +
+          '<button class="btn prp-btn prp-yes" id="prp-yes" onclick="prAccuse(true)">✅ Yes</button>' +
+          '<button class="btn prp-btn prp-no" id="prp-no" onclick="prAccuse(false)">❌ No</button>' +
         '</div>' +
         '<div class="prp-sub" id="prp-psub"></div>' +
         '<div class="prp-timer" id="prp-ptimer"></div>';
     }
-    predict.querySelector("#prp-ptitle").innerHTML =
-      "🔮 They rolled <b>" + rolledSum + "</b> — did they use an ability?";
+    predict.querySelector("#prp-ptitle").innerHTML = mvAcc
+      ? rollerName + ' walked <b>"' + mvAcc.steps + " [" + mvAcc.mode + ']"</b> — Accuse?'
+      : rollerName + " made a claim — Accuse?";
     predict.querySelector("#prp-yes").disabled = !canYes;
-    predict.querySelector("#prp-psub").textContent = canYes
-      ? "Right → draw a card · Wrong → discard 2 · No is free"
-      : "Need ≥2 cards to bet Yes";
-    _setPredictTimer(predict.querySelector("#prp-ptimer"), pred.respondDeadline);
+    predict.querySelector("#prp-psub").innerHTML = canYes
+      ? "Right → <b>+1 💳</b> · Wrong → <b>−1 💳</b> · No is free"
+      : "Need ≥1 credit";
+    _setPredictTimer(predict.querySelector("#prp-ptimer"), ac.respondDeadline);
     predict.style.display = "";
-    // Auto No (toggle): auto-predict "No" instead of clicking — mirrors Auto Accept.
+    // Auto No (toggle): auto-answer "No" (free) instead of clicking.
     const autoNo = document.getElementById("chk-auto-no");
     if (autoNo && autoNo.checked && !window._autoNoQueued) {
       window._autoNoQueued = true;
@@ -540,65 +296,101 @@ function _renderPostRollUI(gs, me, isMyTurn) {
         window._autoNoQueued = false;
         if (
           document.getElementById("chk-auto-no").checked &&
-          gs && gs.prediction && gs.prediction.myVote && !gs.prediction.myVote.answered
-        ) prPredict(false);
+          gs && gs.accuse && gs.accuse.myVote && !gs.accuse.myVote.answered
+        ) prAccuse(false);
       }, 600);
     }
   } else if (iAmOpponent && myVote.answered && myVote.eligible) {
-    // Voted → locked in, waiting for the roller / the others. Nothing is revealed.
+    // Voted → locked in, waiting for the other accusers. Nothing is revealed.
     if (predict.dataset.key !== "locked") {
       predict.dataset.key = "locked";
       predict.innerHTML =
         '<div class="prp-title">🔒 Locked in</div>' +
-        '<div class="prp-sub">Waiting for the others — nobody can see your pick.</div>' +
+        '<div class="prp-sub">Waiting for the other accusers — nobody can see your vote.</div>' +
         '<div class="prp-timer" id="prp-ptimer"></div>';
     }
-    _setPredictTimer(predict.querySelector("#prp-ptimer"), pred.respondDeadline);
+    _setPredictTimer(predict.querySelector("#prp-ptimer"), ac.respondDeadline);
     predict.style.display = "";
   } else {
     predict.style.display = "none";
     if (predict.dataset.key) predict.dataset.key = "";
   }
-}
 
-function prPass() { if (typeof socket !== "undefined" && socket && gameId) socket.emit("pass_post_roll", { gameId }); }
-function prSwitch() { if (socket && gameId) socket.emit("use_post_roll_ability", { gameId, ability: "switch" }); }
-function prSteadyOpen() {
-  const sub = document.getElementById("prp-sub");
-  if (!sub) return;
-  let html = '<div class="prp-pickhint">Pick a number (below-7 rules apply):</div><div class="prp-nums">';
-  for (let n = 1; n <= 12; n++) html += '<button class="btn prp-num" onclick="prSteady(' + n + ')">' + n + "</button>";
-  sub.innerHTML = html + "</div>";
-}
-function prSteady(n) { if (socket && gameId) socket.emit("use_post_roll_ability", { gameId, ability: "steady", value: n }); }
-function prTeleportOpen() {
-  const sub = document.getElementById("prp-sub");
-  if (!sub || typeof gs === "undefined" || !gs) return;
-  const farms = (gs.properties || []).filter((p) => p.owner === myId && p.group === "farm");
-  if (!farms.length) { sub.textContent = "You own no farms to teleport to."; return; }
-  let html = '<div class="prp-pickhint">Teleport to (stake 1; denied + forfeit if predicted):</div><div class="prp-nums">';
-  for (const f of farms) html += '<button class="btn prp-num" onclick="prTeleport(' + f.id + ')">' + (f.name || "#" + f.id) + "</button>";
-  sub.innerHTML = html + "</div>";
-}
-function prTeleport(pos) { if (socket && gameId) socket.emit("use_post_roll_ability", { gameId, ability: "teleport", position: pos }); }
-function prPredict(yes) { if (socket && gameId) socket.emit("submit_prediction", { gameId, predict: !!yes }); }
-function prMatchingMega() { if (socket && gameId) socket.emit("use_post_roll_ability", { gameId, ability: "matching_mega" }); }
-function prAlternativeMega() { if (socket && gameId) socket.emit("use_post_roll_ability", { gameId, ability: "alternative_mega" }); }
-
-// Does the active roll FIRE a grow? True iff the rolled value (1..6) labels a grow
-// tile that is genuinely revealed — the client mirror of the backend's
-// _wouldRolledGrowFire (same condition as board.js's armed-grow preview). Used to
-// enable "Matching Mega" (a card can only "match the grow your roll fires").
-function _rollFiresGrow(v) {
-  if (typeof gs === "undefined" || !gs) return false;
-  if (!Number.isInteger(v) || v < 1 || v > 6) return false;
-  const layout = Array.isArray(gs.boardLayout) ? gs.boardLayout : [];
-  const rev = Array.isArray(gs.genuineRevealedGrows) ? gs.genuineRevealedGrows : [];
-  for (let i = 0; i < layout.length; i++) {
-    const t = layout[i];
-    if (t && t.type === "grow" && t.growLabel === v && rev.includes(i)) return true;
+  // ROLLER outcome note: remember an accuse window opened on MY claim; when the
+  // turn resolves with no lastAccuseResult for it, nobody accused — a subtle
+  // toast instead of a banner (the lie quietly succeeded / truth stood).
+  if (isMyTurn && gs.turnPhase === "accusing") {
+    window._myAccuseWindowTurn = gs.turn;
+  } else if (window._myAccuseWindowTurn != null) {
+    const t = window._myAccuseWindowTurn;
+    if (isMyTurn && gs.turn === t && gs.turnPhase === "resolved" && !gs.accuse) {
+      window._myAccuseWindowTurn = null;
+      if (!gs.lastAccuseResult || gs.lastAccuseResult.turn !== t) {
+        showToast("🥤 Nobody accused — your claim stands.", "info", 2600);
+      }
+    } else if (gs.turn !== t) {
+      window._myAccuseWindowTurn = null;
+    }
   }
-  return false;
+}
+
+// The roller's claim: steps = 1..12, or null to walk the TRUE roll (free in
+// every tier). The token walks the claim the moment the server commits it.
+function prClaim(steps) {
+  if (typeof socket !== "undefined" && socket && gameId)
+    socket.emit("submit_claim", { gameId, steps: steps == null ? null : Number(steps) });
+}
+// Random claim: the CLIENT picks 1..12 uniformly and submits it as the claim
+// (truthful only by luck — normal stakes if it lands on a lie).
+function prClaimRandom() {
+  const n = 1 + Math.floor(Math.random() * 12);
+  const sub = document.getElementById("prp-sub");
+  if (sub) sub.innerHTML = "🎲 claiming <b>" + n + "</b>…";
+  prClaim(n);
+}
+// An opponent's accuse vote (accuse=true says "the claim was a lie").
+function prAccuse(yes) { if (socket && gameId) socket.emit("submit_accuse", { gameId, accuse: !!yes }); }
+
+// Centered verdict banner for a resolved accusation — shown to ALL players
+// (called from the game_update handler, deduped on lastAccuseResult.seq).
+// Also flips the cup-lift so viewers who had this roll under the cup see the
+// cup tip over and the real dice appear (game_update ships them unredacted
+// once an accusation reveals the roll).
+function _showAccuseVerdict(res) {
+  if (!res) return;
+  const roller = _gsPlayerMap[res.playerId];
+  const name = roller ? roller.name : "The roller";
+  // A caught lie costs the roller a FLAT 1 💳 (never 1-per-accuser) — show the
+  // APPLIED delta from the result so the banner can't drift from the backend.
+  const rollerLoss = Math.abs((res.deltas && res.deltas[res.playerId]) || 1);
+  const el = document.getElementById("accuse-verdict");
+  if (el) {
+    // SB LANDING reveal (no accusation): a rich lander's cup lifts itself —
+    // a legit roll wins, a bluffed walk gets the +1 💳 consolation.
+    el.innerHTML = res.sbLanding
+      ? (res.truthful
+          ? "⭐ " + name + " lifts the cup: <b>" + res.actualTotal + "</b> — a LEGITIMATE landing. " + name + " WINS! 👑"
+          : "⭐ " + name + " lifts the cup: rolled <b>" + res.actualTotal + "</b>, not the claimed <b>" + res.claim + "</b> — no win, +1 💳")
+      : res.truthful
+        ? "🛡️ " + name + " told the truth (rolled <b>" + res.actualTotal + "</b>) — accusers lose 1 💳"
+        : "🤥 " + name + " LIED — claimed <b>" + res.claim + "</b>, rolled <b>" + res.actualTotal + "</b>! Accusers +1 💳, " + name + " −" + rollerLoss + " 💳";
+    el.classList.toggle("verdict-truth", !!res.truthful);
+    el.classList.toggle("verdict-lie", !res.truthful);
+    el.classList.remove("show");
+    void el.offsetWidth;
+    el.classList.add("show");
+    clearTimeout(window._accuseVerdictTimer);
+    window._accuseVerdictTimer = setTimeout(() => el.classList.remove("show"), 5000);
+  }
+  // Cup-lift: only for viewers who actually had THIS roll hidden under the cup.
+  if (window._hadCupTurn === res.turn) {
+    window._cupLift = { until: Date.now() + 4200, turn: res.turn, res };
+    clearTimeout(window._cupLiftTimer);
+    window._cupLiftTimer = setTimeout(() => {
+      window._cupLift = null;
+      if (typeof route === "function" && typeof gs !== "undefined" && gs) route();
+    }, 4300);
+  }
 }
 
 // Shared post-roll countdown (the prediction deadline). A single interval ticks every
@@ -624,6 +416,40 @@ function _tickPredTimers() {
     el.textContent = "⏳ " + s + "s";
   });
   if (!anyVisible && _predTimerInterval) { clearInterval(_predTimerInterval); _predTimerInterval = null; }
+}
+
+// ── Credit Score panel (the #magic-dice box shell) ──────────────────────────
+// Renders the VIEWER's credit as BLANK tokens (one poker-chip div per point,
+// no numbers — wrap handled by CSS at ~10/row), a "Credit Score: N" line, and
+// a tier hint. The tier mirrors the backend EXACTLY (rollDice): you keep the
+// cup while you hold ANY credit; only a strictly ZERO Credit Score rolls in
+// the open (exact rolls only, plus the free 7→1).
+function _renderCreditPanel(gs, me) {
+  const box = document.getElementById("magic-dice");
+  if (!box) return;
+  const list = document.getElementById("magic-dice-list");
+  const show = !!(gs && gs.state === "playing" && me && !me.bankrupt);
+  box.style.display = show ? "" : "none";
+  if (!show || !list) return;
+  const credit = me.credit || 0;
+  const cupPublic = credit < 1; // the backend cup-tier rule: only 0 credit is public
+  const hint = !cupPublic
+    ? "🥤 You roll under the cup"
+    : "🔓 0 credit — you roll in the open, exact rolls only";
+  // Cheap re-render guard: token count + tier fully determine the markup.
+  const key = credit + ":" + (cupPublic ? "1" : "0");
+  if (list.dataset.key === key) return;
+  list.dataset.key = key;
+  let tokens = "";
+  for (let i = 0; i < credit; i++) {
+    tokens += '<span class="credit-token" aria-hidden="true"></span>';
+  }
+  list.innerHTML =
+    '<div class="credit-tokens" id="credit-tokens">' +
+      (credit > 0 ? tokens : '<span class="credit-tokens-empty">no credit</span>') +
+    "</div>" +
+    '<div class="credit-score-line">Credit Score: <b id="credit-score-num">' + credit + "</b></div>" +
+    '<div class="credit-hint" id="credit-hint">' + hint + "</div>";
 }
 
 function showGame() {
@@ -652,34 +478,6 @@ function showGame() {
   const cur = gs.currentPlayer;
   const me = _gsPlayerMap[myId];
   const isMyTurn = cur && cur.id === myId;
-
-  // Caster-private: a MISSED cancel YOU cast owes you a CHOSEN discard. Pop the
-  // shared picker the instant the owner-only count appears (non-dismissible — you
-  // must pick which cards to forfeit), and RE-open it if the owed count changes (a
-  // 2nd missed cancel can bump the debt while the picker is already up). The
-  // resolving guard suppresses a re-open only in the gap between confirming and the
-  // next server update (game-socket clears it on every game_update, so it can't
-  // latch). dataset.mode guards against colliding with a stray teleport picker.
-  if (me && me.pendingCancelDiscard > 0) {
-    const dpOverlay = document.getElementById("card-discard-overlay");
-    const isCancelPicker = dpOverlay && dpOverlay.dataset.mode === "cancel-miss";
-    const shownCount = isCancelPicker ? Number(dpOverlay.dataset.discardCount) : -1;
-    if (
-      !window._cancelDiscardResolving &&
-      (!isCancelPicker || shownCount !== me.pendingCancelDiscard)
-    ) {
-      openCardDiscardPicker({
-        mode: "cancel-miss",
-        cards: me.rollCards || [],
-        count: me.pendingCancelDiscard,
-        dismissible: false,
-        onConfirm: (indices) => {
-          window._cancelDiscardResolving = true;
-          socket.emit("cancel_discard_pick", { gameId, indices });
-        },
-      });
-    }
-  }
 
   // Turn info
   {
@@ -713,97 +511,148 @@ function showGame() {
   const dieScene1 = document.getElementById("die-scene1");
   const dieScene2 = document.getElementById("die-scene2");
   const dieScene3 = document.getElementById("die-scene3");
-  const rollCardScene = document.getElementById("roll-card-scene");
   const d12Scene = document.getElementById("d12-scene");
   const diceSum = document.getElementById("dice-sum");
   const diceSumNum = document.getElementById("dice-sum-num");
   const diceAnimal = document.getElementById("dice-animal");
-  // Show/hide die scenes based on dice count. A single-element gs.dice ([N]) is
-  // either a played SPELL CARD (untagged) or a HEXED roll (tagged gs.diceIsD12).
-  // Both go through the length-1 "card" branch: the hex sub-branch renders the
-  // actual 12-sided DODECAHEDRON (#d12-scene); a spell card deals the CARD
-  // (#roll-card-scene). A cancelled card / normal roll is a real 2d6 (length 2) -> cubes.
+  // Show/hide die scenes based on dice count. A single-element gs.dice ([N])
+  // tagged gs.diceIsD12 is a HEXED roll and renders the 12-sided DODECAHEDRON
+  // (#d12-scene); a normal roll is a real 2d6 (length 2) -> cubes.
   const numDice = gs.dice ? gs.dice.length : 2;
-  const isCardPlay = !!(gs.dice && gs.dice.length === 1);
   // A HEXED roll (single d12, tagged diceIsD12) renders as the blue dodecahedron.
-  const isD12Roll = !!(gs && gs.diceIsD12 && isCardPlay);
-  // For a played spell card, the dealt card shows the WALK number via die1Value
-  // (turtle: 7 - value; rabbit/+6: the value itself, already >= 7 because the
-  // backend set gs.dice[0] = N + 6). For a normal/hex roll, die1Value is just
-  // the raw die value (gs.dice[0]).
-  const isSorceryPlay = isCardPlay && !isD12Roll;
-  const die1Value = isSorceryPlay
-    ? (gs.dice[0] < 7 ? 7 - gs.dice[0] : gs.dice[0])
-    : (gs.dice ? gs.dice[0] : 0);
-  if (isCardPlay) {
-    if (dieScene2) dieScene2.style.display = "none";
-    if (dieScene3) dieScene3.style.display = "none";
-    if (isD12Roll) {
-      if (dieScene1) dieScene1.style.display = "none";
-      if (rollCardScene) rollCardScene.style.display = "none";
-      if (d12Scene) {
-        d12Scene.style.display = "";
-        const n = d12Scene.querySelector(".d12-num");
-        if (n) n.textContent = String(gs.dice[0]);
+  const isD12Roll = !!(gs && gs.diceIsD12 && gs.dice && gs.dice.length === 1);
+  const die1Value = gs.dice ? gs.dice[0] : 0;
+  // PUBLIC move record for THIS turn — the walk / Total-badge / cup-label key.
+  // A cup roll's dice are [] for every viewer but the roller, so everything
+  // step-derived keys off lastMove.steps (the claim), never the dice sum.
+  const mvMove =
+    gs.lastMove && cur && gs.lastMove.playerId === cur.id && gs.lastMove.turn === gs.turn
+      ? gs.lastMove
+      : null;
+  // THE CUP (liar's dice): this viewer can't see the current roll (diceHidden)
+  // — hide the dice entirely and render the cup, from the roll (claiming)
+  // through the walk + accuse window. An accusation reveals the roll for
+  // everyone (diceHidden flips off) — the transient cup-LIFT then shows the
+  // real dice + verdict before the normal cubes return.
+  const cupScene = document.getElementById("cup-scene");
+  const cupLift = !!(window._cupLift && Date.now() < window._cupLift.until &&
+    window._cupLift.turn === gs.turn);
+  const showCup = gs.state === "playing" && (
+    cupLift ||
+    (gs.diceHidden &&
+      (gs.turnPhase === "claiming" || gs.turnPhase === "accusing" ||
+        (gs.diceRolled && mvMove))));
+  if (cupScene) {
+    if (showCup) {
+      cupScene.style.display = "";
+      cupScene.classList.toggle("cup-wobble", gs.turnPhase === "claiming" && !cupLift);
+      cupScene.classList.toggle("cup-lifted", cupLift);
+      // Remember this roll sat under the cup for this viewer — the accuse
+      // reveal keys the cup-lift off it.
+      if (gs.diceHidden) window._hadCupTurn = gs.turn;
+      // Stamp the claim ON the cup once it's public: '"6 [turtle]" 🐢'.
+      const claimNow =
+        pendingClaimOf(gs) ||
+        (mvMove ? { steps: mvMove.steps, mode: mvMove.mode } : null);
+      const cupClaimEl = document.getElementById("cup-claim");
+      if (cupClaimEl) {
+        if (claimNow) {
+          cupClaimEl.style.display = "";
+          cupClaimEl.textContent =
+            '"' + claimNow.steps + " [" + claimNow.mode + ']" ' +
+            (claimNow.mode === "turtle" ? "🐢" : "🐇");
+        } else {
+          cupClaimEl.style.display = "none";
+          cupClaimEl.textContent = "";
+        }
+      }
+      // Cup-lift reveal: the real dice/total + the LIED!/TRUTH verdict.
+      const cupRevealEl = document.getElementById("cup-reveal");
+      if (cupRevealEl) {
+        if (cupLift && window._cupLift.res) {
+          const res = window._cupLift.res;
+          const diceTxt =
+            gs.dice && gs.dice.length > 1
+              ? gs.dice.join("+") + " = " + res.actualTotal
+              : String(res.actualTotal);
+          cupRevealEl.style.display = "";
+          cupRevealEl.innerHTML =
+            '<span class="cup-reveal-dice">🎲 ' + diceTxt + "</span>" +
+            '<span class="cup-reveal-verdict ' + (res.truthful ? "cup-truth" : "cup-lie") + '">' +
+            (res.truthful ? "TRUTH" : "LIED!") + "</span>";
+        } else {
+          cupRevealEl.style.display = "none";
+          cupRevealEl.innerHTML = "";
+        }
       }
     } else {
-      // Spell card: deal the CARD bearing the WALK number (die1Value handles both
-      // modes). No die is shown.
-      if (d12Scene) d12Scene.style.display = "none";
-      if (dieScene1) {
-        dieScene1.style.display = "none";
-        dieScene1.classList.remove("sorcery-die", "hex-die");
-      }
-      if (rollCardScene) {
-        rollCardScene.style.display = "";
-        const numEl = rollCardScene.querySelector(".roll-play-card-num");
-        if (numEl) numEl.textContent = String(die1Value);
-      }
+      cupScene.style.display = "none";
+      cupScene.classList.remove("cup-wobble", "cup-lifted");
+    }
+  }
+  if (showCup) {
+    // Cup shown — every die scene hides (the roller keeps their cubes: their
+    // own diceHidden is always false, so showCup never fires for them).
+    if (dieScene1) dieScene1.style.display = "none";
+    if (dieScene2) dieScene2.style.display = "none";
+    if (dieScene3) dieScene3.style.display = "none";
+    if (d12Scene) d12Scene.style.display = "none";
+  } else if (isD12Roll) {
+    if (dieScene1) dieScene1.style.display = "none";
+    if (dieScene2) dieScene2.style.display = "none";
+    if (dieScene3) dieScene3.style.display = "none";
+    if (d12Scene) {
+      d12Scene.style.display = "";
+      const n = d12Scene.querySelector(".d12-num");
+      if (n) n.textContent = String(gs.dice[0]);
     }
   } else {
-    if (rollCardScene) rollCardScene.style.display = "none";
     if (d12Scene) d12Scene.style.display = "none";
     if (dieScene1) {
       dieScene1.style.display = "";
-      // A HEXED roll (single d12) tints the cube PURPLE; a normal 2d6 clears both
-      // skins (sorcery-die is only for a played card).
+      // A HEXED roll (single d12) tints the cube PURPLE; a normal 2d6 clears it.
       dieScene1.classList.toggle("hex-die", !!(gs && gs.diceIsD12));
-      dieScene1.classList.remove("sorcery-die");
     }
     if (dieScene2) dieScene2.style.display = numDice >= 2 ? "" : "none";
     if (dieScene3) dieScene3.style.display = numDice >= 3 ? "" : "none";
   }
-  // The 🐢/🐰 speed indicator shows for EVERY settled roll — 2d6, the d12 hex,
-  // AND a played spell card — keyed on the move value (< 7 turtle, >= 7 rabbit).
-  // The running TOTAL badge stays 2d6 + d12 only (it's redundant on a single
-  // card). A FRESH roll (key not yet recorded) or one still spinning stays hidden;
-  // the dice-landing branch re-pops them the moment the dice settle.
+  // The 🐢/🐰 speed indicator shows for EVERY settled roll — 2d6 and the d12 hex
+  // — keyed on the move value (< 7 turtle, >= 7 rabbit). A FRESH roll (key not
+  // yet recorded) or one still spinning stays hidden; the dice-landing branch
+  // re-pops them the moment the dice settle.
   if (diceSum) {
     const diceKeyNow = gs.dice ? gs.dice.join("-") + "-" + gs.turn : "";
     const d12El = d12Scene && d12Scene.querySelector(".d12-die");
-    // A spell card sets diceRolled=true + _lastDiceKey at the START of its 0.55s
-    // deal, so its mid-deal ".dealing" state must count as spinning too — else a
-    // re-render could pop the 🐢/🐰 before the card lands (spoiling the result).
-    const cardDealEl = rollCardScene && rollCardScene.querySelector(".roll-play-card");
     const spinning =
       !!(die1El && die1El.classList.contains("rolling")) ||
-      !!(d12El && d12El.classList.contains("rolling")) ||
-      !!(cardDealEl && cardDealEl.classList.contains("dealing"));
-    const settled =
-      gs.diceRolled && diceKeyNow === window._lastDiceKey && !spinning &&
-      gs.dice && gs.dice.length;
-    // Speed animal — always (turtle/rabbit by the move value, any roll type).
+      !!(d12El && d12El.classList.contains("rolling"));
+    // The dice are REVEALED at ROLL time (see the roll-time reveal block below)
+    // for the roller/public rolls, so the Total + 🐢/🐰 must persist through the
+    // claiming window AND commit. Shown once the reveal for THIS exact roll has
+    // settled (_rollRevealKey matches), or at a normal commit.
+    const committedNow = gs.diceRolled && diceKeyNow === window._lastDiceKey;
+    const revealedNow = window._rollRevealKey === diceKeyNow;
+    // The badge keys on the WALKED steps (the claim) for EVERYONE once the move
+    // commits — for a hidden roll the claim IS the only public number (never
+    // the roller's true total). Pre-commit (the roller's private claiming
+    // window) it shows their real roll.
+    const badgeVal =
+      gs.diceRolled && mvMove
+        ? mvMove.steps
+        : gs.dice && gs.dice.length
+          ? (numDice >= 2 ? gs.dice.reduce((a, b) => a + b, 0) : gs.dice[0])
+          : null;
+    const settled = (committedNow || revealedNow) && !spinning && badgeVal != null;
+    // Speed animal — always (turtle/rabbit by the WALKED value, any roll type).
     if (settled && diceAnimal) {
-      const animalVal = numDice >= 2 ? gs.dice.reduce((a, b) => a + b, 0) : gs.dice[0];
-      _showDiceAnimal(diceAnimal, animalVal, false);
+      _showDiceAnimal(diceAnimal, badgeVal, false);
     } else if (diceAnimal) {
       diceAnimal.classList.remove("show");
     }
-    // Running TOTAL — 2d6 + d12 only.
-    if (settled && (isD12Roll || (!isCardPlay && numDice >= 2))) {
-      const _sum = isD12Roll ? gs.dice[0] : gs.dice.reduce((a, b) => a + b, 0);
-      if (diceSumNum) diceSumNum.textContent = String(_sum);
-      diceSum.classList.toggle("is-low", _sum < 7); // green digit when below 7
+    // Running TOTAL — 2d6, d12, and the cup's claimed walk.
+    if (settled && ((gs.diceRolled && mvMove) || isD12Roll || numDice >= 2)) {
+      if (diceSumNum) diceSumNum.textContent = String(badgeVal);
+      diceSum.classList.toggle("is-low", badgeVal < 7); // green digit when below 7
       diceSum.classList.add("show");
     } else {
       diceSum.classList.remove("show");
@@ -831,19 +680,12 @@ function showGame() {
   const canRoll =
     isMyTurn &&
     !gs.diceRolled &&
-    !gs.turnPhase && // no re-roll while a post-roll ability / predict window is open
+    !gs.turnPhase && // no re-roll while a post-roll / predict window is open
     !gs.superBananaPending &&
     !needsStartPick &&
-    !gs.redraw && // a pending spell-card redraw must be resolved first
     rollDelayDone;
   document.getElementById("btn-roll").disabled = !canRoll;
   document.getElementById("btn-debug-move").disabled = !canRoll;
-
-  // Pre-roll "Teleport to Farm" button REMOVED (it was redundant + caused flicker).
-  // Teleport is now a POST-ROLL ability — "Vine Swing" in the centered ability modal
-  // (see _renderPostRollUI / prTeleportOpen). Keep the board pick-mode flag pinned
-  // off so the old "pick a farm" pre-roll path can never re-arm.
-  window._teleportPickMode = false;
 
   // Start-pick prompt + Random Start button — centered in the board, shown only
   // on the player's own start-pick turn (the Roll button is disabled then). The
@@ -853,25 +695,6 @@ function showGame() {
     startRandomWrap.style.display = isMyTurn && needsStartPick ? "flex" : "none";
   }
 
-  // Proxy rune deck — a face-down draw pile centered in the board. Purely a
-  // visual indicator: when any player gains a spell card, a card flies from
-  // here to their token (see flyRuneDraw in game-init.js). Hidden during
-  // start-pick and while a center overlay (poker / auction) occupies the
-  // middle, so it never clutters those.
-  const runeDeck = document.getElementById("rune-deck");
-  if (runeDeck) {
-    const startVisible =
-      startRandomWrap && startRandomWrap.style.display !== "none";
-    const pokerEl = document.getElementById("poker-table");
-    const auctionEl = document.getElementById("auction-box");
-    const centerBusy =
-      startVisible ||
-      (pokerEl && pokerEl.style.display && pokerEl.style.display !== "none") ||
-      (auctionEl && auctionEl.style.display && auctionEl.style.display !== "none");
-    runeDeck.style.display =
-      gs.state === "playing" && !centerBusy ? "flex" : "none";
-  }
-
   // Roll-button label.
   const rollBtn = document.getElementById("btn-roll");
   if (rollBtn) {
@@ -879,13 +702,8 @@ function showGame() {
   }
 
   // Auto-roll: trigger dice roll when it's our turn and we haven't rolled yet.
-  // An ARMED spell card takes precedence (it auto-plays instead — see the
-  // armed auto-activation in the Spell Cards section below), so skip auto-roll
-  // while a roll is armed.
   if (
     canRoll &&
-    !(me && me.armedRoll) &&
-    !window._teleportPickMode && // don't auto-roll while choosing a teleport farm
     document.getElementById("chk-auto-roll").checked
   ) {
     if (!window._autoRollQueued) {
@@ -908,7 +726,7 @@ function showGame() {
   };
   function setDieFace(dieEl, value) {
     const v = parseInt(value, 10);
-    // Dice and spell cards are always 1..6 — rotate the 3D cube to that face.
+    // Die faces are always 1..6 — rotate the 3D cube to that face.
     if (v >= 1 && v <= 6) {
       dieEl.style.transform = DIE_TRANSFORMS[v];
       dieEl.style.visibility = "";
@@ -943,50 +761,127 @@ function showGame() {
   }
 
   // Universal dice roll notification — show for all players when dice are rolled.
-  // Start picks teleport instantly, so skip the walk animation path. A played
-  // spell card walks step-by-step exactly like a normal roll (the
-  // backend sets gs.dice = [N] and does NOT set itemMoveThisTurn).
+  // Start picks place the token instantly, so skip the walk animation path.
   const diceNotif = document.getElementById("dice-roll-notification");
   const isStartPickTeleport =
     !!(gs.lastStartPick && gs.lastStartPick.turn === gs.turn);
-  // A farm teleport also jumps instantly (no walk) — skip the walk-animation
-  // path so renderBoard just places the token at the destination.
-  const isTeleportJump =
-    !!(gs.lastTeleport && gs.lastTeleport.turn === gs.turn);
-  // Because the teleport skips the walk block (which is the ONLY place that nulls
-  // the frozen-walk globals), a previous walk whose deferred cleanup is still
-  // pending could leave window._diceRollingPositions holding the OLD tile — and
-  // renderBoard would then paint the token at that stale frozen spot instead of
-  // the teleport destination (the JUMP appears not to happen). Proactively clear
-  // the freeze the instant a NEW teleport arrives so the token lands correctly.
+  // ── ROLL-TIME dice reveal ──────────────────────────────────────────────
+  // The turn HOLDS after a roll (turnPhase 'claiming', diceRolled stays FALSE
+  // until the claim commits). The ROLLER wants to SEE their roll the instant
+  // they roll — the spin, the running Total, and the 🐢/🐰 indicator — BEFORE
+  // picking their claim. So spin + reveal the dice HERE, purely visually: no
+  // freeze, no walk, no token move (those wait for commit in the block below).
+  // Fires ONLY for the roller / public-tier rolls: a cup roll ships dice: []
+  // to every other viewer, so the length gate keeps it silent for them. Keyed
+  // on _rollRevealKey; the commit-time walk block skips its own re-spin when
+  // the dice are unchanged (they always are now — the claim never rewrites
+  // gs.dice, it only sets lastMove).
   if (
-    isTeleportJump &&
-    window._teleportJumpKey !==
-      `${gs.lastTeleport.playerId}:${gs.lastTeleport.turn}`
+    gs.dice && gs.dice.length &&
+    !gs.diceRolled &&
+    gs.turnPhase === "claiming" &&
+    !gs.itemMoveThisTurn &&
+    !isStartPickTeleport &&
+    cur
   ) {
-    window._teleportJumpKey = `${gs.lastTeleport.playerId}:${gs.lastTeleport.turn}`;
-    window._walkGen = (window._walkGen || 0) + 1; // invalidate any pending walk timers
-    window._tokenWalking = false;
-    window._diceRollingPositions = null;
-    window._walkStartPositions = null;
-    window._frozenBananaPiles = null;
-    window._walkingPlayerId = null;
-    // A teleport JUMP no longer fires a steal visual: under the steal-on-LAND rule
-    // leaving a squat takes nothing, and a teleport destination is always your OWN
-    // farm (so there's no opponent land-steal). Any own-pile harvest at the
-    // destination still shows via the normal pile-decrement path.
+    const revealKey = gs.dice.join("-") + "-" + gs.turn;
+    if (revealKey !== window._rollRevealKey) {
+      window._rollRevealKey = revealKey;
+      const d12DieElR = d12Scene && d12Scene.querySelector(".d12-die");
+      const d12NumElR = d12Scene && d12Scene.querySelector(".d12-num");
+      const settleReveal = () => {
+        // Bail if the turn has since COMMITTED (diceRolled) or a new roll superseded
+        // this one — otherwise a fast Continue / a teleport (which never reaches the
+        // walk block) would let this fire mid-walk and blink the badge / flash a
+        // stale "0"🐢 landing after the token already moved.
+        if (!gs || gs.diceRolled || window._rollRevealKey !== revealKey ||
+            !gs.dice || !gs.dice.length) return;
+        if (isD12Roll) {
+          if (d12NumElR) d12NumElR.textContent = String(gs.dice[0]);
+          if (d12DieElR) {
+            d12DieElR.classList.remove("rolling");
+            void d12DieElR.offsetWidth;
+            d12DieElR.classList.add("landed");
+          }
+          if (diceSum) {
+            const _v = gs.dice[0];
+            if (diceSumNum) diceSumNum.textContent = String(_v);
+            diceSum.classList.toggle("is-low", _v < 7);
+            diceSum.classList.remove("show");
+            void diceSum.offsetWidth;
+            diceSum.classList.add("show");
+            _showDiceAnimal(diceAnimal, _v, true);
+          }
+        } else {
+          setDieFace(die1El, die1Value);
+          if (numDice >= 2) setDieFace(die2El, gs.dice[1]);
+          if (numDice >= 3) setDieFace(die3El, gs.dice[2]);
+          die1El.classList.remove("rolling");
+          if (numDice >= 2) die2El.classList.remove("rolling");
+          if (numDice >= 3) die3El.classList.remove("rolling");
+          fireDieLanding(die1El);
+          if (numDice >= 2) fireDieLanding(die2El);
+          if (numDice >= 3) fireDieLanding(die3El);
+          if (diceSum && numDice >= 2) {
+            const _sum = gs.dice.reduce((a, b) => a + b, 0);
+            if (diceSumNum) diceSumNum.textContent = String(_sum);
+            diceSum.classList.toggle("is-low", _sum < 7);
+            diceSum.classList.remove("show");
+            void diceSum.offsetWidth;
+            diceSum.classList.add("show");
+            _showDiceAnimal(diceAnimal, _sum, true);
+          }
+        }
+      };
+      // Kick off the spin (hex d12 or the 2d6 cubes), then settle after the tumble.
+      if (isD12Roll) {
+        if (d12DieElR) {
+          d12DieElR.classList.remove("landed", "rolling");
+          void d12DieElR.offsetWidth;
+          d12DieElR.classList.add("rolling");
+        }
+      } else {
+        resetDieOverlay(die1El);
+        die1El.classList.add("rolling");
+        if (numDice >= 2) die2El.classList.add("rolling");
+        if (numDice >= 3) die3El.classList.add("rolling");
+      }
+      const revDur = 550, revInt = 70;
+      let revElapsed = 0;
+      clearInterval(window._rollRevealTicker);
+      window._rollRevealTicker = setInterval(() => {
+        revElapsed += revInt;
+        if (isD12Roll && d12NumElR && revElapsed < revDur) {
+          d12NumElR.textContent = String(1 + Math.floor(Math.random() * 12));
+        }
+        if (revElapsed >= revDur) {
+          clearInterval(window._rollRevealTicker);
+          settleReveal();
+        }
+      }, revInt);
+    }
   }
   if (
     diceNotif &&
     gs.diceRolled &&
     !gs.itemMoveThisTurn &&
     !isStartPickTeleport &&
-    !isTeleportJump &&
     cur
   ) {
     const diceKey = gs.dice.join("-") + "-" + gs.turn;
     if (diceKey !== window._lastDiceKey) {
       window._lastDiceKey = diceKey;
+      // Already spun+revealed at ROLL time (see the roll-time reveal block above)?
+      // Only true for an UNCHANGED value — i.e. a plain "Continue" (this.dice ===
+      // pa.rolledDice). switch/steady/card commit a NEW single value, so the key
+      // differs and we spin fresh to show it. When preRevealed we skip the visible
+      // re-spin and walk straight away (no jarring second roll).
+      const preRevealed = window._rollRevealKey === diceKey;
+      // The roll-time reveal ticker has done its job (or is about to be superseded):
+      // cancel it UNCONDITIONALLY at commit so it can't fire settleReveal() mid-walk
+      // (a fast plain Continue would otherwise leave it running — see the guard in
+      // settleReveal for the belt-and-suspenders).
+      clearInterval(window._rollRevealTicker);
       // Walk generation stamp. Every deferred callback this handler schedules
       // (dice spin ticker, walk interval, landing cleanup, grow-unfreeze,
       // finishLanding, pulse timers) belongs to THIS walk. When the next roll
@@ -1044,34 +939,29 @@ function showGame() {
       // Freeze money display at pre-roll value
       window._frozenMoney =
         window._prevMoney != null ? window._prevMoney : null;
-      // Start the physical dice roll. Spell Cards rolls EXACTLY like a normal
-      // roll (same spin, sound, and notification) so opponents can't tell it was
-      // used — its only tell, the cooldown, is shown to its own user alone.
-      // A spell card now spins a single die (no dealt card); a normal roll spins
+      // Start the physical dice roll: the hex d12 tumbles, a normal roll spins
       // the dice cube(s).
       const d12DieEl = d12Scene && d12Scene.querySelector(".d12-die");
       const d12NumEl = d12Scene && d12Scene.querySelector(".d12-num");
-      const playCardEl = rollCardScene && rollCardScene.querySelector(".roll-play-card");
-      if (isCardPlay) {
+      if (!preRevealed) {
+        // Not yet revealed (a changed value, or an opponent whose reveal was
+        // skipped) → spin fresh to show the committed value.
         if (isD12Roll) {
           if (d12DieEl) {
             d12DieEl.classList.remove("landed", "rolling");
             void d12DieEl.offsetWidth; // restart the tumble
             d12DieEl.classList.add("rolling");
           }
-        } else if (playCardEl) {
-          // Spell card: deal the card in (no die).
-          playCardEl.classList.remove("landed", "dealing");
-          void playCardEl.offsetWidth; // restart the deal animation
-          playCardEl.classList.add("dealing");
+        } else {
+          resetDieOverlay(die1El);
+          die1El.classList.add("rolling");
+          if (numDice >= 2) die2El.classList.add("rolling");
+          if (numDice >= 3) die3El.classList.add("rolling");
         }
-      } else {
-        resetDieOverlay(die1El);
-        die1El.classList.add("rolling");
-        if (numDice >= 2) die2El.classList.add("rolling");
-        if (numDice >= 3) die3El.classList.add("rolling");
       }
-      const rollDuration = 550;
+      // preRevealed (plain Continue): the dice already spun+settled at roll time, so
+      // settle IMMEDIATELY (no visible re-spin) and go straight to the walk.
+      const rollDuration = preRevealed ? 0 : 550;
       const rollInterval = 70;
       let elapsed = 0;
       const ticker = setInterval(() => {
@@ -1080,44 +970,30 @@ function showGame() {
           return;
         }
         elapsed += rollInterval;
-        if (isCardPlay && isD12Roll && d12NumEl && elapsed < rollDuration) {
+        if (isD12Roll && d12NumEl && elapsed < rollDuration) {
           // Slot-machine the d12 value while the die tumbles.
           d12NumEl.textContent = String(1 + Math.floor(Math.random() * 12));
         }
         if (elapsed >= rollDuration) {
           clearInterval(ticker);
-          if (isCardPlay) {
-            if (isD12Roll) {
-              // Settle the dodecahedron: stamp the value and bounce.
-              if (d12NumEl) d12NumEl.textContent = String(gs.dice[0]);
-              if (d12DieEl) {
-                d12DieEl.classList.remove("rolling");
-                void d12DieEl.offsetWidth;
-                d12DieEl.classList.add("landed");
-              }
-              // Reveal the Total badge + 🐢/🐰 indicator for the d12, exactly like a
-              // settled 2d6 (the d12 value IS its total). Green when below 7.
-              if (diceSum) {
-                const _v = gs.dice[0];
-                if (diceSumNum) diceSumNum.textContent = String(_v);
-                diceSum.classList.toggle("is-low", _v < 7);
-                diceSum.classList.remove("show");
-                void diceSum.offsetWidth; // restart the pop animation
-                diceSum.classList.add("show");
-                _showDiceAnimal(diceAnimal, _v, true);
-              }
-            } else {
-              // Settle the dealt card: stamp the WALK number and pop it.
-              const numEl = rollCardScene && rollCardScene.querySelector(".roll-play-card-num");
-              if (numEl) numEl.textContent = String(die1Value);
-              if (playCardEl) {
-                playCardEl.classList.remove("dealing");
-                void playCardEl.offsetWidth;
-                playCardEl.classList.add("landed");
-              }
-              // 🐢/🐰 speed indicator for a played spell card too — keyed on the
-              // card value (< 7 turtle, >= 7 rabbit, i.e. the +6 rabbit toggle).
-              _showDiceAnimal(diceAnimal, gs.dice[0], true);
+          if (isD12Roll) {
+            // Settle the dodecahedron: stamp the value and bounce.
+            if (d12NumEl) d12NumEl.textContent = String(gs.dice[0]);
+            if (d12DieEl) {
+              d12DieEl.classList.remove("rolling");
+              void d12DieEl.offsetWidth;
+              d12DieEl.classList.add("landed");
+            }
+            // Reveal the Total badge + 🐢/🐰 indicator for the d12, exactly like a
+            // settled 2d6 (the d12 value IS its total). Green when below 7.
+            if (diceSum) {
+              const _v = gs.dice[0];
+              if (diceSumNum) diceSumNum.textContent = String(_v);
+              diceSum.classList.toggle("is-low", _v < 7);
+              diceSum.classList.remove("show");
+              void diceSum.offsetWidth; // restart the pop animation
+              diceSum.classList.add("show");
+              _showDiceAnimal(diceAnimal, _v, true);
             }
           } else {
           setDieFace(die1El, die1Value);
@@ -1126,21 +1002,29 @@ function showGame() {
           die1El.classList.remove("rolling");
           if (numDice >= 2) die2El.classList.remove("rolling");
           if (numDice >= 3) die3El.classList.remove("rolling");
-          // Landing flourish on the OUTER scene (overlaps the walk; geometry-safe).
-          fireDieLanding(die1El);
-          if (numDice >= 2) fireDieLanding(die2El);
-          if (numDice >= 3) fireDieLanding(die3El);
-          // Reveal the clear running TOTAL + the cute 🐢/🐰 speed indicator the
-          // instant the cubes settle (default 2d6 only — a single-die rune/d12 took
-          // the isCardPlay branch above).
-          if (diceSum && numDice >= 2) {
-            const _sum = gs.dice.reduce((a, b) => a + b, 0);
-            if (diceSumNum) diceSumNum.textContent = String(_sum);
-            diceSum.classList.toggle("is-low", _sum < 7); // green digit when below 7
-            diceSum.classList.remove("show");
-            void diceSum.offsetWidth; // restart the pop animation
-            diceSum.classList.add("show");
-            _showDiceAnimal(diceAnimal, _sum, true);
+          // preRevealed (plain Continue) already fired the landing flourish + popped
+          // the Total/🐢🐰 at ROLL time and the badge stayed up through the ability
+          // window, so DON'T re-fire them (that would blink the settled badge). For a
+          // fresh spin (changed value / opponent) reveal them the instant cubes land.
+          if (!preRevealed) {
+            // Landing flourish on the OUTER scene (overlaps the walk; geometry-safe).
+            fireDieLanding(die1El);
+            if (numDice >= 2) fireDieLanding(die2El);
+            if (numDice >= 3) fireDieLanding(die3El);
+            // Reveal the clear running TOTAL + the cute 🐢/🐰 speed indicator the
+            // instant the cubes settle. Keyed on the WALKED steps (lastMove —
+            // the claim) when the move committed one: a cup roll's dice are []
+            // for opponents, so the claim is the only number to show, and it's
+            // what everyone's token actually walks.
+            if (diceSum && (numDice >= 2 || mvMove)) {
+              const _sum = mvMove ? mvMove.steps : gs.dice.reduce((a, b) => a + b, 0);
+              if (diceSumNum) diceSumNum.textContent = String(_sum);
+              diceSum.classList.toggle("is-low", _sum < 7); // green digit when below 7
+              diceSum.classList.remove("show");
+              void diceSum.offsetWidth; // restart the pop animation
+              diceSum.classList.add("show");
+              _showDiceAnimal(diceAnimal, _sum, true);
+            }
           }
           }
           // GROW pulse: a coloured glow chains from each fired grow
@@ -1193,45 +1077,21 @@ function showGame() {
             }
             walkStepUpdate(gs);
           }
-          // BELOW 7 / inversion overlay ("7 - N -> hop"): a dice/d12 roll below 7
-          // walks 7 - rolled; a played SPELL CARD (value N) ALSO always inverts and
-          // walks 7 - N — so show the same overlay for cards too.
-          const growHop = gs.lastGrowMatchHop;
-          const isRunePlay = !!(gs.dice && gs.dice.length === 1 && !gs.diceIsD12);
-          const hasGrowHop = !!(growHop && typeof growHop.rolled === "number");
-          const cardN = (isRunePlay && typeof gs.dice[0] === "number") ? gs.dice[0] : null;
-          // A played card always pops a mode banner (turtle below-7 / rabbit +6),
-          // so hold the walk a beat longer (see walkDelay) for ANY card play.
-          const showCardHop = cardN != null;
-          if (cardN != null && cardN <= 6) {
-            // TURTLE MODE (below 7): a played card of value N inverts to walk 7 - N.
-            _showGrowMatchHop(cardN, 7 - cardN, 7, "turtle");
-          } else if (cardN != null && cardN >= 7) {
-            // RABBIT MODE (above 7, +6): a played card walks its FULL value N + 6.
-            // gs.dice[0] is already N + 6, so the original card value is cardN - 6.
-            _showGrowMatchHop(6, cardN, cardN - 6, "rabbit");
-          } else if (hasGrowHop && !isRunePlay) {
-            // Default 2d6 roll whose SUM matched a grow → the "BELOW 7!" overlay.
-            // The dice cubes stay WHITE (like the rabbit/+6 dice); only the Total
-            // badge below them turns green for the low roll.
-            _showGrowMatchHop(growHop.rolled, growHop.hop, growHop.base);
-          }
-          // Step-by-step token walk to final position
+          // Step-by-step token walk to final position. The walk is keyed on the
+          // PUBLIC lastMove.steps (the claim) — a cup roll's dice are [] for
+          // every viewer but the roller, and even the roller walks the claim.
           const total = gs.dice.reduce((a, b) => a + b, 0);
-          // A single die means a played spell card (gs.dice = [N]);
-          // two dice is a normal roll.
-          const megaOn = !!gs.megaMode;
-          const rollText = isRunePlay
-            ? (gs.dice[0] <= 6
-                ? (megaOn
-                    ? `🐢 ${cur.name} played MEGA TURTLE — walks ${7 - gs.dice[0]}, grows 5×`
-                    : `🐢 ${cur.name} played TURTLE — walks ${7 - gs.dice[0]}`)
-                : (megaOn
-                    ? `🐇 ${cur.name} played MEGA RABBIT — leaps ${gs.dice[0]}, steals every pile`
-                    : `🐇 ${cur.name} played RABBIT — leaps ${gs.dice[0]}`))
-            : gs.dice.length === 1
-              ? `🎲 ${cur.name} played a ${gs.dice[0]}`
-              : `🎲 ${cur.name} rolled ${gs.dice.join("+")} = ${total}`;
+          const walkSteps = mvMove ? mvMove.steps : total;
+          // Cup roll (this viewer can't see the dice): announce the CLAIM.
+          // Roller/public view of a claim that differs from the roll: show both.
+          // Otherwise the classic "rolled X+Y = N" line.
+          const rollText = mvMove && gs.diceHidden
+            ? `🥤 ${cur.name} walks "${mvMove.steps} [${mvMove.mode}]"`
+            : mvMove && gs.dice.length && mvMove.steps !== total
+              ? `🎲 ${cur.name} rolled ${gs.dice.length === 1 ? gs.dice[0] : gs.dice.join("+") + " = " + total} — walks ${mvMove.steps}`
+              : gs.dice.length === 1
+                ? `🎲 ${cur.name} rolled a ${gs.dice[0]}`
+                : `🎲 ${cur.name} rolled ${gs.dice.join("+")} = ${total}`;
           const startPos =
             window._diceRollingPositions &&
             window._diceRollingPositions[cur.id] != null
@@ -1243,24 +1103,18 @@ function showGame() {
           const forwardDist = (cur.position - startPos + BSZ) % BSZ;
           const backwardDist = (startPos - cur.position + BSZ) % BSZ;
           const walkBackward = forwardDist > BSZ / 2 && backwardDist <= 3;
-          const steps = walkBackward ? backwardDist : forwardDist || total;
+          const steps = walkBackward ? backwardDist : forwardDist || walkSteps;
           // Delay walk start when dice-match animation needs to play, and when
           // an early-pickup floater is shown, so the pickup is visible before
           // the walk.
           // With a grow pulse in play the pulse drives the timing (grown piles
           // are gated until it sweeps; landing-grow piles reveal after arrival),
           // so skip the dice-match pre-walk pause.
-          const baseWalkDelay = anyGrowPulse
+          const walkDelay = anyGrowPulse
             ? 0
             : hasDiceMatch
               ? (1200 + (hasEarlyPickup ? 1000 : 0))
               : (hasEarlyPickup ? 1000 : 0);
-          // Hold the walk so the GROW-match "7 - N = M" animation plays BEFORE the
-          // token moves (even in pulse mode, where the base delay is 0). Held ~1s
-          // longer so the calculator stays up a beat longer before the hop.
-          const walkDelay = (hasGrowHop || showCardHop)
-            ? Math.max(baseWalkDelay, 2300)
-            : baseWalkDelay;
           const startWalk = () => {
           let step = 0;
           // Keep reveals frozen during walk, but let token move
@@ -1293,10 +1147,7 @@ function showGame() {
               // Detected client-side: the landed tile's pre-move pile was > 0 and it's
               // owned by someone else (the lander revealed it → fog-safe; other viewers
               // gate on the owner being visible to them).
-              // A TURTLE move (value < 7, walked 7-value) does NOT steal on landing
-              // (backend suppresses it), so don't show the "Stolen" floater either.
-              // gs.lastGrowMatchHop is set iff the committed move was a turtle move.
-              if (window._prevBananaPileState && typeof _showStealFloaterAt === "function" && !gs.lastGrowMatchHop) {
+              if (window._prevBananaPileState && typeof _showStealFloaterAt === "function") {
                 const _stealPrev = window._prevBananaPileState[finalPos] || 0;
                 const _stealProp =
                   gs.properties && gs.properties.find((p) => p && p.id === finalPos);
@@ -1612,7 +1463,12 @@ function showGame() {
       if (gs.dice[1]) setDieFace(die2El, gs.dice[1]);
       if (gs.dice[2]) setDieFace(die3El, gs.dice[2]);
     }
-  } else {
+  } else if (!(die1El && die1El.classList.contains("rolling"))) {
+    // Static face-set for the non-walk states (pre-roll, off-turn, teleport). SKIP
+    // while a die is mid-spin — during the roll-time reveal spin this else runs every
+    // re-render (diceRolled is false through the hold), and stamping the final face
+    // now would pre-commit the result under the spin (currently masked by the
+    // .rolling keyframe, but don't rely on that).
     if (gs.dice[0]) setDieFace(die1El, die1Value);
     else resetDieOverlay(die1El);
     if (gs.dice[1]) setDieFace(die2El, gs.dice[1]);
@@ -1791,296 +1647,16 @@ function showGame() {
   // moment _ensureEndTurnTicker's anim-complete signal arrives.
   _ensureEndTurnTicker();
 
-  // The old "Cancel Opponent Card" button was replaced by the post-roll Predict
-  // Ability bluff — keep it hidden (markup may still exist in index.html).
-  const cancelItemsBtn = document.getElementById("btn-cancel-items");
-  if (cancelItemsBtn) cancelItemsBtn.style.display = "none";
-
-  // Post-roll abilities (active player) + Predict prompt (opponents).
+  // Post-roll shell (active player) + Predict prompt (opponents).
   _renderPostRollUI(gs, me, isMyTurn);
-
-  // +6 mode toggle — shown whenever the viewer is in play and holds spell cards.
-  // While ON, a played card of value N rolls N+6 (moves its full value 7-12, no
-  // inversion, no grow-match). Reflects the current ON/OFF state.
-  const plusSixBtn = document.getElementById("btn-plus-six");
-  if (plusSixBtn) {
-    const heldCards =
-      typeof me.rollCardCount === "number"
-        ? me.rollCardCount
-        : Array.isArray(me.rollCards)
-          ? me.rollCards.length
-          : 0;
-    const modeEl = document.getElementById("magic-dice-mode");
-    if (gs.state === "playing" && !me.startPickPending && heldCards > 0) {
-      const on = !!me.plusSixRolls;
-      // Mode mascot beside the "Spell Cards" title: 🐇 rabbit (+6) / 🐢 turtle (default).
-      if (modeEl) modeEl.textContent = on ? "🐇" : "🐢";
-      plusSixBtn.style.display = "";
-      // Build the segmented-pill toggle markup ONCE (idempotent + cheap). Per
-      // render we only flip .is-on + aria so CSS owns the OFF<->ON slide.
-      // Mega Mode prefixes the mode names; normal mode is just Turtle / Rabbit.
-      // Key the (idempotent) build on the mode so it rebuilds if megaMode differs.
-      const megaMode = !!gs.megaMode;
-      const p6Key = megaMode ? "mega" : "norm";
-      if (plusSixBtn.dataset.p6Built !== p6Key) {
-        const tWord = megaMode ? "Mega Turtle" : "Turtle";
-        const rWord = megaMode ? "Mega Rabbit" : "Rabbit";
-        plusSixBtn.innerHTML =
-          '<span class="p6-track" aria-hidden="true">' +
-            '<span class="p6-thumb"></span>' +
-            '<span class="p6-seg p6-seg--turtle">' +
-              '<span class="p6-mascot">🐢</span>' +
-              '<span class="p6-word">' + tWord + '</span>' +
-            '</span>' +
-            '<span class="p6-seg p6-seg--rabbit">' +
-              '<span class="p6-mascot">🐇</span>' +
-              '<span class="p6-word">' + rWord + '</span>' +
-            '</span>' +
-          '</span>' +
-          '<span class="p6-hint" aria-hidden="true">tap to switch</span>';
-        plusSixBtn.dataset.p6Built = p6Key;
-      }
-      plusSixBtn.classList.toggle("is-on", on);
-      plusSixBtn.setAttribute("aria-pressed", String(on));
-      plusSixBtn.setAttribute(
-        "aria-label",
-        on
-          ? (megaMode
-              ? "Mega Rabbit on — cards move their value plus 6 and steal every banana pile on the path. Tap to switch to Mega Turtle."
-              : "Rabbit on — cards move their value plus 6. Tap to switch to Turtle.")
-          : (megaMode
-              ? "Mega Turtle on — cards walk 7 minus their value and grow piles 5×. Tap to switch to Mega Rabbit."
-              : "Turtle on — cards walk 7 minus their value. Tap to switch to Rabbit.")
-      );
-    } else {
-      if (modeEl) modeEl.textContent = "";
-      plusSixBtn.style.display = "none";
-    }
-  }
 
   // Banana Gadget (with its built-in Path Preview toggle) — recompute every frame
   // so it tracks position; the box shows/hides with play state.
   updateBananaGadget();
 
-  // Guaranteed-win hint (you can win next turn by playing a rune onto the SB).
-  updateWinHint();
-
-  // Magic-rune redraw modal (shown only to the drawing player at their turn start).
-  updateRedrawModal();
-
-  // Spell Cards — grouped chips (me.rollCards, the viewer's CONCEALED hand,
-  // played via useRollCard(i)). STAYS VISIBLE off-turn whenever the viewer holds
-  // >=1 card and the game is in "playing"; chips render DISABLED with a hint when
-  // the viewer can't play. Duplicates are grouped (one chip per value, sorted
-  // ASCENDING, with an ×N pill when count > 1). Clicking plays the FIRST
-  // occurrence of that value. Render is idempotent
-  // (clear + rebuild every frame — no listener leaks, no per-frame growth).
-  const rollCardsList = document.getElementById("magic-dice-list");
-  const rollCardsBox = document.getElementById("magic-dice");
-  const rollCardsSub = document.getElementById("magic-dice-sub");
-  if (rollCardsList) {
-    const concealed = (me && Array.isArray(me.rollCards)) ? me.rollCards : [];
-    const hasCards = concealed.length > 0;
-    const inPlaying = gs.state === "playing";
-    // Spell cards are now a POST-ROLL play: you can tap a card to play it only in
-    // the post-roll ABILITY window (turnPhase === "ability"), after you've rolled.
-    // (Tapping a chip BEFORE rolling / off-turn ARMS it instead — see canArm.)
-    const canPlayCard =
-      isMyTurn &&
-      inPlaying &&
-      gs.turnPhase === "ability" &&
-      me &&
-      !me.startPickPending &&
-      !me.bankrupt &&
-      !me.ghost &&
-      !gs.auction &&
-      !me.pendingCancelDiscard; // resolve an owed discard first
-
-    // ARMING (queue). The box is ALWAYS accessible to a live player: whenever you
-    // can't play right now (off-turn, or on-turn AFTER you've rolled), tapping a
-    // chip ARMS it — a private selection (me.armedRoll = { value } | null) that
-    // AUTO-ACTIVATES at the start of your turn (it auto-plays after the roll-delay
-    // window unless you disarm first; see the armed auto-activation below). It
-    // persists across turn-ends, so a roll armed after your move fires next turn.
-    // Disarm any time. (On your turn BEFORE rolling, chips play immediately
-    // instead — that's canPlayCard.)
-    const armed = (me && me.armedRoll) ? me.armedRoll : null;
-    const canArm =
-      inPlaying &&
-      hasCards &&
-      me &&
-      !me.bankrupt &&
-      !me.ghost &&
-      !me.startPickPending &&
-      !canPlayCard;
-
-    // ARMED AUTO-ACTIVATION: once it's your turn and you can act (canPlayCard is
-    // true only after the roll-delay window — your chance to disarm), a roll you
-    // armed auto-plays. Plays via useRollCard (consumes the card + clears the arm
-    // server-side). Mirrors the auto-roll queue. If you disarmed during the
-    // window, me.armedRoll is null here and nothing fires.
-    if (canPlayCard && armed) {
-      const armIdx = concealed.indexOf(armed.value);
-      if (armIdx >= 0 && !window._autoArmQueued) {
-        window._autoArmQueued = true;
-        setTimeout(() => {
-          window._autoArmQueued = false;
-          // Re-validate at fire time (state may have changed in the meantime):
-          // still my turn, not yet rolled, no blocking interaction, still armed
-          // with the same selection, and the card is still held.
-          const m = gs && _gsPlayerMap[myId];
-          // Mirror canPlayCard: only fire on YOUR turn, before rolling, with no
-          // blocking interaction (auction / poker / redraw / SB) — otherwise the
-          // server rejects the play (no game_update) and the armed path lingers.
-          if (
-            !gs ||
-            gs.diceRolled ||
-            gs.auction ||
-            gs.poker ||
-            gs.superBananaWin ||
-            gs.superBananaPending ||
-            gs.redraw ||
-            !gs.currentPlayer ||
-            gs.currentPlayer.id !== myId
-          ) return;
-          if (!m || m.ghost || m.bankrupt || m.startPickPending || !m.armedRoll) return;
-          const i = (m.rollCards || []).indexOf(m.armedRoll.value);
-          if (i >= 0) useRollCard(i);
-        }, 120);
-      }
-    } else if (window._autoArmQueued) {
-      // Can't act / nothing armed -> drop any stale queued activation.
-      window._autoArmQueued = false;
-    }
-
-    // Always rebuild from scratch so there are no leaks / duplicate listeners.
-    rollCardsList.innerHTML = "";
-
-    // Visible whenever the viewer holds cards and the game is playing —
-    // regardless of whose turn it is.
-    if (hasCards && inPlaying) {
-      if (rollCardsBox) {
-        rollCardsBox.style.display = "";
-        // "Locked" only when chips are neither playable now nor armable.
-        rollCardsBox.classList.toggle("is-locked", !canPlayCard && !canArm);
-      }
-      rollCardsList.style.display = "";
-      if (rollCardsSub) {
-        const subText = me.plusSixRolls
-          ? (gs.megaMode
-              ? "🐇 MEGA RABBIT — cards leap value + 6 & steal every pile on the path"
-              : "🐇 Rabbit — cards leap their value + 6")
-          : canPlayCard
-            ? (armed ? "Auto-playing your armed roll — tap to play now, or disarm" : "Play one to move exactly that many tiles")
-            : canArm
-              ? (armed ? "Armed — auto-plays on your next turn (tap it to disarm)" : "")
-              : "Not available right now";
-        rollCardsSub.textContent = subText;
-        // Collapse the line when there's nothing to say (the "tap to arm" hint was
-        // removed) so it leaves no empty gap above the chips.
-        rollCardsSub.style.display = subText ? "" : "none";
-      }
-
-      // Group a collection by value → ascending [{ value, count, firstIndex }].
-      // firstIndex is the index of the FIRST occurrence of that value in the
-      // ORIGINAL array — exactly what useRollCard(index) needs to play one of
-      // that value. Sorting only reorders the display list.
-      const groupCards = (arr) => {
-        const byVal = new Map(); // value → { count, firstIndex }
-        arr.forEach((n, i) => {
-          const v = byVal.get(n);
-          if (v) v.count += 1;
-          else byVal.set(n, { count: 1, firstIndex: i });
-        });
-        return Array.from(byVal.entries())
-          .map(([value, info]) => ({ value, count: info.count, firstIndex: info.firstIndex }))
-          .sort((a, b) => a.value - b.value);
-      };
-
-      const makeChip = (group, idx) => {
-        const btn = document.createElement("button");
-        btn.type = "button";
-        btn.className = "roll-chip roll-chip-concealed";
-        const v = group.value;
-        const c = group.count;
-        const isArmed = !!(armed && armed.value === v);
-        // Normally a card walks 7 - v (the low-roll inversion): GREEN = the GROW
-        // it would trigger (v), PURPLE = the walk steps (7 - v). In +6 MODE the
-        // card rolls v + 6 (>= 7): it walks its full value with NO inversion and
-        // never grow-matches, so show a single PURPLE walk number (no grow).
-        const plusSix = !!(me && me.plusSixRolls);
-        const walk = plusSix ? v + 6 : 7 - v;
-        btn.setAttribute(
-          "aria-label",
-          plusSix
-            ? "spell card: moves " + walk +
-                (c > 1 ? ", " + c + " held" : "") + (isArmed ? ", armed" : "")
-            : "spell card: grows " + v + ", walks " + walk +
-                (c > 1 ? ", " + c + " held" : "") + (isArmed ? ", armed" : "")
-        );
-        let html;
-        if (plusSix) {
-          btn.classList.add("roll-chip-plussix");
-          // +6 mode: only the walk number (value increased to v+6), with the
-          // clockwise arrow above it (no grow side / no tree).
-          html =
-            '<span class="roll-chip-walk"><span class="rc-ico">🔃</span>' +
-            '<span class="rc-n">' + escapeHtml(String(walk)) + "</span></span>";
-        } else {
-          // A split card: GREEN grow trigger (🌴 tree over the grow number) |
-          // OFFWHITE walk steps (🔃 clockwise arrow over the walk number).
-          btn.classList.add("roll-chip-split");
-          html =
-            '<span class="roll-chip-grow"><span class="rc-ico">🌴</span>' +
-            '<span class="rc-n">' + escapeHtml(String(v)) + "</span></span>" +
-            '<span class="roll-chip-walk"><span class="rc-ico">🔃</span>' +
-            '<span class="rc-n">' + escapeHtml(String(walk)) + "</span></span>";
-        }
-        if (c > 1) {
-          html += '<span class="roll-chip-mult">×' + escapeHtml(String(c)) + "</span>";
-        }
-        html +=
-          '<span class="chip-tip" aria-hidden="true">×' + escapeHtml(String(c)) + '</span>' +
-          '<span class="chip-tip-notch" aria-hidden="true"></span>';
-        btn.innerHTML = html;
-        // Show the armed ring ONLY on an interactive chip (playable or armable),
-        // never on a disabled one — a greyed chip with a bright ring reads as a
-        // glitch.
-        const markArmed = () => {
-          btn.classList.add("roll-chip-armed");
-          btn.setAttribute("aria-pressed", "true");
-        };
-        if (canPlayCard) {
-          // Your turn: tap plays one of this value. (The armed highlight just
-          // points at your pre-selection; playing clears the arm server-side.)
-          if (isArmed) markArmed();
-          const fi = group.firstIndex;
-          btn.onclick = () => useRollCard(fi);
-        } else if (canArm) {
-          // Off your turn: tap ARMS this value, or DISARMS it if already armed.
-          if (isArmed) markArmed();
-          btn.onclick = () => {
-            if (isArmed) disarmRollCard();
-            else armRollCard(v);
-          };
-        } else {
-          btn.classList.add("is-disabled");
-          btn.disabled = true;
-          btn.onclick = null;
-        }
-        return btn;
-      };
-
-      const concealedGroups = groupCards(concealed);
-      concealedGroups.forEach((g, i) => rollCardsList.appendChild(makeChip(g, i)));
-    } else {
-      if (rollCardsBox) {
-        rollCardsBox.style.display = "none";
-        rollCardsBox.classList.remove("is-locked");
-      }
-      rollCardsList.style.display = "none";
-    }
-  }
+  // #magic-dice box → the CREDIT SCORE panel: the viewer's credit as blank
+  // tokens + total + the cup/public tier hint.
+  _renderCreditPanel(gs, me);
 
   // Jungle log always visible.
   const logBox = document.querySelector(".log-box");
@@ -2132,7 +1708,7 @@ function showGame() {
           `<div class="pstat-monkey c-${p.color}">${p.ghost ? GHOST_EMOJI : (MONKEY_EMOJI[p.color] || "\uD83D\uDC35")}</div>` +
           `<span class="pstat-name">${p.name}${p.ghost ? " " + GHOST_EMOJI : ""}<span class="team-badge team-${teamKey}">T${teamKey}</span></span>` +
           (p.id === gs.d12OwnerId ? '<span class="d12-badge" title="Hexed — rolls a single d12"></span>' : '') +
-          _rollCardPanelHTML(p) +
+          `<span class="pstat-credit" title="Credit Score (public — blank tokens, 1 per point)">💳${p.credit || 0}</span>` +
           `<span class="pstat-yield" title="Total farm yield across the whole map (bananas added each time a grow sweeps this player's farms)">${p.totalYield || 0}🍌</span>` +
           `</div>` +
           `<span class="pstat-money">${frozenPlayerMoney && frozenPlayerMoney[p.id] != null ? frozenPlayerMoney[p.id] : p.money}🍌</span>` +
@@ -2153,7 +1729,7 @@ function showGame() {
         `<div class="pstat-monkey c-${p.color}">${p.ghost ? GHOST_EMOJI : (MONKEY_EMOJI[p.color] || "\uD83D\uDC35")}</div>` +
         `<span class="pstat-name">${p.name}${p.ghost ? " " + GHOST_EMOJI : ""}</span>` +
         (p.id === gs.d12OwnerId ? '<span class="d12-badge" title="Hexed — rolls a single d12"></span>' : '') +
-        _rollCardPanelHTML(p) +
+        `<span class="pstat-credit" title="Credit Score (public — blank tokens, 1 per point)">💳${p.credit || 0}</span>` +
         `<span class="pstat-yield" title="Total farm yield across the whole map (bananas added each time a grow sweeps this player's farms)">${p.totalYield || 0}🍌</span>` +
         `</div>` +
         `<span class="pstat-money">${frozenPlayerMoney && frozenPlayerMoney[p.id] != null ? frozenPlayerMoney[p.id] : p.money}🍌</span>` +
@@ -2568,20 +2144,22 @@ function updateTileLegend() {
   // redacts the tile's location from boardLayout, so we can't count it here).
   const special = (gs.boardComposition && gs.boardComposition.special) || 0;
 
-  // The Super Banana's win price (your "target") + the one-time bonus for landing
-  // on OR crossing a revealed one — shown HERE instead of on the board tile.
-  // Target is the configured win price (fog-independent); the touch bonus is a
-  // flat +200, paid once per player whether they land on or cross it (matches
-  // _processLanding + _resolveSuperBananaCross's shared sbBonusTaken latch).
+  // The Super Banana's RICH threshold (the win price) + what a revealed SB pays
+  // — shown HERE instead of on the board tile. Win: land on it while RICH
+  // (money >= the price), or the auto-win (rich + >=1 credit + the revealed SB
+  // within 12 steps ahead). A rich CROSS earns +1 credit every lap; a broke
+  // crosser gets the one-time +200🍌 consolation.
   if (special > 0) {
     const target = gs.superBananaPrice != null ? gs.superBananaPrice : 0;
     const TOUCH_BONUS = 200;
     const stats = document.createElement("div");
     stats.className = "legend-sb-stats";
     stats.innerHTML =
-      `<div class="legend-sb-stat"><span class="legend-sb-label">🎯 Target bananas</span>` +
+      `<div class="legend-sb-stat"><span class="legend-sb-label">🎯 Rich at (win money)</span>` +
       `<span class="legend-sb-val">${target}🍌</span></div>` +
-      `<div class="legend-sb-stat"><span class="legend-sb-label">↩️ Cross/land bonus</span>` +
+      `<div class="legend-sb-stat"><span class="legend-sb-label">💳 Rich cross</span>` +
+      `<span class="legend-sb-val legend-sb-val--bonus">+1 credit</span></div>` +
+      `<div class="legend-sb-stat"><span class="legend-sb-label">↩️ Broke cross bonus</span>` +
       `<span class="legend-sb-val legend-sb-val--bonus">+${TOUCH_BONUS}🍌</span></div>`;
     el.appendChild(stats);
   }
@@ -2601,7 +2179,8 @@ function createGame() {
   const farmAuctionTimerEl = document.getElementById("create-farm-auction-timer");
   const farmAuctionTimer = farmAuctionTimerEl ? (parseInt(farmAuctionTimerEl.value) || 15) : 15;
   const dodecahedron = document.getElementById("create-dodecahedron") ? document.getElementById("create-dodecahedron").checked : true;
-  const megaMode = document.getElementById("create-mega-mode") ? document.getElementById("create-mega-mode").checked : true;
+  const creditStartEl = document.getElementById("create-credit-start");
+  const creditStart = creditStartEl ? (parseInt(creditStartEl.value) || 7) : 7;
   if (!socket.connected)
     return showToast("Connecting to server, please try again.", "warning");
   _joinedName = name;
@@ -2615,7 +2194,7 @@ function createGame() {
     superBananaPrice,
     farmAuctionTimer,
     dodecahedron,
-    megaMode,
+    creditStart,
   });
 }
 
@@ -2745,20 +2324,6 @@ function _getBidMax() {
   const me = gs ? _gsPlayerMap[myId] : null;
   if (!me) return 500;
   let max = me.money;
-  // Super Banana mystery rune auction: the LANDER names a price the WINNER pays,
-  // so it's capped at the richest opponent's bank — not the lander's (who may be
-  // broke, having just failed to afford the Super Banana).
-  if (
-    gs.auction &&
-    gs.auction.sbRune &&
-    gs.auction.phase === "pitch" &&
-    myId === gs.auction.landingPlayer
-  ) {
-    const others = (gs.players || []).filter(
-      (p) => p.id !== myId && !p.bankrupt && !p.ghost,
-    );
-    return others.length ? Math.max(...others.map((p) => p.money)) : 0;
-  }
   // Silent tie-breaker: the top-up is capped at what's left after the list price.
   if (gs.auction && gs.auction.phase === "silentbid") {
     return Math.max(0, me.money - (gs.auction.landerOpenBid || 0));
@@ -3073,27 +2638,13 @@ function updateAuctionPanel() {
 
   const titleEl = document.getElementById("auction-title");
   if (titleEl)
-    titleEl.textContent = a.sbRune
-      ? "⭐ MYSTERY CARD DRAW ⭐"
-      : a.sealedBid
-        ? "🤫 SEALED BID 🤫"
-        : "🏷️ PRICE IT 🏷️";
+    titleEl.textContent = a.sealedBid
+      ? "🤫 SEALED BID 🤫"
+      : "🏷️ PRICE IT 🏷️";
   box.style.display = "block";
 
   const propEl = document.getElementById("auction-prop");
-  if (a.sbRune) {
-    // The lander sees their two secret 0/1 cards (sum = how many runes the winner
-    // draws); everyone else bids blind.
-    if (iAmLander && Array.isArray(a.runeCards) && a.runeCards.length === 2) {
-      const c1 = a.runeCards[0], c2 = a.runeCards[1], n = c1 + c2;
-      propEl.textContent =
-        `Super Banana — your cards [${c1}] [${c2}] = ${n} Spell Card draw${n === 1 ? "" : "s"} to the winner` +
-        (n === 0 ? " (bluff it! 😈)" : " 🔮");
-    } else {
-      propEl.textContent = "Super Banana — a MYSTERY number of Spell Card draws (0–2) 🔮";
-    }
-    propEl.className = "auction-prop";
-  } else if (a.propName) {
+  if (a.propName) {
     propEl.textContent = `${a.propName} — ${a.propPrice}🍌 yield`;
     propEl.className = a.propGroup
       ? "auction-prop g-" + a.propGroup

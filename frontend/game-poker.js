@@ -173,7 +173,8 @@ function updateLobbySettings() {
   const farmAuctionTimerEl = document.getElementById("lobby-farm-auction-timer");
   const farmAuctionTimer = farmAuctionTimerEl ? (parseInt(farmAuctionTimerEl.value) || 15) : 15;
   const dodecahedron = document.getElementById("lobby-dodecahedron") ? document.getElementById("lobby-dodecahedron").checked : true;
-  const megaMode = document.getElementById("lobby-mega-mode") ? document.getElementById("lobby-mega-mode").checked : true;
+  const creditStartEl = document.getElementById("lobby-credit-start");
+  const creditStart = creditStartEl ? (parseInt(creditStartEl.value) || 7) : 7;
   socket.emit("update_settings", {
     gameId,
     startingMoney: money,
@@ -183,7 +184,7 @@ function updateLobbySettings() {
     superBananaPrice,
     farmAuctionTimer,
     dodecahedron,
-    megaMode,
+    creditStart,
   });
 }
 

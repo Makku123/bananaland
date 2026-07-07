@@ -96,18 +96,6 @@ function initSocket() {
         window._prevRevealedTiles = new Set(meRev.revealedTiles);
       }
     }
-    // Rune-count snapshot: ALWAYS from the outgoing gs (even mid-walk), like the
-    // pile/revealed snapshots above — a spell-card DRAW can land during ANOTHER
-    // player's walk (an off-turn cancel HIT), so we must not miss it. Diffed
-    // after `gs = state` to fly a card from the center deck to the gainer
-    // (below). Left undefined on the very first state, so a reload/reconnect
-    // never re-fires for runes already in hand.
-    if (gs && gs.players && typeof _runeCountOf === "function") {
-      window._prevRuneCounts = {};
-      for (const p of gs.players) {
-        window._prevRuneCounts[p.id] = _runeCountOf(p);
-      }
-    }
     // Ghost notification: a player who just turned into a ghost (left/disconnected
     // mid-game). Show a toast so the change is unmistakable.
     if (gs && gs.players && Array.isArray(state.players)) {
@@ -118,30 +106,6 @@ function initSocket() {
         }
       }
     }
-
-    // Cancel result: a HIT is revealed to EVERYONE the moment the targeted
-    // player plays a spell card that gets nullified. A MISS is private — the
-    // server ships it ONLY to the caster (so the target never learns they were
-    // targeted) and the caster simply loses two random runes. Dedup by seq; seed
-    // on the first state so a reload mid-turn never re-toasts.
-    if (window._lastCancelResultSeq === undefined) {
-      window._lastCancelResultSeq = state.lastCancelResult ? state.lastCancelResult.seq : 0;
-    } else if (state.lastCancelResult && state.lastCancelResult.seq !== window._lastCancelResultSeq) {
-      window._lastCancelResultSeq = state.lastCancelResult.seq;
-      const cr = state.lastCancelResult;
-      if (cr.landed) {
-        showToast(`🚫 ${cr.casterName} canceled ${cr.targetName}'s spell card!`, "warning", 4000);
-      } else if (cr.runesLost > 0) {
-        // Caster-only (the server redacts misses to the caster).
-        showToast(`💢 Your cancel missed — you lost ${cr.runesLost} spell card${cr.runesLost === 1 ? "" : "s"}!`, "warning", 4000);
-      }
-    }
-
-    // Clear the missed-cancel discard "resolving" guard on EVERY update so the
-    // picker can re-open whenever the debt still stands — a rejected/stale pick or
-    // a 2nd missed cancel that bumped the owed count. Without this the flag could
-    // latch true and soft-lock the caster (gated from all actions until reload).
-    window._cancelDiscardResolving = false;
 
     // Hex notification: a player just became HEXED (single-d12 curse) — on the
     // first Super Banana landing, or when the curse passes to them. Public; the
@@ -170,6 +134,21 @@ function initSocket() {
         if (typeof playShuffleSound === "function") playShuffleSound();
       }
     }
+
+    // Accuse verdict: an accusation resolved — the cup lifts and credits
+    // settle. PUBLIC, set only when >=1 player accused. Dedup by seq, seeded
+    // on the first state so a reconnect never replays the banner. Stashed here
+    // and fired AFTER the player map rebuild below (the banner needs names).
+    let _accuseVerdictToShow = null;
+    if (window._lastAccuseSeq === undefined) {
+      window._lastAccuseSeq = state.lastAccuseResult ? state.lastAccuseResult.seq : 0;
+    } else if (
+      state.lastAccuseResult &&
+      state.lastAccuseResult.seq !== window._lastAccuseSeq
+    ) {
+      window._lastAccuseSeq = state.lastAccuseResult.seq;
+      _accuseVerdictToShow = state.lastAccuseResult;
+    }
     gs = state;
     gameId = state.gameId;
     myId = socket.id;
@@ -190,6 +169,12 @@ function initSocket() {
     _gsPropMap = {};
     if (gs.properties) for (const p of gs.properties) _gsPropMap[p.id] = p;
 
+    // Fire the accuse verdict banner (+ the cup-lift for cup viewers) BEFORE
+    // route() renders, so the lifted cup shows on this very frame.
+    if (_accuseVerdictToShow && typeof _showAccuseVerdict === "function") {
+      _showAccuseVerdict(_accuseVerdictToShow);
+    }
+
     route();
 
     // General money-loss detection: show red deduction popup for ANY player
@@ -204,14 +189,9 @@ function initSocket() {
       // bundle entirely. Treat start picks as immediate.
       const isStartPick =
         !!(gs.lastStartPick && gs.lastStartPick.turn === gs.turn);
-      // A farm teleport also jumps instantly (no walk), so — like a start pick —
-      // its money effects (the harvested own-pile) must fire immediately, not be
-      // deferred to a walk that never happens.
-      const isTeleport =
-        !!(gs.lastTeleport && gs.lastTeleport.turn === gs.turn);
       // Detect if a brand-new dice roll just arrived (walk animation hasn't started yet)
       const isNewDiceRoll = gs.diceRolled && gs.dice && !gs.itemMoveThisTurn &&
-        gs.currentPlayer && !isStartPick && !isTeleport &&
+        gs.currentPlayer && !isStartPick &&
         (gs.dice.join("-") + "-" + gs.turn) !== window._lastDiceKey;
       const walkInProgress = window._tokenWalking || isNewDiceRoll;
       const pokerJustStarted = gs.poker && !gs.poker.resolved && walkInProgress;
@@ -250,44 +230,16 @@ function initSocket() {
             // Defer other players' gains (e.g. rent income) until visual landing
             if (!window._pendingLandingOtherEffects) window._pendingLandingOtherEffects = [];
             window._pendingLandingOtherEffects.push({ type: "gain", playerId: p.id, amount: gain });
-          } else if (window._tokenWalking && !isTeleport && !isStartPick) {
-            // Walk mid-progress updates — defer. But an instant teleport / start
-            // pick never walks, so its harvested-pile gain must burst NOW even if
-            // a prior walk left _tokenWalking stale-true (else the +N🍌 floater is
+          } else if (window._tokenWalking && !isStartPick) {
+            // Walk mid-progress updates — defer. But an instant start pick never
+            // walks, so its harvested-pile gain must burst NOW even if a prior
+            // walk left _tokenWalking stale-true (else the +N🍌 floater is
             // deferred to the next walk or dropped).
             if (!window._pendingLandingOtherEffects) window._pendingLandingOtherEffects = [];
             window._pendingLandingOtherEffects.push({ type: "gain", playerId: p.id, amount: gain });
           } else {
             bananaBurst(gain, p.id);
           }
-        }
-      }
-    }
-
-    // Magic-rune DRAW detection: any player whose concealed rune count rose
-    // since the previous state just drew — fly a card from the center proxy
-    // deck to their token. Source-agnostic: every gain (cancel HIT, Super-Banana
-    // award / auction, …) funnels through the rune count, so this one diff
-    // covers them all. Seeded reconnect-safe: _prevRuneCounts is undefined on
-    // the first state, so runes already in hand never re-fire on reload.
-    if (
-      window._prevRuneCounts &&
-      gs.state === "playing" &&
-      gs.players &&
-      typeof flyRuneDraw === "function"
-    ) {
-      for (const p of gs.players) {
-        const prevC = window._prevRuneCounts[p.id];
-        const nowC = _runeCountOf(p);
-        if (prevC != null && nowC > prevC) {
-          const gained = nowC - prevC;
-          // Own draw: reveal the freshly-drawn value(s). New runes are
-          // push-appended, so the last `gained` entries of rollCards are newest.
-          const faces =
-            p.id === myId && Array.isArray(p.rollCards)
-              ? p.rollCards.slice(-gained)
-              : null;
-          flyRuneDraw(p.id, gained, faces);
         }
       }
     }
@@ -403,7 +355,6 @@ function route() {
   } else if (gs.state === "revealing") {
     showReveal();
     updateRevealAcceptStatus();
-    updateRevealRunes();
   } else {
     hideReveal();
     if (!_shufflePlayed) {
@@ -437,26 +388,29 @@ function showGameOver() {
     el.addEventListener("animationend", () => el.remove());
   }
 
-  // Find the winner (the super banana owner, or the last monkey standing)
+  // Find the winner. Super Banana wins carry HOW they were won: "landing" (a
+  // RICH lander stopped on the SB) or "auto" (the within-12 auto-win: rich +
+  // >=1 credit + the revealed SB 1..12 steps ahead). Last-standing stays the
+  // everyone-else-left fallback.
   let winnerPlayer;
-  if (gs.lastStandingWinner) {
+  let winnerHow = null;
+  if (gs.superBananaWin && gs.superBananaWin.playerId) {
+    winnerPlayer = _gsPlayerMap[gs.superBananaWin.playerId];
+    winnerHow = gs.superBananaWin.how || "landing";
+  } else if (gs.lastStandingWinner) {
     winnerPlayer = _gsPlayerMap[gs.lastStandingWinner];
-  } else {
-    winnerPlayer = gs.players.find((p) =>
-      p.properties.some((pos) => {
-        const prop = _gsPropMap[pos];
-        return prop && prop.group === "superBanana";
-      }),
-    );
   }
 
   const winnerEl = document.getElementById("game-over-winner");
-  if (winnerPlayer && gs.lastStandingWinner) {
+  if (winnerPlayer) {
     const emoji = MONKEY_EMOJI[winnerPlayer.color] || "\uD83D\uDC35";
-    winnerEl.innerHTML = `${emoji} <span class="winner-name">${winnerPlayer.name}</span><br>is the Monkey King! \uD83D\uDC51\uD83D\uDCA5`;
-  } else if (winnerPlayer) {
-    const emoji = MONKEY_EMOJI[winnerPlayer.color] || "\uD83D\uDC35";
-    winnerEl.innerHTML = `${emoji} <span class="winner-name">${winnerPlayer.name}</span><br>is the Monkey God! \uD83D\uDC51\u2b50`;
+    const howText =
+      winnerHow === "auto"
+        ? "auto-win: within 12 of the Super Banana, rich, with credit! \uD83D\uDC51"
+        : winnerHow === "landing"
+          ? "landed on the Super Banana rich! \uD83D\uDC51\u2B50"
+          : "is the Monkey King! \uD83D\uDC51\uD83D\uDCA5";
+    winnerEl.innerHTML = `${emoji} <span class="winner-name">${winnerPlayer.name}</span><br>${howText}`;
   }
 
   // Standings sorted by money (winner always first, bankrupt players last)
@@ -470,8 +424,6 @@ function showGameOver() {
     if (a.bankrupt !== b.bankrupt) return a.bankrupt ? 1 : -1;
     return b.money - a.money;
   });
-  const superBananaSvg = `<svg class="super-banana-icon" viewBox="0 0 64 64" width="28" height="28"><defs><linearGradient id="sbrb" x1="0.2" y1="0" x2="0.8" y2="1"><stop offset="0%" stop-color="#ff3333"/><stop offset="20%" stop-color="#ff9933"/><stop offset="40%" stop-color="#ffee33"/><stop offset="60%" stop-color="#33dd55"/><stop offset="80%" stop-color="#3399ff"/><stop offset="100%" stop-color="#cc44ff"/></linearGradient></defs><g transform="rotate(45,32,32) translate(64,0) scale(-1,1)"><path d="M36 10 C34 10 31 14 28 20 C23 30 16 40 16 48 C16 52 18 55 22 55 C25 55 27 53 27 50 C27 44 30 36 34 28 C38 20 42 14 42 11 C42 9 39 8 36 10Z" fill="url(#sbrb)" stroke="#fff" stroke-width="1.5"/><path d="M36 10 C38 6 41 3 44 2 C46 1 47 3 46 5 C45 7 42 9 39 10Z" fill="#5a3a1a" stroke="#3d2510" stroke-width="0.8" stroke-linejoin="round"/><path d="M24 38 C22 42 21 46 22 50" fill="none" stroke="rgba(255,255,255,0.5)" stroke-width="1.5" stroke-linecap="round"/></g></svg>`;
-
   standingsEl.innerHTML = sorted
     .map((p, i) => {
       const emoji = MONKEY_EMOJI[p.color] || "\uD83D\uDC35";
@@ -484,9 +436,7 @@ function showGameOver() {
               ? "\uD83E\uDD49"
               : "";
       const status = p.bankrupt ? " \uD83D\uDCA5" : "";
-      const isWinner = winnerId && p.id === winnerId;
-      const bananaIcon = isWinner ? superBananaSvg : "";
-      return `<div class="standing-row">${medal} ${emoji} <span style="flex:1;margin-left:6px">${p.name}${status}</span>${bananaIcon}<span>${p.money}\uD83C\uDF4C</span></div>`;
+      return `<div class="standing-row">${medal} ${emoji} <span style="flex:1;margin-left:6px">${p.name}${status}</span><span>${p.money}\uD83C\uDF4C</span></div>`;
     })
     .join("");
 }
@@ -520,43 +470,7 @@ function showReveal() {
 
   _renderRevealContent(content);
 
-  // Your starting Spell Cards: dealt in with an animation. Display only — the
-  // dealt hand is final (no pre-game re-roll).
-  const runesWrap = document.createElement("div");
-  runesWrap.className = "reveal-runes";
-  runesWrap.innerHTML =
-    '<span class="reveal-runes-corner tl"></span>' +
-    '<span class="reveal-runes-corner tr"></span>' +
-    '<span class="reveal-runes-corner bl"></span>' +
-    '<span class="reveal-runes-corner br"></span>' +
-    '<div class="reveal-runes-title">🔮 Your Spell Cards</div>' +
-    '<div class="reveal-runes-list" id="reveal-runes-list"></div>';
-  content.appendChild(runesWrap);
-
   _attachRevealCountdown(content, overlay);
-  updateRevealRunes();
-}
-
-// Render the viewer's starting runes on the reveal screen (display only — runes
-// can't be re-rolled). Built ONCE with a staggered deal-in; called again on each
-// "revealing" game_update (a no-op after the first build, since the hand is fixed).
-function updateRevealRunes() {
-  const list = document.getElementById("reveal-runes-list");
-  if (!list || !gs || !gs.players) return;
-  const me = gs.players.find((p) => p.id === myId);
-  const runes = (me && Array.isArray(me.rollCards)) ? me.rollCards : [];
-  if (list.childElementCount === runes.length) return;
-  // Deal the whole hand in with a stagger.
-  list.innerHTML = "";
-  runes.forEach((v, i) => {
-    const card = document.createElement("div");
-    card.className = "reveal-rune-card roll-chip roll-chip-concealed";
-    card.style.animationDelay = `${i * 70}ms`;
-    card.dataset.idx = String(i);
-    card.dataset.val = String(v);
-    card.innerHTML = `<span class="roll-chip-val">${v}</span>`;
-    list.appendChild(card);
-  });
 }
 
 // Build and attach the countdown footer + start the reveal timer (5s, matching

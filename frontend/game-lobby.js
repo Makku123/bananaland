@@ -24,7 +24,8 @@ function showLobby() {
     <div class="lobby-setting">\ud83c\udf4c <span class="lobby-setting-val">${gs.startingMoney || 5000}</span></div>
     <div class="lobby-setting">\ud83d\udc65 <span class="lobby-setting-val">${gs.maxPlayers || 4} max</span></div>
     <div class="lobby-setting">\ud83c\udfae <span class="lobby-setting-val">${modeLabel}</span></div>
-    <div class="lobby-setting">\u2b50 <span class="lobby-setting-val">Win: Buy the Super Banana (${gs.superBananaPrice || 10000}\ud83c\udf4c)</span></div>
+    <div class="lobby-setting">\u2b50 <span class="lobby-setting-val">Win: land on the Super Banana while rich, or get within 12 of it rich with credit (rich = ${gs.superBananaPrice || 10000}\ud83c\udf4c)</span></div>
+    <div class="lobby-setting">\ud83d\udcb3 <span class="lobby-setting-val">${gs.creditStart != null ? gs.creditStart : 7} starting credit</span></div>
     ${gs.isPublic ? '<div class="lobby-setting">\ud83c\udf10 <span class="lobby-setting-val">Public</span></div>' : '<div class="lobby-setting">\ud83d\udd12 <span class="lobby-setting-val">Private</span></div>'}
   `;
 
@@ -56,10 +57,10 @@ function showLobby() {
       if (lobbySuper && gs.superBananaPrice != null) lobbySuper.value = gs.superBananaPrice;
       const lobbyAuctTimer = document.getElementById("lobby-farm-auction-timer");
       if (lobbyAuctTimer && gs.farmAuctionTimer != null) lobbyAuctTimer.value = gs.farmAuctionTimer;
+      const lobbyCredit = document.getElementById("lobby-credit-start");
+      if (lobbyCredit && gs.creditStart != null) lobbyCredit.value = gs.creditStart;
       const lobbyDodeca = document.getElementById("lobby-dodecahedron");
       if (lobbyDodeca) lobbyDodeca.checked = gs.dodecahedron === undefined ? true : !!gs.dodecahedron;
-      const lobbyMega = document.getElementById("lobby-mega-mode");
-      if (lobbyMega) lobbyMega.checked = gs.megaMode === undefined ? true : !!gs.megaMode;
     } finally {
       _syncingLobby = false;
     }
@@ -514,7 +515,16 @@ function _tickEndTurnCountdown() {
   const overlayOpen =
     !!gs.auction ||
     !!gs.poker ||
-    !!gs.superBananaPending;
+    !!gs.superBananaPending ||
+    // The claim/accuse window: the walk commits at claim time (diceRolled is
+    // already true mid-window), but the server REFUSES turn_anims_complete
+    // while pendingAction/accuse are open — and the signal is latched
+    // once-per-turn, so firing it early would leave the turn to the 30s
+    // safety net. Hold it until the window fully resolves.
+    !!gs.pendingAction ||
+    !!gs.accuse ||
+    gs.turnPhase === "claiming" ||
+    gs.turnPhase === "accusing";
   const animsBlocking = !!(
     window._tokenWalking ||
     window._diceRollingPositions ||

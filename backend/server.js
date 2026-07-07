@@ -193,7 +193,8 @@ function generateCode() {
   return String(Math.floor(100000 + Math.random() * 900000));
 }
 
-// Send personalized game state to each player (for spell-card privacy)
+// Send personalized game state to each player (per-viewer redaction: fog of
+// war + the liar's-dice cup — a hidden roll is visible only to its roller)
 function emitGameUpdate(gameId, game) {
   const room = io.sockets.adapter.rooms.get(gameId);
   if (!room) return;
@@ -253,9 +254,15 @@ io.on("connection", (socket) => {
     }
     // Dodecahedron is ON by default; absent (older clients) keeps it on.
     game.dodecahedron = data.dodecahedron !== false;
-    // Mega Mode is ON by default (MEGA TURTLE/RABBIT — 5× grow + path vacuum);
-    // absent (older clients) keeps it on. Only an explicit false opts into normal.
-    game.megaMode = data.megaMode !== false;
+    // Credit Score starting stack — a lobby knob like startingMoney (default 7,
+    // clamped 1..20). Every player's credit is (re)seeded from it at game start.
+    if (data.creditStart != null) {
+      game.creditStart = Math.min(
+        Math.max(Math.floor(data.creditStart) || 7, 1),
+        20,
+      );
+      for (const p of game.players) p.credit = game.creditStart;
+    }
 
     const player = game.addPlayer(socket.id, data.playerName, data.clientId);
     if (!player || player.error)
@@ -442,8 +449,8 @@ io.on("connection", (socket) => {
     if (!game) return;
     if (game.startGame(socket.id)) {
       emitGameUpdate(data.gameId, game);
-      // Auto-complete the reveal after a fixed 5s window (players inspect the board
-      // + their 7 starting runes; the dealt hand is final — no re-rolls).
+      // Auto-complete the reveal after a fixed 5s window (players inspect the
+      // board tiles before the shuffle).
       setTimeout(() => {
         if (game.state === "revealing") {
           game.completeReveal();
@@ -459,16 +466,12 @@ io.on("connection", (socket) => {
     if (!game) return;
     if (game.pickStartTile(socket.id, data.position)) {
       emitGameUpdate(data.gameId, game);
-      // First-turn pick can land on the Super Banana; if the player can't
-      // afford it they must hide it on a tile of their choice. Arm the AFK
-      // fallback so the turn never hangs if they don't pick.
     }
   });
 
   // ── Random starting tile (the player presses "Random") ───────
   // Server picks a random tile that no other on-board player occupies, so the
-  // 2nd/3rd/4th picks never land on someone. Mirrors the Super Banana AFK
-  // fallback in case the random tile turns out to be the Super Banana.
+  // 2nd/3rd/4th picks never land on someone.
   socket.on("pick_start_tile_random", (data) => {
     const game = games.get(data.gameId);
     if (!game) return;
@@ -477,74 +480,9 @@ io.on("connection", (socket) => {
     }
   });
 
-  // ── Use a Spell Card (plays card at index instead of rolling) ──
-  socket.on("use_roll_card", (data) => {
-    const game = games.get(data.gameId);
-    if (!game) return;
-    if (game.useRollCard(socket.id, data.index)) {
-      emitGameUpdate(data.gameId, game);
-    }
-  });
-
-  // ── Arm / disarm a spell card (pre-selection) ───────────────
-  // Off-turn convenience: pick a roll to play on your turn. Private to the
-  // owner; does NOT auto-play. Disarm any time.
-  socket.on("arm_roll_card", (data) => {
-    const game = games.get(data.gameId);
-    if (!game) return;
-    if (game.armRollCard(socket.id, data && data.value)) {
-      emitGameUpdate(data.gameId, game);
-    }
-  });
-  socket.on("disarm_roll_card", (data) => {
-    const game = games.get(data.gameId);
-    if (!game) return;
-    if (game.disarmRollCard(socket.id)) {
-      emitGameUpdate(data.gameId, game);
-    }
-  });
-
-  // ── +6 mode: while ON, playing a spell card of value N rolls N+6 ─────
-  socket.on("set_plus_six", (data) => {
-    const game = games.get(data.gameId);
-    if (!game) return;
-    if (game.setPlusSixRolls(socket.id, !!(data && data.on))) {
-      emitGameUpdate(data.gameId, game);
-    }
-  });
-
-  // ── Post-roll ability: teleport / switch pets / steady walk ──────
-  // After rolling, the active player STAKES cards on ONE ability. The choice is
-  // held secret until the Predict window resolves (see submit_prediction).
-  socket.on("use_post_roll_ability", (data) => {
-    const game = games.get(data.gameId);
-    if (!game) return;
-    if (game.usePostRollAbility(socket.id, data && data.ability, data || {})) {
-      emitGameUpdate(data.gameId, game);
-    }
-  });
-
-  // ── Pass the post-roll ability window (walk the plain roll) ──────
-  socket.on("pass_post_roll", (data) => {
-    const game = games.get(data.gameId);
-    if (!game) return;
-    if (game.passPostRoll(socket.id)) {
-      emitGameUpdate(data.gameId, game);
-    }
-  });
-
-  // ── Predict Ability: an opponent guesses yes/no whether the active player
-  // did something special this turn. Correct "yes" → draw a card; wrong "yes"
-  // → owe a 2-card chosen discard. Replaces the old armed-cancel mechanic.
-  socket.on("submit_prediction", (data) => {
-    const game = games.get(data.gameId);
-    if (!game) return;
-    if (game.submitPrediction(socket.id, !!(data && data.predict))) {
-      emitGameUpdate(data.gameId, game);
-    }
-  });
-
-  // ── Roll dice (always 2d6) ───────────────────────────────────
+  // ── Roll dice (always 2d6; a hexed player rolls the d12) ─────
+  // Cup tier: the result is HIDDEN from opponents (per-viewer getState
+  // redaction) and the roller must follow up with submit_claim.
   socket.on("roll_dice", (data) => {
     const game = games.get(data.gameId);
     if (!game) return;
@@ -553,30 +491,28 @@ io.on("connection", (socket) => {
     }
   });
 
-  // ── Teleport to one of your own farms (POST-ROLL ability) ───
-  // Stakes two spell cards (escrowed). Delegates to usePostRollAbility, which
-  // opens the Predict window; an uncaught teleport refunds 1 of the 2 (the
-  // teleport always costs 1 as a nerf), a caught one consumes both.
-  socket.on("teleport_to_farm", (data) => {
+  // ── Submit the roller's CLAIM (liar's dice) ──────────────────
+  // {gameId, steps}: steps = 1..12, or null to walk the TRUE roll (works in
+  // every tier, always free). The token walks the claim immediately; the
+  // accuse window opens after the move (cup tier only).
+  socket.on("submit_claim", (data) => {
     const game = games.get(data.gameId);
     if (!game) return;
-    if (game.teleportToFarm(socket.id, data && data.position, data && data.discardIndices)) {
+    if (game.submitClaim(socket.id, data && data.steps != null ? data.steps : null)) {
       emitGameUpdate(data.gameId, game);
     }
   });
 
-  // ── Resolve a CHOSEN missed-cancel discard ───────────────────
-  // The caster's cancel missed and they hold >2 cards, so they pick which two to
-  // discard. data.indices are indices into their own hand. Caster-scoped + secret
-  // (per-socket getState redaction keeps the target unaware).
-  socket.on("cancel_discard_pick", (data) => {
+  // ── Accuse vote: an opponent calls the roller's claim a lie (or not) ──
+  // {gameId, accuse:bool}. Only players holding >=1 credit may accuse; voting
+  // "no" is always free. Resolution: truthful → each accuser -1 credit; lie →
+  // each accuser +1 and the roller -1 per accuser.
+  socket.on("submit_accuse", (data) => {
     const game = games.get(data.gameId);
     if (!game) return;
-    // Always refresh the caster: a successful pick clears the debt; a rejected or
-    // stale pick (e.g. the owed count grew from a 2nd missed cancel) re-syncs their
-    // client so the picker re-opens with the correct count instead of latching.
-    game.resolveCancelMissDiscard(socket.id, data && data.indices);
-    emitGameUpdate(data.gameId, game);
+    if (game.submitAccuse(socket.id, !!(data && data.accuse))) {
+      emitGameUpdate(data.gameId, game);
+    }
   });
 
   if (DEBUG_TOOLS) {
@@ -711,11 +647,7 @@ io.on("connection", (socket) => {
     const isWinner =
       gme.state === "finished" &&
       (gme.lastStandingWinner === sid ||
-        (!gme.lastStandingWinner &&
-          player.properties.some((pos) => {
-            const prop = gme.properties.get(pos);
-            return prop && prop.group === "superBanana" && prop.owner === sid;
-          })));
+        (!gme.lastStandingWinner && gme.superBananaWinnerId === sid));
     auth.updateStats(userId, {
       gamesPlayed: 1,
       gamesWon: isWinner ? 1 : 0,

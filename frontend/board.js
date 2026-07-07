@@ -307,24 +307,6 @@ function _setupBoardDelegation() {
     if (isNaN(i)) return;
     const gs = window._gs;
     if (!gs) return;
-    // Teleport pick-mode: click one of YOUR OWN FARMS to jump there (instead of
-    // rolling). Costs two random Spell Cards. Clicking any other tile is
-    // ignored (you stay in pick mode until you pick a farm or toggle it off).
-    if (
-      window._teleportPickMode &&
-      gs.currentPlayer &&
-      gs.currentPlayer.id === myId &&
-      !gs.diceRolled &&
-      !window._tokenWalking
-    ) {
-      const prop = gs.properties && gs.properties.find((p) => p && p.id === i);
-      if (prop && prop.owner === myId && prop.group === "farm") {
-        if (typeof emitTeleportToFarm === "function") emitTeleportToFarm(i);
-      } else if (typeof showToast === "function") {
-        showToast("Pick one of your glowing farms, or tap Teleport again to cancel.", "info", 2200);
-      }
-      return;
-    }
     // Pick starting tile on first turn
     if (
       (gs.gameMode === "classic" || gs.gameMode === "2v2" || gs.gameMode === "3v3") &&
@@ -346,6 +328,25 @@ function _setupBoardDelegation() {
       if (occupied) return;
       if (socket && gameId)
         socket.emit("pick_start_tile", { gameId, position: i });
+      return;
+    }
+    // Claim pick (liar's dice): the roller taps a highlighted tile <=12 ahead
+    // to CLAIM that forward distance — the token walks the path normally.
+    // Eligibility (tier/credit) was baked into which tiles got .claim-target.
+    if (
+      gs.turnPhase === "claiming" &&
+      gs.currentPlayer &&
+      gs.currentPlayer.id === myId &&
+      gs.pendingAction &&
+      gs.pendingAction.playerId === myId &&
+      !gs.pendingAction.committed &&
+      tile.classList.contains("claim-target")
+    ) {
+      const meClaim = gs.players && gs.players.find((p) => p.id === myId);
+      if (!meClaim || typeof meClaim.position !== "number") return;
+      const len = (gs.boardLayout && gs.boardLayout.length) || BOARD_SIZE;
+      const dist = (((i - meClaim.position) % len) + len) % len;
+      if (dist >= 1 && dist <= 12 && typeof prClaim === "function") prClaim(dist);
       return;
     }
   });
@@ -407,25 +408,19 @@ function walkStepUpdate(gs) {
         } else if (window._tokenVisitedTiles && window._tokenVisitedTiles.has(i)) {
           const isOwn = prop && prop.owner === window._walkingPlayerId;
           const isLanding = i === window._walkingLandingPos;
-          // MEGA RABBIT (+6) vacuums EVERY pile on its path — crossed opponent &
-          // unclaimed piles too — so zero them all as the token passes (backend
-          // already collected/stole them). Flagged publicly via gs.lastMegaRabbit
-          // since opponents' plusSixRolls is owner-only. Zeroing here also lets the
-          // pile-decrement detector below fire the burst + tick the victim's chip.
-          const isMegaVacuum =
-            gs && gs.lastMegaRabbit &&
-            gs.lastMegaRabbit.playerId === window._walkingPlayerId;
-          // Mirror the backend pile rules exactly. A TURTLE move (gs.lastGrowMatchHop
-          // set — value < 7, walked 7-value) does NOT collect your OWN pile by
-          // CROSSING (only by LANDING) and does NOT steal opponents' piles at all; a
-          // RABBIT move collects own on cross/land and steals on landing; a MEGA
-          // RABBIT sweep grabs every pile on the path.
-          const isTurtle = !!(gs && gs.lastGrowMatchHop);
+          // Mirror the backend pile rules (_collectBananasOnPath(…, isTurtle)),
+          // keyed on the PUBLIC move record: TURTLE (walked <=6) collects OWN
+          // piles on LANDING only — crossing your own farm takes nothing.
+          // RABBIT (7+) crosses+lands own piles. Unclaimed and opponent piles
+          // are taken only by LANDING in BOTH modes (both land-steal).
+          const isTurtle = !!(
+            gs.lastMove &&
+            gs.lastMove.playerId === window._walkingPlayerId &&
+            gs.lastMove.steps <= 6
+          );
           let taken;
-          if (isMegaVacuum) taken = true;
-          else if (isOwn) taken = isLanding || !isTurtle;
-          else if (!prop || !prop.owner) taken = isLanding; // unclaimed — landing only
-          else taken = isLanding && !isTurtle; // opponent — steal only on a rabbit landing
+          if (isOwn) taken = isLanding || !isTurtle;
+          else taken = isLanding;
           pileAmount = taken ? 0 : frozenVal;
         } else if (isDiceMatchTile) {
           const grownAmount = gs.diceMatchGrownAmounts && gs.diceMatchGrownAmounts[i] || 0;
@@ -462,11 +457,6 @@ function walkStepUpdate(gs) {
         } else {
           tileEl.classList.remove("has-banana-pile");
         }
-        // The board is FROZEN during a walk (tiles aren't rebuilt), so a cyan
-        // armed-rune path painted before the walk — or one whose rune fired/
-        // cleared mid-walk — would linger as a phantom. Strip it every step;
-        // renderBoard repaints it after the walk only if still validly armed.
-        tileEl.classList.remove("armed-path", "armed-path-dest", "armed-grow-path", "armed-grow-tile");
       }
       // Keep the owned-farms chart chip in sync as piles are collected.
       _syncFarmChartPile(i, pileAmount);
@@ -617,8 +607,6 @@ function renderBoard(gs) {
   const pokerTable = document.getElementById("poker-table");
   const auctionBox = document.getElementById("auction-box");
   const boardRandomStart = document.getElementById("board-random-start");
-  const redrawOverlay = document.getElementById("redraw-overlay");
-  const runeDeck = document.getElementById("rune-deck");
   const helpPanel = document.getElementById("board-help");
   const helpToggle = document.getElementById("board-help-toggle");
   const emojiToggle = document.getElementById("board-emoji-toggle");
@@ -677,8 +665,6 @@ function renderBoard(gs) {
   if (pokerTable) board.appendChild(pokerTable);
   if (auctionBox) board.appendChild(auctionBox);
   if (boardRandomStart) board.appendChild(boardRandomStart);
-  if (redrawOverlay) board.appendChild(redrawOverlay);
-  if (runeDeck) board.appendChild(runeDeck);
   // Use server's board layout if available, otherwise fall back to static data
   const layout = gs && gs.boardLayout;
 
@@ -706,75 +692,6 @@ function renderBoard(gs) {
     }
   }
 
-  // ARMED-ROLL PATH PREVIEW: if the VIEWER has a spell card ARMED, light up
-  // the tiles they'd travel over (.armed-path) and the tile they'd land on
-  // (.armed-path-dest), so they can see where the armed roll takes them. armedRoll
-  // is owner-only, so only the armer sees their own path. Recomputed each render
-  // (tiles are recreated below).
-  let _armedPathSet = null;
-  let _armedDest = -1;
-  // When the armed rune (value v) would fire a REVEALED grow, also preview that
-  // grow tile + the clockwise sweep range it would grow (yellow). -1 / null = none.
-  let _armedGrowTile = -1;
-  let _armedGrowPathSet = null;
-  if (
-    gs &&
-    gs.state === "playing" &&
-    typeof myId !== "undefined" &&
-    // ONLY on the armer's OWN turn — an armed rune auto-fires at the start of
-    // your turn, so showing the path on opponents' turns is a misleading
-    // "phantom" highlight (the rune can't fire then).
-    gs.currentPlayer &&
-    gs.currentPlayer.id === myId &&
-    // NEVER paint during a token walk: the board is frozen but meArm.position is
-    // the LIVE (post-move) position, so the path would be drawn from the wrong
-    // tile, and walkStepUpdate doesn't rebuild tiles to clear it.
-    !window._tokenWalking
-  ) {
-    const meArm = _playerById[myId];
-    // Only preview a rune the viewer ACTUALLY HOLDS — a stale arm (its value
-    // removed by a penalty / swipe without a play) must not paint a phantom
-    // path. Mirrors the auto-activation hold-check in game-screen.js.
-    if (
-      meArm &&
-      meArm.armedRoll &&
-      Array.isArray(meArm.rollCards) &&
-      meArm.rollCards.includes(meArm.armedRoll.value)
-    ) {
-      const v = Number(meArm.armedRoll.value);
-      // Highlight the ACTUAL distance walked, not the rune's face/grow number:
-      // a rune of value v walks 7 - v (the low-roll inversion; runes are 1..6).
-      const steps = v < 7 ? 7 - v : v;
-      if (Number.isFinite(steps) && steps > 0) {
-        _armedPathSet = new Set();
-        const startP = meArm.position || 0;
-        for (let s = 1; s <= steps; s++) _armedPathSet.add((startP + s) % _boardLen);
-        _armedDest = (startP + steps) % _boardLen;
-      }
-      // GROW PREVIEW: a rune of value v fires the grow labelled v IF that grow is
-      // REVEALED (a revealed grow appears in boardLayout as type "grow" + numeric
-      // growLabel). Highlight that grow tile + the clockwise sweep range it would
-      // grow, reusing _growRangePath (the same path the real grow-chain pulse uses).
-      // Gate on genuineRevealedGrows too — the EXACT condition the backend uses to
-      // decide the grow fires (_processRolledGrow → _isGenuinelyRevealed). For a
-      // grow this is equivalent to "in my boardLayout" (grow reveals broadcast to
-      // all players), but keying on the same field keeps the preview honest if the
-      // per-viewer boardLayout redaction ever drifts.
-      const _layout = (gs && gs.boardLayout) || [];
-      const _revGrows = (gs && Array.isArray(gs.genuineRevealedGrows)) ? gs.genuineRevealedGrows : [];
-      for (let gi = 0; gi < _layout.length; gi++) {
-        const t = _layout[gi];
-        if (t && t.type === "grow" && t.growLabel === v && _revGrows.includes(gi)) {
-          _armedGrowTile = gi;
-          if (typeof _growRangePath === "function") {
-            _armedGrowPathSet = new Set(_growRangePath(gs, gi));
-          }
-          break;
-        }
-      }
-    }
-  }
-
   // PATH PREVIEW (yellow): the viewer's next N tiles, when their Path Preview
   // toggle is on. N is the Banana Gadget distance (the toggle lives in that box).
   // Owner-only (reads the viewer's own position + window state).
@@ -793,6 +710,42 @@ function renderBoard(gs) {
   if (gs && gs.players) {
     for (const p of gs.players) {
       if (!p.bankrupt && !p.startPickPending) _occupiedPositions.add(p.position);
+    }
+  }
+
+  // CLAIM PICK (liar's dice): during the roller's own claiming window the 12
+  // tiles ahead pulse (.claim-target) — clicking one claims that forward
+  // distance (submit_claim). Public tier at 0 credit: only the EXACT roll
+  // (and the free 7→1) stays clickable, matching the backend's submitClaim
+  // gate. Recomputed per render from gs, so highlights self-clear the moment
+  // the claim commits / the turn ends.
+  let _claimTargets = null; // Map: board position → forward steps (1..12)
+  if (
+    gs &&
+    gs.state === "playing" &&
+    gs.turnPhase === "claiming" &&
+    gs.currentPlayer &&
+    gs.currentPlayer.id === myId &&
+    gs.pendingAction &&
+    gs.pendingAction.playerId === myId &&
+    !gs.pendingAction.committed &&
+    !window._tokenWalking
+  ) {
+    const meClaim = _playerById[myId];
+    if (meClaim && typeof meClaim.position === "number") {
+      const pa = gs.pendingAction;
+      // cupPublic ⇔ strictly 0 credit (the only way to lose the cup).
+      const zeroCredit = !!pa.cupPublic;
+      _claimTargets = new Map();
+      for (let s = 1; s <= 12; s++) {
+        if (
+          zeroCredit &&
+          s !== pa.rolledTotal &&
+          !(pa.rolledTotal === 7 && s === 1)
+        )
+          continue; // 0 credit: exact roll only (+ the free 7→1)
+        _claimTargets.set((meClaim.position + s) % _boardLen, s);
+      }
     }
   }
 
@@ -859,15 +812,6 @@ function renderBoard(gs) {
 
     if (r.side) el.classList.add("side-" + r.side);
 
-    // Armed-roll path preview (applies to hidden tiles too — a glow on the fog
-    // cover, no content leak).
-    if (_armedPathSet && _armedPathSet.has(i)) {
-      el.classList.add(i === _armedDest ? "armed-path-dest" : "armed-path");
-    }
-    // Armed-rune GROW preview: the (revealed) grow it would fire + the clockwise
-    // sweep range it would grow (yellow). Applies to hidden in-range tiles too.
-    if (_armedGrowPathSet && _armedGrowPathSet.has(i)) el.classList.add("armed-grow-path");
-    if (i === _armedGrowTile) el.classList.add("armed-grow-tile");
     // Path Preview (yellow) overlay — the viewer's next N tiles when toggled on.
     if (_stepAheadSet && _stepAheadSet.has(i)) el.classList.add("step-ahead-path");
 
@@ -898,6 +842,11 @@ function renderBoard(gs) {
       el.innerHTML = `<span class="sname">${i}</span>`;
       if (startPickActive && !_occupiedPositions.has(i)) {
         el.classList.add("space-pickable", "start-pick-target");
+      }
+      // Claim pick: fogged tiles ahead are claimable too (you walk the path
+      // normally — it's a claim, not a teleport).
+      if (_claimTargets && _claimTargets.has(i)) {
+        el.classList.add("space-pickable", "claim-target");
       }
       board.appendChild(el);
       continue;
@@ -1020,19 +969,18 @@ function renderBoard(gs) {
           // Token walked past this tile — collect visually (overrides dice-match display)
           const isOwn = prop && prop.owner === window._walkingPlayerId;
           const isLanding = i === window._walkingLandingPos;
-          const isMegaVacuum =
-            gs && gs.lastMegaRabbit &&
-            gs.lastMegaRabbit.playerId === window._walkingPlayerId;
-          // Mirror the backend (see the other copy of this logic): a TURTLE move
-          // (gs.lastGrowMatchHop) collects own piles only on LANDING and never steals;
-          // a MEGA RABBIT grabs everything; otherwise own collects on cross/land and
-          // opponents are stolen on landing.
-          const isTurtle = !!(gs && gs.lastGrowMatchHop);
+          // Mirror the backend _collectBananasOnPath(…, isTurtle), keyed on the
+          // PUBLIC move record (see the other copy in walkStepUpdate): TURTLE
+          // (walked <=6) takes OWN piles on LANDING only; RABBIT (7+) on
+          // cross+land; unclaimed/opponent piles land-only in both modes.
+          const isTurtle = !!(
+            gs.lastMove &&
+            gs.lastMove.playerId === window._walkingPlayerId &&
+            gs.lastMove.steps <= 6
+          );
           let taken;
-          if (isMegaVacuum) taken = true;
-          else if (isOwn) taken = isLanding || !isTurtle;
-          else if (!prop || !prop.owner) taken = isLanding;
-          else taken = isLanding && !isTurtle;
+          if (isOwn) taken = isLanding || !isTurtle;
+          else taken = isLanding;
           pileAmount = taken ? 0 : frozenVal;
         } else if (isDiceMatchTile) {
           // Show pre-roll pile + grown amount (pile may already be 0 if collected on path)
@@ -1071,23 +1019,17 @@ function renderBoard(gs) {
         const owner = _playerById[prop.owner];
         if (owner) el.classList.add("owned-" + owner.color);
       }
-      // Teleport pick-mode: highlight MY OWN FARMS as cyan teleport destinations.
-      // (Inside this revealed-tile block is where `prop` is in scope; owned farms
-      // are always revealed to their owner, so they always reach here.)
-      if (
-        window._teleportPickMode &&
-        prop &&
-        prop.owner === myId &&
-        prop.group === "farm"
-      ) {
-        el.classList.add("teleport-target");
-      }
     }
 
     // start pick: visually mark revealed tiles as pickable too
     // (but skip tiles a player has already chosen).
     if (startPickActive && !_occupiedPositions.has(i)) {
       el.classList.add("space-pickable", "start-pick-target");
+    }
+
+    // Claim pick: pulse the claimable tiles ahead of the roller.
+    if (_claimTargets && _claimTargets.has(i)) {
+      el.classList.add("space-pickable", "claim-target");
     }
 
     board.appendChild(el);

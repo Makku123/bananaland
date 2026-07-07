@@ -95,15 +95,11 @@ function makeWorld() {
     var bananaBurst = function(){};
     var _touchLandingFx = function(){};
     var SIMPLE_PLAYER_COLOR_HEX = { red: "#f00", blue: "#00f", green: "#0f0", yellow: "#ff0" };
-    var handleAbilityTileClick = function(){};
     var route = function(){};
     var showScreen = function(){};
-    var updateAuctionPanel = function(){};
-    var updatePokerTable = function(){};
     var playSound = function(){};
     var _runGrowPulse = function(){};
     var _bounceFarmPile = function(){};
-    var armedTeleportActive = function(){ return false; };
     var twemoji = undefined;
   `);
 
@@ -178,7 +174,6 @@ function makeGs(piles, extra) {
       gameMode: "classic",
       dice: [2, 3],
       diceRolled: false,
-      bombs: [],
       log: [],
       diceMatchTiles: null,
       diceMatchGrownAmounts: null,
@@ -194,7 +189,7 @@ function makeGs(piles, extra) {
     return {
       id, name, color, position,
       money: 1000, bankrupt: false, ghost: false, startPickPending: false,
-      properties: [], revealedTiles: revealed, cards: {}, bomb: 0,
+      properties: [], revealedTiles: revealed,
     };
   }
 }

@@ -144,28 +144,25 @@ class MonkeyBusinessGame {
     // owner (owner lands on someone → gives it; someone lands on owner → takes it).
     // ON by default; the toggle is stamped post-construction (server create_game).
     this.dodecahedron = true;
-    // MEGA MODE — ON by DEFAULT: spell cards are MEGA TURTLE (grows matched piles
-    // 5×) / MEGA RABBIT (+6 leap that vacuums & steals every pile on its path).
-    // Turn it OFF for plain Turtle (normal 1x grow) / Rabbit (+6, no vacuum).
-    // Stamped post-construction (server create_game); a game-level lobby knob.
-    this.megaMode = true;
     this.d12OwnerId = null; // current owner's player id, or null (not yet in play)
-    this.diceIsD12 = false; // tags the last roll as a d12 (vs 2d6 / a rune card)
-    this.lastGrowMatchHop = null; // {rolled, hop} when a roll matched a revealed GROW (7-rolled hop)
-    this.lastSuperBananaCross = null; // {playerId, pos, amount, turn} — broke-cross +N consolation; drives the at-the-SB-tile banana floater
-    this.lastMegaRabbit = null; // {playerId, turn} — a MEGA RABBIT (+6) play vacuums every pile on its path; tells the frontend to zero crossed piles too (PUBLIC)
-    this.lastTeleport = null; // {playerId, position, turn} — drives the no-walk teleport JUMP animation (set by teleportToFarm)
-    // POST-ROLL ABILITIES + PREDICT bluff: a turn is no longer atomic. After a
-    // roll the move is held in pendingAction while the active player optionally
-    // picks an ability, then every opponent predicts (yes/no) whether a "special"
-    // action happened, then _resolvePredictionAndCommit walks the move.
-    this.pendingAction = null; // active player's locked-in choice (mostly SECRET — see getState)
-    this.prediction = null;    // {turn, respondDeadline, respondStartTime, votes:{[oppId]:{eligible,answered,guess}}}
-    this.turnPhase = null;     // null | "ability" | "predicting" | "resolved" (drives the client walk-hold)
-    this.lastPredictionResult = null; // {seq, special, correct:[ids], wrongIds:[ids], abilityLabel} transient reveal
-    this._predictionSeq = 0;
-    this._predictionTimer = null;
-    this._abilityTimer = null;
+    this.diceIsD12 = false; // tags the last roll as a d12 (vs 2d6)
+    this.lastSuperBananaCross = null; // {playerId, pos, amount, turn} — SB +N banana grab; drives the at-the-SB-tile banana floater
+    // CREDIT SCORE (liar's dice): every player holds a PUBLIC credit score (blank
+    // tokens). A turn is: roll HIDDEN under the cup → claim any steps 1-12 → walk
+    // the CLAIM → opponents accuse yes/no → credit resolution. The real roll is
+    // revealed ONLY if someone accused. See rollDice / submitClaim / _openAccuse.
+    this.creditStart = 7; // lobby knob (like startingMoney): every player's starting credit, clamp 1..20
+    this.pendingAction = null; // the roller's hidden roll + claim (roll SECRET — see getState)
+    this.accuse = null;        // {turn, respondDeadline, respondStartTime, votes:{[oppId]:{eligible,answered,accuse}}}
+    this.turnPhase = null;     // null | "claiming" | "accusing" | "resolved"
+    this.lastMove = null;      // {playerId, steps, mode:"turtle"|"rabbit", turn} — PUBLIC move record (the walk/cup-label key)
+    this.lastAccuseResult = null; // {seq, playerId, claim, mode, truthful, actualTotal, accusers, deltas, turn} — PUBLIC, set ONLY when someone accused
+    this._accuseSeq = 0;
+    this._accuseTimer = null;
+    this._claimTimer = null;
+    this.diceHidden = false;  // the current dice are a cup roll not yet revealed (redacted for non-rollers in getState)
+    this.diceOwnerId = null;  // who rolled the current dice (sees through their own cup)
+    this.superBananaWinnerId = null; // who won via the Super Banana (rich landing or the within-12 auto-win)
     this.state = "waiting"; // waiting | playing | finished
     this.admin = null;
     this.players = [];
@@ -184,11 +181,6 @@ class MonkeyBusinessGame {
     // MISSED card with the correct farm. Cleared shortly after resolution.
     this.lastResolvedAuction = null;
     this._lastResolvedAuctionTimer = null;
-    // No interactive rune session remains — spell-card draws AND missed-cancel
-    // penalties are both immediate now — so this stays null (kept as defensive
-    // scaffolding for the many `if (this.redraw)` turn-gates).
-    this.redraw = null;
-    this._redrawTimer = null;
     // Pool of "fire and forget" setTimeouts (deferred tile shuffle on leave,
     // delayed free-bananas log/payout, super-banana win sequence). Tracked so
     // they can be cleared in _resetToLobby / cleanup() — otherwise they fire
@@ -274,52 +266,19 @@ class MonkeyBusinessGame {
       totalSpent: 0,
       properties: [],
       bankrupt: false,
-      // One-time Super Banana consolation latch: set true the first time this
-      // player grabs the +200 (by LANDING on the can't-afford SB or by CROSSING
-      // it broke). Once set, neither path pays the +200 again. Reset every new
-      // game (see completeReveal / _resetToLobby).
+      // One-time BROKE-CROSS Super Banana consolation latch: set true the first
+      // time this player grabs the +200 by CROSSING the revealed SB while broke.
+      // Once set, the cross never pays again. (LANDING +200 is unlatched — see
+      // _processLanding.) Reset every new game (see completeReveal / _resetToLobby).
       sbBonusTaken: false,
       revealedTiles: new Set([START_POSITION]),
       hasRolled: false,
       startPickPending: false,
-      // Spell Cards: an array of ints 1..6. Each card, when played, moves
-      // the player exactly that many tiles (like rolling a single die of that
-      // value). Seeded to 6 random cards at game start / reset (see
-      // completeReveal). Empty in the lobby. Private to its owner in getState
-      // (others see only rollCardCount).
-      rollCards: [],
-      // "Cancel Spell Card" ability (internal field names kept as cancel*).
-      // UNLIMITED casts — no charge; the only gate is HOLDING >=3 runes at cast
-      // time (see useCancelItems). Casting queues a cancel on a target's NEXT
-      // turn: cancelQueued is promoted to cancelActive when that turn begins (so a
-      // cancel cast during the target's current turn hits the turn AFTER), and it
-      // resolves the moment the target plays a rune (HIT → caster draws a rune) or
-      // rolls normally (MISS → caster loses two runes, with one deny). The cancel
-      // flags are PRIVATE / server-only.
-      cancelQueued: false,
-      cancelActive: false,
-      // Who queued/activated this cancel (identifies the caster for the outcome).
-      cancelQueuedBy: null,
-      cancelActiveBy: null,
-      // ARMED spell card — a PRIVATE queued selection: { value } | null.
-      // Set by armRollCard (allowed ANY time). It AUTO-ACTIVATES on the owner's
-      // turn (the card auto-plays after the roll-delay window unless they disarm
-      // first) and PERSISTS across turn-ends, so a roll armed after a move fires
-      // next turn. Cleared on play (useRollCard), a normal roll (rollDice),
-      // disarmRollCard, and every reset/new-game. Owner-only in getState.
-      armedRoll: null,
-      // "+6" mode (private toggle): while ON, playing a card of value N rolls
-      // N + 6 (7..12) instead of N — it walks its full value (no 7-N inversion)
-      // and never grow-matches. Toggled any time via setPlusSixRolls. Owner-only.
-      plusSixRolls: false,
-      // Super Banana DISCOVERY pick owed: the FIRST player to land on the still-
-      // hidden SB and not afford it picks a 1..6 rune instead of a random draw.
-      pendingPick: 0,
-      // Owed CHOSEN discard from a MISSED cancel YOU cast: how many spell cards
-      // you must pick to discard. Set on the CASTER when their cancel misses
-      // (deferred from the old auto-loss); resolved via resolveCancelMissDiscard.
-      // Owner-only in getState (secret — the target never learns the miss).
-      pendingCancelDiscard: 0,
+      // CREDIT SCORE (liar's dice): a stack of blank tokens. Integer, floor 0,
+      // no cap. Seeded to the creditStart lobby knob (default 7) here and on
+      // every new game (completeReveal / _resetToLobby). PUBLIC in getState —
+      // everyone sees everyone's credit.
+      credit: this.creditStart,
       // DEBUG-only "Reveal All Tiles" view: when true, getState skips fog
       // redaction FOR THIS VIEWER (they see the whole board incl. the hidden
       // Super Banana). Set only via the DEBUG_TOOLS-gated set_reveal_all socket,
@@ -371,8 +330,14 @@ class MonkeyBusinessGame {
     if (settings.dodecahedron != null) {
       this.dodecahedron = !!settings.dodecahedron;
     }
-    if (settings.megaMode != null) {
-      this.megaMode = !!settings.megaMode;
+    if (settings.creditStart != null) {
+      this.creditStart = Math.min(
+        Math.max(Math.floor(settings.creditStart) || 7, 1),
+        20,
+      );
+      for (const p of this.players) {
+        p.credit = this.creditStart;
+      }
     }
     if (settings.farmAuctionTimer != null) {
       this.farmAuctionTimer = Math.min(
@@ -433,7 +398,7 @@ class MonkeyBusinessGame {
   }
 
   // Called immediately after any action that will eventually trigger an end-
-  // of-turn (rollDice, useRollCard, etc.). We mark autoEndDelay
+  // of-turn (submitClaim, auction resolves, etc.). We mark autoEndDelay
   // so the End Turn button stays disabled until either:
   //   1. The lander emits turn_anims_complete (the dynamic, accurate trigger
   //      — see notifyAnimsComplete), OR
@@ -485,6 +450,10 @@ class MonkeyBusinessGame {
     if (this.auction || this.superBananaWin) {
       return false;
     }
+    // The accuse window runs AFTER the walk (diceRolled is already true), so the
+    // anims-complete signal can arrive mid-window — refuse it; _resolveAccuse
+    // re-arms a short auto-end so the turn still closes.
+    if (this.pendingAction || this.accuse) return false;
     // Cancel the long safety net armed by _scheduleAutoEnd. We're about to
     // end the turn synchronously, so the timer would be a no-op anyway —
     // clearing it keeps the timer set tidy.
@@ -547,8 +516,10 @@ class MonkeyBusinessGame {
     this._auctionTimer = null;
     if (this._lastResolvedAuctionTimer) clearTimeout(this._lastResolvedAuctionTimer);
     this._lastResolvedAuctionTimer = null;
-    if (this._redrawTimer) clearTimeout(this._redrawTimer);
-    this._redrawTimer = null;
+    if (this._accuseTimer) clearTimeout(this._accuseTimer);
+    this._accuseTimer = null;
+    if (this._claimTimer) clearTimeout(this._claimTimer);
+    this._claimTimer = null;
     this._cancelAutoEnd();
     this._clearDeferredTimers();
   }
@@ -557,17 +528,7 @@ class MonkeyBusinessGame {
     const idx = this.players.findIndex((p) => p.id === socketId);
     if (idx === -1) return;
 
-    // Defensive: if the leaving player had an open spell-card redraw, clear it so
-    // it can't dangle on a player who is gone (the owed dice are forfeited).
-    if (this.redraw && this.redraw.playerId === socketId) {
-      if (this._redrawTimer) {
-        clearTimeout(this._redrawTimer);
-        this._redrawTimer = null;
-      }
-      this.redraw = null;
-    }
-    // If this player is in an active property auction (incl. the Super-Banana
-    // rune-draw auction, which now shares the farm pipeline), drop them cleanly
+    // If this player is in an active property auction, drop them cleanly
     // so it doesn't hang: lander leaving abandons it; otherwise count them as a
     // reject (respond) or a 0 top-up (silent bid).
     if (this.auction && this.auction.bids[socketId]) {
@@ -630,21 +591,6 @@ class MonkeyBusinessGame {
       prop.owner = null;
       if (this.bananaLedger) this.bananaLedger.burned += prop.bananaPile || 0;
       prop.bananaPile = 0;
-    }
-
-    // Cancel hygiene (parity with makeGhost): cancels are unlimited (no charge to
-    // refund), so just DROP any cancel the leaver cast on a remaining player (and
-    // any cast on them) so a dangling cancel can't resolve on/by a gone player.
-    // Mostly unreachable (removePlayer runs in lobby/finished), but kept consistent.
-    for (const p of this.players) {
-      if (p.cancelQueuedBy === socketId) {
-        p.cancelQueued = false;
-        p.cancelQueuedBy = null;
-      }
-      if (p.cancelActiveBy === socketId) {
-        p.cancelActive = false;
-        p.cancelActiveBy = null;
-      }
     }
 
     // The leaver's own cash also leaves circulation — burn it so the banana
@@ -784,56 +730,26 @@ class MonkeyBusinessGame {
     const player = this.players.find((p) => p.id === socketId);
     if (!player || player.ghost) return false;
     player.ghost = true;
-    // A ghost only auto-rolls plain dice and never plays a rune, so any standing
-    // armed pre-selection is meaningless — clear it so it can't dangle into a
-    // phantom armed-path (e.g. if this player later reconnects).
-    player.armedRoll = null;
-    // A ghosting player can't resolve an owed missed-cancel discard — drop the debt.
-    player.pendingCancelDiscard = 0;
     this._log(`👻 ${player.name} left — they're a ghost now, the spirits will play their turns.`);
-    // Cancel hygiene: a cancel cast on this player can never land now that they're
-    // a ghost (a ghost only auto-rolls plain dice, never a rune). Cancels are
-    // unlimited (no charge to refund), so just CLEAR the pending cancel on them.
-    if (player.cancelActiveBy || player.cancelQueuedBy) {
-      player.cancelQueued = false;
-      player.cancelActive = false;
-      player.cancelQueuedBy = null;
-      player.cancelActiveBy = null;
-    }
-    // Also DROP any cancel this player CAST on a live opponent: now that they're
-    // a (departed) ghost, their pending cancel must not land or name them in the
-    // global toast — mirroring the caster-side scrub. No refund: the
-    // cancel is forfeited by leaving, not "missed".
-    for (const p of this.players) {
-      if (p.cancelQueuedBy === player.id) {
-        p.cancelQueued = false;
-        p.cancelQueuedBy = null;
-      }
-      if (p.cancelActiveBy === player.id) {
-        p.cancelActive = false;
-        p.cancelActiveBy = null;
-      }
-    }
-    // Post-roll / Predict window hygiene. As a PREDICTOR mid-window, a ghost
-    // auto-answers "no" (a ghost never predicts) so the window can complete. As
-    // the ACTIVE player still in the ABILITY phase, auto-pass so the turn commits
-    // the plain rolled move (a chosen ability already moved to predicting, where
-    // _resolvePredictionAndCommit settles its escrow).
+    // Claim / accuse window hygiene. As an ACCUSER mid-window, a ghost auto-
+    // answers "no" (a ghost never accuses) so the window can complete. As the
+    // ROLLER still picking a claim, auto-claim the TRUE roll (a ghost never
+    // bluffs) so the turn commits and the accuse window can run its course.
     if (
-      this.prediction &&
-      this.prediction.votes[player.id] &&
-      !this.prediction.votes[player.id].answered
+      this.accuse &&
+      this.accuse.votes[player.id] &&
+      !this.accuse.votes[player.id].answered
     ) {
-      this.prediction.votes[player.id].answered = true;
-      this.prediction.votes[player.id].guess = false;
-      this._checkPredictionComplete();
+      this.accuse.votes[player.id].answered = true;
+      this.accuse.votes[player.id].accuse = false;
+      this._checkAccuseComplete();
     }
     if (
-      this.turnPhase === "ability" &&
+      this.turnPhase === "claiming" &&
       this.pendingAction &&
       this.pendingAction.playerId === player.id
     ) {
-      this.passPostRoll(player.id);
+      this.submitClaim(player.id, null);
     }
     // rules.md (Leavers): a ghost "never bids in anyone else's auction — as a
     // non-lander it simply rejects every farm and item offer". Same
@@ -902,20 +818,18 @@ class MonkeyBusinessGame {
       this._deferredSetTimeout(() => this._ghostAutoStartPick(cur.id), 800);
       return;
     }
-    // 4) Nothing blocking and they haven't rolled → auto-roll a plain 2d6, then
-    // immediately PASS the post-roll ability window (a ghost never uses an
-    // ability), which opens the Predict window for live opponents. diceRolled
-    // stays false through the window, so also guard on pendingAction/prediction
-    // to avoid a re-entrant double-roll.
-    // (A hand can never wait on a ghost: makeGhost folds the leaver out of any
-    // unresolved hand, and new hands never seat a ghost.)
-    if (this.diceRolled || this.auction || this.pendingAction || this.prediction) return;
+    // 4) Nothing blocking and they haven't rolled → auto-roll, then immediately
+    // CLAIM the true roll (a ghost never bluffs), which walks the move and opens
+    // the accuse window for live opponents. diceRolled stays false through the
+    // claiming phase, so also guard on pendingAction/accuse to avoid a
+    // re-entrant double-roll.
+    if (this.diceRolled || this.auction || this.pendingAction || this.accuse) return;
     this._deferredSetTimeout(() => {
       const c = this.getCurrentPlayer();
       if (!c || c.id !== cur.id || !c.ghost || this.diceRolled || this.state !== "playing") return;
-      if (this.auction || this.pendingAction || this.prediction) return;
+      if (this.auction || this.pendingAction || this.accuse) return;
       this.rollDice(c.id);
-      this.passPostRoll(c.id); // ghost takes no ability → open the prediction
+      this.submitClaim(c.id, null); // ghost walks the TRUE roll → open the accuse window
       if (this.onUpdate) this.onUpdate();
       // Resolve anything the roll triggered (super-banana / etc.).
       this._maybeDriveGhost();
@@ -987,10 +901,6 @@ class MonkeyBusinessGame {
     const player = this.players.find((p) => p.id === oldId);
     if (player) {
       player.id = newId;
-      // A reconnecting player may have lost the armed rune's value while they were
-      // a ghost (a cancel-miss/swipe removed it). Drop a now-stale arm so it can't
-      // paint a phantom armed-path on their client before the next reconcile.
-      this._reconcileArmedRoll(player);
     }
 
     if (this.admin === oldId) this.admin = newId;
@@ -998,22 +908,26 @@ class MonkeyBusinessGame {
     // The dodecahedron owner is tracked by id at the game level, so a reconnecting
     // owner (including a ghost owner) keeps the die.
     if (this.d12OwnerId === oldId) this.d12OwnerId = newId;
+    // Cup ownership: the current hidden roll's owner keeps seeing their own dice.
+    if (this.diceOwnerId === oldId) this.diceOwnerId = newId;
+    if (this.superBananaWinnerId === oldId) this.superBananaWinnerId = newId;
 
     for (const [, prop] of this.properties) scalar(prop, "owner");
 
     if (this.teams) { arr(this.teams.A); arr(this.teams.B); }
 
-    // Cancel back-references: a cast cancel stores the caster's id on the target
-    // (cancelQueuedBy/cancelActiveBy). Remap them so a reconnected caster is still
-    // named in the result toast and their outcome targets the right player.
-    for (const p of this.players) {
-      scalar(p, "cancelQueuedBy");
-      scalar(p, "cancelActiveBy");
+    // The open claim/accuse window is id-keyed — remap so a reconnected roller
+    // can still claim and a reconnected accuser's (auto-)vote stays theirs.
+    scalar(this.pendingAction, "playerId");
+    if (this.accuse) keys(this.accuse.votes);
+    scalar(this.lastMove, "playerId");
+    if (this.lastAccuseResult) {
+      scalar(this.lastAccuseResult, "playerId");
+      keys(this.lastAccuseResult.deltas);
+      for (const a of this.lastAccuseResult.accusers || []) {
+        if (a.id === oldId) a.id = newId;
+      }
     }
-    // An open rune session (draw/pick/penalty) is caster-scoped — it can outlive a
-    // disconnect, so remap its owner or the reconnected player can't resolve it
-    // (and would stop seeing their own owner-only value).
-    if (this.redraw) scalar(this.redraw, "playerId");
 
     if (this.auction) {
       scalar(this.auction, "landingPlayer");
@@ -1078,11 +992,6 @@ class MonkeyBusinessGame {
       this._lastResolvedAuctionTimer = null;
     }
     this.lastResolvedAuction = null;
-    if (this._redrawTimer) {
-      clearTimeout(this._redrawTimer);
-      this._redrawTimer = null;
-    }
-    this.redraw = null;
     this._clearDeferredTimers();
     this.itemMoveThisTurn = false;
     this.teams = null;
@@ -1092,24 +1001,24 @@ class MonkeyBusinessGame {
     this.diceMatchTiles = null;
     this.diceMatchGrownAmounts = null;
     this.diceMatchEarlyPickup = null;
-    this.lastGrowMatchHop = null;
     this.lastGrowFired = null;
     this.lastGrowActivated = null;
     this.lastSuperBananaCross = null;
-    this.lastMegaRabbit = null;
-    this.lastTeleport = null;
     this.superBananaWin = null;
-    // Post-roll / Predict window — clear so a rematch never inherits a stale one.
+    this.superBananaWinnerId = null;
+    // Claim / accuse window — clear so a rematch never inherits a stale one.
     this.pendingAction = null;
-    this.prediction = null;
+    this.accuse = null;
     this.turnPhase = null;
-    this.lastPredictionResult = null;
-    if (this._predictionTimer) { clearTimeout(this._predictionTimer); this._predictionTimer = null; }
-    if (this._abilityTimer) { clearTimeout(this._abilityTimer); this._abilityTimer = null; }
+    this.lastMove = null;
+    this.lastAccuseResult = null;
+    this.diceHidden = false;
+    this.diceOwnerId = null;
+    if (this._accuseTimer) { clearTimeout(this._accuseTimer); this._accuseTimer = null; }
+    if (this._claimTimer) { clearTimeout(this._claimTimer); this._claimTimer = null; }
     // Transient global-toast fields (also cleared per-turn in endTurn) — null
     // them on reset too so a rematch never starts carrying a previous game's
-    // bomb/cancel/relocate announcement.
-    this.lastCancelResult = null;
+    // hex/relocate announcement.
     this.lastHexResult = null;
     this.lastStartPick = null;
     this.autoEndDelay = false;
@@ -1137,18 +1046,8 @@ class MonkeyBusinessGame {
       p.revealedTiles = new Set([START_POSITION]);
       p.hasRolled = false;
       p.startPickPending = false;
-      p.plusSixRolls = false; // +6 mode resets to OFF for a fresh game
-      // Spell Cards reset to empty in the lobby; reseeded to 7 concealed
-      // dice in completeReveal when the next game starts.
-      p.rollCards = [];
-      p.armedRoll = null;
-      p.pendingPick = 0;
-      p.pendingCancelDiscard = 0; // clear any owed missed-cancel discard
-      // Cancels are unlimited (no charge) — just clear any pending cancel state.
-      p.cancelQueued = false;
-      p.cancelActive = false;
-      p.cancelQueuedBy = null;
-      p.cancelActiveBy = null;
+      // Credit Score resets to the lobby knob for a fresh game.
+      p.credit = this.creditStart;
     }
     this._initProperties();
   }
@@ -1189,12 +1088,6 @@ class MonkeyBusinessGame {
     // Enter reveal phase - show tiles before shuffling
     this.state = "revealing";
     this.revealAccepted = new Set();
-    // Seed each player's 7 Spell Cards NOW (not in completeReveal) so the reveal
-    // screen can show them dealt in with a draw animation. The dealt hand is final
-    // — there is no pre-game re-roll.
-    for (const p of this.players) {
-      p.rollCards = this._freshRollCards();
-    }
     this._log("Take a look at all the tiles...");
     return true;
   }
@@ -1223,22 +1116,8 @@ class MonkeyBusinessGame {
       p.startPickPending = true;
       p.sbBonusTaken = false;
       p.revealedTiles = new Set();
-      // Spell Cards: the 7 CONCEALED runes were already seeded at reveal-start
-      // (startGame) so the reveal screen could show them. KEEP that hand here (only
-      // seed defensively if somehow empty). Each is a uniform int 1..6; a rune
-      // can't be played on the start-pick turn (diceRolled is set by the pick),
-      // so they're usable from each player's second turn.
-      if (!Array.isArray(p.rollCards) || p.rollCards.length === 0) {
-        p.rollCards = this._freshRollCards();
-      }
-      p.armedRoll = null;
-      p.pendingPick = 0;
-      p.pendingCancelDiscard = 0; // clear any owed missed-cancel discard
-      // Cancels are unlimited (no charge) — just clear any pending cancel state.
-      p.cancelQueued = false;
-      p.cancelActive = false;
-      p.cancelQueuedBy = null;
-      p.cancelActiveBy = null;
+      // Credit Score: everyone starts the game at the creditStart lobby knob.
+      p.credit = this.creditStart;
     }
     this.bananaLedger = {
       baseline: this.players.reduce((s, p) => s + p.money, 0),
@@ -1295,68 +1174,20 @@ class MonkeyBusinessGame {
     return this.players[this.currentPlayerIndex] || null;
   }
 
-  // -- Spell Cards -------------------------------------------
+  // -- Credit Score (liar's dice) ----------------------------------
 
-  // One spell card value: a uniform int 1..6 (same RNG as a die).
-  _randomRollCard() {
-    return Math.floor(Math.random() * 6) + 1;
-  }
-
-  // A fresh hand of 7 CONCEALED spell cards, each independently
-  // random 1..6.
-  _freshRollCards() {
-    const cards = new Array(7);
-    for (let i = 0; i < cards.length; i++) cards[i] = this._randomRollCard();
-    return cards;
-  }
-
-  // Queue ONE spell-card DRAW for the player — the Super Banana payout (non-ghost
-  // who LANDS but can't afford, or a RICH crosser) and the reward for a
-  // SUCCESSFUL cancel. The draw is NOT granted immediately: it's deferred to the
-  // start of the player's NEXT turn, where they get an interactive redraw
-  // Drawing a rune is IMMEDIATE: push ONE random rune (1..6) straight into the
-  // player's concealed hand — no keep/reroll modal (redraw removed 2026-06-22).
-  _grantMagicDieDraw(player, logMsg) {
-    if (!player) return;
-    if (!Array.isArray(player.rollCards)) player.rollCards = [];
-    player.rollCards.push(this._randomRollCard());
-    if (logMsg) this._log(logMsg);
-  }
-
-  // Remove up to `n` runes from the player's hand at random; returns how many
-  // were actually removed (capped by hand size). Used by the missed-cancel
-  // penalty: the caster simply loses two runes — no accept/deny session.
-  _removeRandomRunes(player, n) {
-    if (!player || !Array.isArray(player.rollCards)) return 0;
-    let removed = 0;
-    while (removed < n && player.rollCards.length > 0) {
-      player.rollCards.splice(Math.floor(Math.random() * player.rollCards.length), 1);
-      removed += 1;
-    }
-    return removed;
-  }
-
-  // Remove the SPECIFIC cards a player CHOSE to discard, given an array of INDICES
-  // into player.rollCards. Indices are de-duped, range-checked, and spliced in
-  // DESCENDING order so an earlier removal can't shift a later index. Returns the
-  // count actually removed. Used by teleport (player-chosen cost) and the
-  // missed-cancel discard pick. Invalid/empty input removes nothing — callers that
-  // must ALWAYS pay a cost fall back to _removeRandomRunes.
-  _removeChosenRunes(player, indices) {
-    if (!player || !Array.isArray(player.rollCards) || !Array.isArray(indices)) return 0;
-    const valid = [
-      ...new Set(
-        indices.filter(
-          (i) => Number.isInteger(i) && i >= 0 && i < player.rollCards.length,
-        ),
-      ),
-    ].sort((a, b) => b - a);
-    let removed = 0;
-    for (const i of valid) {
-      player.rollCards.splice(i, 1);
-      removed += 1;
-    }
-    return removed;
+  // Adjust a player's Credit Score by `delta`, flooring at 0 (no cap). Returns
+  // the delta actually APPLIED (a floor-clamped loss applies less than asked).
+  // Every credit change re-runs the Super Banana auto-win check — a fresh token
+  // can put a rich player within winning reach on the spot.
+  _adjustCredit(player, delta) {
+    if (!player || !delta) return 0;
+    const before = player.credit || 0;
+    const after = Math.max(0, before + delta);
+    player.credit = after;
+    const applied = after - before;
+    if (applied !== 0) this._checkSuperBananaAutoWin();
+    return applied;
   }
 
   // -- Dice & Movement --------------------------------------------
@@ -1371,37 +1202,35 @@ class MonkeyBusinessGame {
   }
 
   // rollDice ALWAYS rolls exactly 2 dice (no dice tiers). Any extra argument is
-  // ignored (kept for call-site compatibility).
+  // ignored (kept for call-site compatibility). CUP TIER: the result stays
+  // HIDDEN under the cup (getState redacts it for everyone but the roller) until
+  // an accusation lifts it. PUBLIC TIER (credit < opponents holding >=1 credit):
+  // the roll shows to all and there is no accuse window.
   rollDice(socketId) {
     this.diceMatchTiles = null;
     this.diceMatchGrownAmounts = null;
     this.diceMatchEarlyPickup = null;
-    this.lastGrowMatchHop = null;
     this.lastGrowFired = null;
     this.lastGrowActivated = null;
     this.lastSuperBananaCross = null;
-    this.lastMegaRabbit = null;
-    this.lastTeleport = null;
+    this.lastMove = null;
+    this.lastAccuseResult = null;
     const cur = this.getCurrentPlayer();
     if (
       !cur ||
       cur.id !== socketId ||
       this.diceRolled ||
-      this.pendingAction || // a roll/ability is already pending this turn
-      this.prediction ||    // opponents are mid-predict
+      this.pendingAction || // a roll/claim is already pending this turn
+      this.accuse ||        // opponents are mid-accuse
       cur.bankrupt ||
-      cur.startPickPending ||
-      cur.pendingCancelDiscard > 0 || // must resolve an owed discard first
-      (this.redraw && this.redraw.playerId === cur.id) // YOUR rune session must resolve first
+      cur.startPickPending
     )
       return null;
 
-    // Taking a roll resolves (clears) any standing pre-selection (armed roll).
-    cur.armedRoll = null;
-
     // A HEXED player (holds the curse) rolls a single d12 (1..12) instead of 2d6.
     // Everyone else rolls a normal 2d6. The single-die roll is TAGGED so the
-    // frontend renders the dodecahedron, not a spell-card card (both are length-1).
+    // frontend renders the dodecahedron. A hexed roll goes under the SAME cup
+    // with the same claim/accuse rules (truth = claim == the d12 value).
     let rolls;
     if (this.dodecahedron && this.d12OwnerId === cur.id) {
       rolls = [Math.floor(Math.random() * 12) + 1];
@@ -1412,599 +1241,327 @@ class MonkeyBusinessGame {
     }
     this.dice = rolls;
     cur.hasRolled = true;
+    const total = rolls.reduce((a, b) => a + b, 0);
 
-    // The MOVE is NOT committed yet. Hold it as a pending PLAIN action and open
-    // the post-roll ABILITY window — the active player may pick teleport / switch
-    // pets / steady walk, or pass to walk normally. diceRolled stays FALSE until
-    // the move actually commits (after the prediction resolves), so endTurn / the
+    // CREDIT TIER — computed ONCE here and frozen on the pendingAction (credit
+    // changes mid-window never retro-change the tier). You keep the cup while
+    // you hold ANY credit; only a STRICTLY ZERO Credit Score rolls in the open
+    // (rule change 2026-07-03 — was: credit < count of solvent opponents).
+    const cupPublic = (cur.credit || 0) < 1;
+    this.diceOwnerId = cur.id;
+    this.diceHidden = !cupPublic;
+
+    // The MOVE is NOT committed yet. Hold the roll as a pendingAction and open
+    // the CLAIMING phase — the roller picks the steps (1..12) they announce.
+    // diceRolled stays FALSE until the claim commits the walk, so endTurn / the
     // auto-end safety net can't end the turn mid-window.
-    const diceSum = rolls.reduce((a, b) => a + b, 0);
     this.pendingAction = {
       playerId: cur.id,
       turn: this.turn,
       rolledDice: rolls.slice(),
       rolledIsD12: this.diceIsD12,
-      kind: "plain",
-      finalValue: diceSum,
-      stakeValues: [],
-      teleportPosition: null,
-      cardValue: null,
-      plusSix: false,
-      committed: false, // the roller hasn't locked in their choice yet
+      rolledTotal: total,
+      cupPublic,
+      claim: null,
+      mode: null,
+      committed: false, // the roller hasn't submitted a claim yet
+      claimStartTime: null,
+      claimDeadline: null,
     };
-    this.turnPhase = "ability";
-    // CONCURRENT predict: open the opponents' prediction window NOW, at roll time, so
-    // they vote yes/no SIMULTANEOUSLY while the roller picks an ability — instead of
-    // waiting until the roller commits. ONE shared deadline (started here) governs
-    // both sides. The turn resolves once the roller has committed AND every opponent
-    // has voted (see _commitRoller / _checkPredictionComplete), or the deadline hits.
-    this._openPrediction(cur);
-    return { dice: this.dice, rolled: true };
+    this.turnPhase = "claiming";
+    // LOG REDACTION: a cup-tier roll's real total must never reach the log.
+    if (cupPublic) {
+      this._log(
+        this.diceIsD12
+          ? `\u{1F3B2} ${cur.name} rolled the d12 in the open: ${total} — no Credit for a cup!`
+          : `\u{1F3B2} ${cur.name} rolled in the open: ${rolls.join(" + ")} = ${total} — no Credit for a cup!`,
+      );
+    } else {
+      this._log(
+        this.diceIsD12
+          ? `\u{1F964} ${cur.name} rolled the d12 under the cup...`
+          : `\u{1F964} ${cur.name} rolled under the cup...`,
+      );
+    }
+    // Idle-roller safety net: auto-claim the TRUE roll at the deadline.
+    this._scheduleClaimTimeout(cur);
+    return { rolled: true };
   }
 
-  // -- Post-roll abilities + the Predict bluff -----------------------------
+  // -- The Claim + Accuse bluff (liar's dice) -------------------------------
   //
-  // After rolling, the active player may pick ONE ability (or pass). The choice
-  // is escrowed/recorded on pendingAction and stays SECRET (getState strips it
-  // for opponents). Opening the prediction window lets every opponent guess
-  // whether a "special" action happened. See _resolvePredictionAndCommit.
+  // After rolling under the cup, the roller CLAIMS any steps 1..12 and the token
+  // walks the CLAIM (the real roll stays hidden). Then every opponent holding
+  // >=1 credit votes accuse yes/no. TRUTHFUL (claim == roll, or claim 1 on a
+  // rolled 7) + accused → each accuser loses 1 credit. LIE + accused → each
+  // accuser gains 1 and the roller loses a FLAT 1 (however many accused;
+  // rule change 2026-07-03). Nobody accuses → no credit moves and the roll
+  // is never revealed.
 
-  // Safety net for the ABILITY phase: if the active player never picks/passes
-  // (idle or a flaky client), auto-pass after a generous window so the turn
-  // can't hang. A ghosting active player is handled in makeGhost.
-  _scheduleAbilityTimeout(cur) {
-    if (this._abilityTimer) clearTimeout(this._abilityTimer);
-    if (this.noAuctionTimer) return; // timers globally off → rely on explicit pass / ghost
+  // Safety net for the CLAIMING phase: if the roller never submits (idle or a
+  // flaky client), auto-claim the TRUE roll at the deadline so the turn can't
+  // hang. A ghosting roller is handled in makeGhost.
+  _scheduleClaimTimeout(cur) {
+    if (this._claimTimer) { clearTimeout(this._claimTimer); this._claimTimer = null; }
+    if (this.noAuctionTimer) return; // timers globally off → rely on explicit claim / ghost
     const pid = cur.id, turn = this.turn;
-    this._abilityTimer = setTimeout(() => {
-      this._abilityTimer = null;
+    if (this.pendingAction) {
+      this.pendingAction.claimStartTime = Date.now();
+      this.pendingAction.claimDeadline = Date.now() + this.farmAuctionTimer * 1000;
+    }
+    this._claimTimer = setTimeout(() => {
+      this._claimTimer = null;
       if (
-        this.turnPhase === "ability" &&
+        this.turnPhase === "claiming" &&
         this.pendingAction &&
         this.pendingAction.playerId === pid &&
         this.turn === turn
       ) {
-        this.passPostRoll(pid);
+        this.submitClaim(pid, null); // idle roller walks the truth
         if (this.onUpdate) this.onUpdate();
       }
-    }, 30000);
+    }, this.farmAuctionTimer * 1000);
   }
 
-  // Active player declines any ability — the plain rolled move proceeds (still
-  // subject to a (always-wrong) prediction, since rolling-plain is not special).
-  passPostRoll(socketId) {
-    const cur = this.getCurrentPlayer();
-    if (!cur || cur.id !== socketId) return false;
-    if (!this.pendingAction || this.pendingAction.playerId !== cur.id) return false;
-    if (this.turnPhase !== "ability") return false;
-    if (this.auction) return false;
-    this._commitRoller(); // Continue: lock the plain roll; resolve when predictions are in
-    return true;
-  }
-
-  // Active player commits one post-roll ability. The stake is ESCROWED (removed
-  // into pendingAction.stakeValues) and refunded/forfeited at resolve. Validates
-  // BEFORE escrowing so a rejected ability leaves the hand untouched.
-  usePostRollAbility(socketId, ability, params) {
+  // The roller announces their claim. steps = 1..12, or null to walk the TRUE
+  // roll (works in every tier, always free). Tier rules:
+  //   - CUP tier: any claim 1..12, free — that's the bluff.
+  //   - PUBLIC tier (cup lost, credit > 0): a claim differing from the roll
+  //     costs 1 credit, paid here.
+  //   - 0 credit: the exact roll only.
+  //   - A rolled 7 grants a FREE "walk 1 instead" in EVERY tier (even at 0
+  //     credit) — and claiming 1 on a real 7 counts as TRUTHFUL if accused.
+  // The token walks the claim immediately; the accuse window opens after the
+  // move (skipped for public rolls, no eligible accusers, or a winning move).
+  submitClaim(socketId, steps) {
+    if (this.state !== "playing") return false;
     const cur = this.getCurrentPlayer();
     if (!cur || cur.id !== socketId) return false;
     const pa = this.pendingAction;
-    if (!pa || pa.playerId !== cur.id || pa.kind !== "plain") return false;
-    if (this.turnPhase !== "ability") return false;
+    if (!pa || pa.playerId !== cur.id || pa.committed) return false;
+    if (this.turnPhase !== "claiming") return false;
     if (this.auction) return false;
-    if (cur.bankrupt || cur.ghost) return false;
-    const hand = Array.isArray(cur.rollCards) ? cur.rollCards.length : 0;
-    params = params || {};
-
-    // Every ability stakes exactly ONE card now.
-    if (ability === "teleport") {
-      if (hand < 1) return false;
-      const dest = this.properties.get(params.position);
-      if (!dest || dest.owner !== cur.id || dest.group !== "farm") return false;
-      pa.stakeValues = this._escrowRunes(cur, 1, params.discardIndices);
-      pa.kind = "teleport";
-      pa.teleportPosition = params.position;
-    } else if (ability === "switch") {
-      if (hand < 1) return false;
-      const v = pa.finalValue;
-      pa.stakeValues = this._escrowRunes(cur, 1, params.discardIndices);
-      pa.kind = "switch";
-      pa.finalValue = v < 7 ? v + 6 : v - 6; // turtle <-> rabbit by ±6
-    } else if (ability === "steady") {
-      const n = Number(params.value);
-      if (!Number.isInteger(n) || n < 1 || n > 12) return false; // validate BEFORE escrow
-      if (hand < 1) return false;
-      pa.stakeValues = this._escrowRunes(cur, 1, params.discardIndices);
-      pa.kind = "steady";
-      pa.finalValue = n;
-    } else if (ability === "matching_mega" || ability === "alternative_mega") {
-      // MEGA buttons (Mega Mode only). Every spell card is a "Mega": spending one
-      // PLAYS it via useRollCard → in Mega Mode the turtle grows 5× / the rabbit
-      // vacuums its whole path (see _commitMove kind:"card"). "Matching" = a card
-      // equal to the GROW this roll FIRES → the card-matches-roll REDRAW reward.
-      // "Alternative" = any NON-matching card → NO redraw. Only Alternative is usable
-      // when no grow fires (nothing can match). The card is auto-picked (lowest
-      // eligible). Routes through Predict like every other special; a caught mega
-      // fizzles into a fresh roll (the kind:"card" caught path).
-      if (!this.megaMode) return false;
-      if (hand < 1) return false;
-      const rolledValue = pa.finalValue;
-      const firesGrow = this._wouldRolledGrowFire(rolledValue);
-      let idx = -1;
-      if (ability === "matching_mega") {
-        if (!firesGrow) return false; // matching needs a fired grow to match
-        idx = cur.rollCards.indexOf(rolledValue); // a card == the fired grow's label
-        if (idx < 0) return false;
-      } else {
-        // alternative: the lowest-value card that does NOT match the fired grow
-        // (when no grow fires, every card counts as non-matching).
-        let best = Infinity;
-        for (let i = 0; i < cur.rollCards.length; i++) {
-          const cv = cur.rollCards[i];
-          if (firesGrow && cv === rolledValue) continue; // skip matching cards
-          if (cv < best) { best = cv; idx = i; }
-        }
-        if (idx < 0) return false; // no non-matching card to spend
-      }
-      const okMega = this.useRollCard(socketId, idx); // consumes card + opens Predict
-      if (okMega && this.pendingAction) {
-        this.pendingAction.megaKind = ability;
-        this.pendingAction.cardMatchedRoll = ability === "matching_mega"; // pin redraw
-      }
-      return okMega; // useRollCard already opened Prediction — skip the trailing open
-    } else {
-      return false;
+    const truth = pa.rolledTotal;
+    const claim = steps == null ? truth : Number(steps);
+    if (!Number.isInteger(claim) || claim < 1 || claim > 12) return false;
+    const isTruth = claim === truth;
+    const isFreeSeven = truth === 7 && claim === 1; // the standing 7→1 option
+    if (!isTruth && !isFreeSeven) {
+      // 0 credit (== the public tier, since only zero credit loses the cup):
+      // exact roll only (+ the free 7→1). Cupped rollers claim anything free.
+      if ((cur.credit || 0) < 1) return false;
     }
-    this._commitRoller(); // ability locked; resolve when every opponent has voted
+    if (this._claimTimer) { clearTimeout(this._claimTimer); this._claimTimer = null; }
+    pa.claim = claim;
+    pa.mode = claim <= 6 ? "turtle" : "rabbit"; // 7 counts as rabbit
+    pa.committed = true;
+    // The claim is the ONLY public number on a cup roll; a public-tier roll was
+    // already logged with its true total.
+    if (pa.cupPublic) {
+      this._log(`\u{1F463} ${cur.name} walks ${claim} [${pa.mode}].`);
+    } else {
+      this._log(`\u{1F964} ${cur.name} claims "${claim} [${pa.mode}]".`);
+    }
+    this.diceRolled = true; // the move commits NOW — the walk starts client-side
+    cur.hasRolled = true;
+    this._commitClaimMove(cur, pa);
+    // A WINNING move (legit rich SB landing / the within-12 auto-win) ends the
+    // game on the spot and SKIPS the accuse window.
+    if (this.state !== "playing" || this.superBananaWin) {
+      this.pendingAction = null;
+      this.turnPhase = "resolved";
+      return true;
+    }
+    if (pa.cupPublic || pa.sbRichLandingResolved) {
+      // Public roll: everyone saw it — nothing to accuse. A rich SB landing
+      // already lifted the cup itself (win or +1-Credit consolation) — the
+      // reveal happened, so the accuse window is skipped there too.
+      this.pendingAction = null;
+      this.turnPhase = "resolved";
+      return true;
+    }
+    this._openAccuse(cur); // resolves instantly when nobody can accuse
     return true;
   }
 
-  // Remove `n` cards into an escrow (returns the removed VALUES so they can be
-  // refunded). Uses the player's chosen indices when valid, else the first n.
-  _escrowRunes(player, n, indices) {
-    const taken = [];
-    let idxs = null;
-    if (
-      Array.isArray(indices) &&
-      new Set(indices).size === n &&
-      indices.every((i) => Number.isInteger(i) && i >= 0 && i < player.rollCards.length)
-    ) {
-      idxs = [...new Set(indices)].sort((a, b) => b - a);
-    } else {
-      idxs = [];
-      for (let i = 0; i < n && i < player.rollCards.length; i++) idxs.push(i);
-      idxs.sort((a, b) => b - a);
-    }
-    for (const i of idxs) taken.push(player.rollCards.splice(i, 1)[0]);
-    return taken;
+  // The MOVE pipeline for a committed claim: grow (turtle) → walk → path
+  // collection → landing → SB cross → auto-win check. The dice stay under the
+  // cup (this.dice is per-viewer redacted); the frontend walks off lastMove.
+  _commitClaimMove(cur, pa) {
+    const steps = pa.claim;
+    const isTurtle = steps <= 6;
+    const oldPos = cur.position;
+    // PUBLIC move record — the frontend cup label / walk / pile animations key
+    // off this (the real dice stay hidden for everyone but the roller).
+    this.lastMove = { playerId: cur.id, steps, mode: pa.mode, turn: this.turn };
+    // MODES (derived from the WALKED steps): <=6 = TURTLE — can fire the
+    // matching GROW at the walked number, always 1×. 7+ = RABBIT — never
+    // grow-matches (grows are labelled 1..6).
+    if (isTurtle) this._processRolledGrow(cur, steps);
+    cur.position = (cur.position + steps) % this.boardSize;
+    cur.revealedTiles.add(cur.position);
+    // The ONLY mode difference on the path: TURTLE skips its OWN piles on a
+    // cross (land-only). BOTH modes land-steal opponents and take unclaimed
+    // piles on landing.
+    this._collectBananasOnPath(cur, oldPos, cur.position, isTurtle);
+    this._processLanding(cur, true);
+    this._resolveSuperBananaCross(cur, oldPos);
+    // AUTO-WIN sweep after every move: any RICH player (money >= the SB price)
+    // holding >=1 credit with the REVEALED Super Banana 1..12 steps ahead wins
+    // instantly — even if this move wasn't theirs (it may have revealed the SB).
+    this._checkSuperBananaAutoWin();
+
+    const dmMs = this.diceMatchTiles && this.diceMatchTiles.length > 0 ? 1200 : 0;
+    const epMs = this.diceMatchEarlyPickup != null ? 1000 : 0;
+    const walkAnimMs = 550 + dmMs + epMs + steps * 150 + 500;
+    if (!this.auction && this.state === "playing" && !this.superBananaWin)
+      this._scheduleAutoEnd(cur, walkAnimMs + 3000, 2000);
   }
 
-  // Open the simultaneous PREDICT window (modeled on the auction respond phase).
-  // Every non-bankrupt opponent on the other team votes yes/no; a vote of "yes"
-  // is only allowed from a player holding >=2 cards (the wrong-guess penalty),
-  // so ineligible / ghost / teammate players are pre-seeded auto-"no".
-  _openPrediction(cur) {
-    if (this._abilityTimer) { clearTimeout(this._abilityTimer); this._abilityTimer = null; }
+  // Open the simultaneous ACCUSE window AFTER the claimed walk (modeled on the
+  // auction respond phase — same respondDeadline/farmAuctionTimer machinery).
+  // Every non-bankrupt opponent votes accuse yes/no; only a player holding >=1
+  // credit may accuse, so ineligible / ghost players are pre-seeded auto-"no".
+  // TEAMS get no special rules — teammates vote too (and may accuse each other).
+  // With nobody eligible the window is skipped: the turn resolves and the cup
+  // never lifts.
+  _openAccuse(cur) {
     const votes = {};
-    const myTeam = this._isTeams() && this.teams ? this.getTeamOf(cur.id) : null;
     for (const p of this.players) {
       if (p.id === cur.id || p.bankrupt) continue;
-      if (myTeam && this.getTeamOf(p.id) === myTeam) continue; // teammates don't predict
-      const eligible = !p.ghost && Array.isArray(p.rollCards) && p.rollCards.length >= 2;
-      votes[p.id] = { eligible, answered: !eligible, guess: false };
+      const eligible = !p.ghost && (p.credit || 0) >= 1;
+      votes[p.id] = { eligible, answered: !eligible, accuse: false };
     }
-    this.prediction = {
+    if (!Object.values(votes).some((v) => v.eligible)) {
+      // No eligible accusers → nothing to resolve; the roll stays under the cup.
+      this.pendingAction = null;
+      this.turnPhase = "resolved";
+      return;
+    }
+    this.turnPhase = "accusing";
+    this.accuse = {
       turn: this.turn,
       respondStartTime: null,
       respondDeadline: null,
       votes,
     };
-    // turnPhase stays "ability" — the prediction now runs CONCURRENTLY with the
-    // roller's choice (opened from rollDice). _commitRoller flips it to "predicting"
-    // once the roller has locked in but opponents are still voting.
-    if (this._predictionTimer) { clearTimeout(this._predictionTimer); this._predictionTimer = null; }
+    if (this._accuseTimer) { clearTimeout(this._accuseTimer); this._accuseTimer = null; }
     if (!this.noAuctionTimer) {
-      this.prediction.respondStartTime = Date.now();
-      this.prediction.respondDeadline = Date.now() + this.farmAuctionTimer * 1000;
+      this.accuse.respondStartTime = Date.now();
+      this.accuse.respondDeadline = Date.now() + this.farmAuctionTimer * 1000;
       const turn = this.turn;
-      this._predictionTimer = setTimeout(() => {
-        this._predictionTimer = null;
-        if (this.prediction && this.prediction.turn === turn) {
-          // Shared deadline hit: the roller auto-Continues (plain) if still choosing,
-          // and any opponent who didn't vote is counted "no". Then resolve.
-          if (this.pendingAction && !this.pendingAction.committed) this.pendingAction.committed = true;
-          for (const id of Object.keys(this.prediction.votes)) {
-            if (!this.prediction.votes[id].answered) this.prediction.votes[id].answered = true;
+      this._accuseTimer = setTimeout(() => {
+        this._accuseTimer = null;
+        if (this.accuse && this.accuse.turn === turn) {
+          // Deadline hit: any opponent who didn't vote is counted "no" (auto-no).
+          for (const id of Object.keys(this.accuse.votes)) {
+            if (!this.accuse.votes[id].answered) this.accuse.votes[id].answered = true;
           }
-          this._resolvePredictionAndCommit();
+          this._resolveAccuse();
           if (this.onUpdate) this.onUpdate();
         }
       }, this.farmAuctionTimer * 1000);
     }
   }
 
-  // An opponent submits their prediction. Re-checks eligibility at answer time
-  // (their hand may have shrunk). guess=true means "I think you used an ability".
-  submitPrediction(socketId, guess) {
-    if (!this.prediction) return false;
-    const v = this.prediction.votes[socketId];
+  // An opponent submits their accuse vote. Re-checks eligibility at answer time
+  // (accusing needs >=1 credit). accuse=true means "I say the claim was a lie".
+  submitAccuse(socketId, accuse) {
+    if (!this.accuse) return false;
+    const v = this.accuse.votes[socketId];
     if (!v || v.answered) return false;
-    if (guess) {
+    if (accuse) {
       const p = this.players.find((pl) => pl.id === socketId);
-      const hand = p && Array.isArray(p.rollCards) ? p.rollCards.length : 0;
-      if (!p || p.ghost || hand < 2) return false; // can't afford the penalty → no yes
+      if (!p || p.ghost || (p.credit || 0) < 1) return false; // no credit → no accusing
     }
     v.answered = true;
-    v.guess = !!guess;
-    this._checkPredictionComplete();
+    v.accuse = !!accuse;
+    this._checkAccuseComplete();
     return true;
   }
 
-  // True once every opponent vote is in (or there's no prediction at all).
-  _allPredictionsIn() {
-    const pr = this.prediction;
-    if (!pr) return true;
-    return Object.values(pr.votes).every((v) => v.answered);
+  // True once every opponent vote is in (or there's no accuse window at all).
+  _allAccusesIn() {
+    const ac = this.accuse;
+    if (!ac) return true;
+    return Object.values(ac.votes).every((v) => v.answered);
   }
 
-  // The roller LOCKED IN their choice (Continue / ability / card / mega). The predict
-  // window already runs concurrently (opened at roll time), so we don't open it here —
-  // mark the choice final and resolve once every opponent has also voted. The lazy
-  // _openPrediction is only a fallback for a pending built without rollDice (e.g. the
-  // tpFarm / playCard test helpers).
-  _commitRoller() {
+  // Resolve as soon as every opponent has voted. Called after each vote
+  // (submitAccuse) and from the ghost auto-no in makeGhost.
+  _checkAccuseComplete() {
+    if (this._allAccusesIn()) this._resolveAccuse();
+  }
+
+  // Score the accusation and settle the credit deltas. TRUTHFUL (claim == real
+  // roll, or claim 1 on a real 7) + accused → each yes-accuser loses 1 credit,
+  // roller unchanged. LIE + accused → each yes-accuser gains 1 AND the roller
+  // loses 1 PER yes-accuser (floor 0). Nobody accuses → no credit changes and
+  // the real roll is NEVER revealed.
+  _resolveAccuse() {
+    if (this._accuseTimer) { clearTimeout(this._accuseTimer); this._accuseTimer = null; }
     const pa = this.pendingAction;
-    if (!pa) return;
-    pa.committed = true;
-    if (!this.prediction) {
-      const cur = this.players.find((p) => p.id === pa.playerId);
-      if (cur) this._openPrediction(cur);
-    }
-    if (this._allPredictionsIn()) {
-      this._resolvePredictionAndCommit();
-    } else {
-      this.turnPhase = "predicting"; // roller done; waiting on the opponents' votes
-    }
-  }
-
-  // Resolve only when BOTH sides are in: the roller has committed AND every opponent
-  // has voted. Called after each vote (submitPrediction) and from ghost auto-no.
-  _checkPredictionComplete() {
-    if (!this.pendingAction || !this.pendingAction.committed) return; // roller still choosing
-    if (this._allPredictionsIn()) this._resolvePredictionAndCommit();
-  }
-
-  // Score the predictions, settle stakes/rewards/penalties, then commit the move.
-  _resolvePredictionAndCommit() {
-    if (this._predictionTimer) { clearTimeout(this._predictionTimer); this._predictionTimer = null; }
-    const pa = this.pendingAction;
-    const pr = this.prediction;
+    const ac = this.accuse;
     const cur = this.players.find((p) => p.id === (pa && pa.playerId));
-    if (!pa || !cur) { this.pendingAction = null; this.prediction = null; this.turnPhase = null; return; }
+    this.accuse = null;
+    if (!pa || !cur) { this.pendingAction = null; this.turnPhase = null; return; }
 
-    const special = pa.kind !== "plain";
-    const yesIds = pr ? Object.keys(pr.votes).filter((id) => pr.votes[id].guess) : [];
-    const correctIds = special ? yesIds : [];
-    const wrongIds = special ? [] : yesIds;
-
-    // Reward: each correct predictor draws a card.
-    for (const id of correctIds) {
-      const p = this.players.find((pl) => pl.id === id);
-      if (p && !p.bankrupt) this._grantMagicDieDraw(p);
+    const yesIds = ac
+      ? Object.keys(ac.votes).filter((id) => ac.votes[id].accuse)
+      : [];
+    if (yesIds.length > 0) {
+      const truthful =
+        pa.claim === pa.rolledTotal || (pa.claim === 1 && pa.rolledTotal === 7);
+      const deltas = {};
+      const accusers = [];
+      for (const id of yesIds) {
+        const p = this.players.find((pl) => pl.id === id);
+        if (!p) continue;
+        const applied = this._adjustCredit(p, truthful ? -1 : 1);
+        accusers.push({ id, delta: applied });
+        deltas[id] = (deltas[id] || 0) + applied;
+      }
+      if (!truthful) {
+        // A caught lie costs the roller a FLAT 1 Credit — no matter how many
+        // opponents piled on (each accuser still gains their own +1).
+        const applied = this._adjustCredit(cur, -1);
+        deltas[cur.id] = (deltas[cur.id] || 0) + applied;
+      }
+      // The cup LIFTS: an accusation is the only thing that ever reveals the
+      // real roll — publicly, to everyone, including the log.
+      this.diceHidden = false;
+      const names = yesIds
+        .map((id) => this.players.find((p) => p.id === id)?.name || "?")
+        .join(", ");
+      this._log(
+        truthful
+          ? `\u{1F50D} ${names} accused — the cup lifts: ${cur.name} really rolled ${pa.rolledTotal}. TRUTH! Each accuser loses 1 Credit.`
+          : `\u{1F50D} ${names} accused — the cup lifts: ${cur.name} actually rolled ${pa.rolledTotal}, not ${pa.claim}. LIE! Each accuser gains 1 Credit; ${cur.name} loses 1.`,
+      );
+      this._accuseSeq = (this._accuseSeq || 0) + 1;
+      this.lastAccuseResult = {
+        seq: this._accuseSeq,
+        playerId: cur.id,
+        claim: pa.claim,
+        mode: pa.mode,
+        truthful,
+        actualTotal: pa.rolledTotal,
+        accusers,
+        deltas,
+        turn: this.turn,
+      };
     }
-    // Penalty: each wrong "yes" predictor owes a 2-card chosen discard (reuses
-    // the pendingCancelDiscard plumbing + the frontend discard picker).
-    for (const id of wrongIds) {
-      const p = this.players.find((pl) => pl.id === id);
-      if (!p || p.bankrupt) continue;
-      const hand = Array.isArray(p.rollCards) ? p.rollCards.length : 0;
-      if (hand > 2) {
-        p.pendingCancelDiscard = (p.pendingCancelDiscard || 0) + 2;
-      } else {
-        this._removeRandomRunes(p, 2);
-        this._reconcileArmedRoll(p);
-      }
-    }
+    // No accusation → no credit moves, no reveal, no lastAccuseResult: the
+    // actual total stays under the cup forever.
 
-    const caught = special && correctIds.length > 0;
-    // Settle the staked card + decide a CAUGHT ability's fate. Every ability
-    // stakes 1 card. When CAUGHT: teleport & steady walk are DENIED (the player
-    // walks their ORIGINAL rolled number) and forfeit the stake; switch pets
-    // STILL executes but the player loses 1 card of their choice. When UNCAUGHT:
-    // teleport always forfeits its 1 (nerf); switch & steady refund (free).
-    if (pa.kind === "teleport") {
-      pa.stakeValues = []; // forfeited either way (the teleport nerf)
-      if (caught) {
-        pa.kind = "plain";
-        pa.finalValue = pa.rolledDice.reduce((a, b) => a + b, 0);
-        this._log(`🔮 ${cur.name}'s teleport was PREDICTED — denied; they walk their roll instead!`);
-      }
-    } else if (pa.kind === "steady") {
-      if (caught) {
-        pa.stakeValues = []; // forfeited
-        pa.kind = "plain";
-        pa.finalValue = pa.rolledDice.reduce((a, b) => a + b, 0);
-        this._log(`🔮 ${cur.name}'s steady walk was PREDICTED — denied; they walk their roll instead!`);
-      } else {
-        for (const val of pa.stakeValues) cur.rollCards.push(val); // uncaught → refund
-      }
-    } else if (pa.kind === "switch") {
-      // Switch ALWAYS executes. Refund the escrow, then — if caught — owe a
-      // 1-card CHOSEN discard ("lose one card of your choice").
-      for (const val of pa.stakeValues) cur.rollCards.push(val);
-      if (caught) cur.pendingCancelDiscard = (cur.pendingCancelDiscard || 0) + 1;
-    } else if (pa.kind === "card") {
-      if (caught) {
-        // A caught CARD play is BLOCKED: the card stays consumed and the player
-        // instead resolves a fresh plain 2d6 (mirrors the old cancel-HIT).
-        const rolls = [
-          Math.floor(Math.random() * 6) + 1,
-          Math.floor(Math.random() * 6) + 1,
-        ];
-        pa.rolledDice = rolls;
-        pa.rolledIsD12 = false;
-        pa.kind = "plain";
-        pa.finalValue = rolls.reduce((a, b) => a + b, 0);
-        pa.plusSix = false;
-        this._log(`🔮 ${cur.name}'s spell card was PREDICTED — it fizzles and they roll instead!`);
-      } else if (pa.cardMatchedRoll) {
-        // REDRAW REWARD: a card whose value MATCHED the roll, played uncaught,
-        // draws a fresh random card (the used card stays consumed → net-neutral).
-        this._grantMagicDieDraw(cur, `🃏 ${cur.name} played a card matching their roll and got away with it — they draw a fresh card!`);
-      }
-    }
-
-    this._predictionSeq = (this._predictionSeq || 0) + 1;
-    this.lastPredictionResult = {
-      seq: this._predictionSeq,
-      playerId: cur.id,
-      special,
-      caught,
-      correctIds,
-      wrongIds,
-    };
-
-    this.prediction = null;
-    this.diceRolled = true; // the move is now committing — turn can end after anims
-    cur.hasRolled = true;
-    this._commitMove(cur, pa);
     this.pendingAction = null;
     this.turnPhase = "resolved";
-  }
-
-  // The deferred MOVE pipeline, shared by every committed action.
-  _commitMove(cur, pa) {
-    const oldPos = cur.position;
-
-    if (pa.kind === "teleport") {
-      this.dice = [];
-      this.diceIsD12 = false;
-      const dest = this.properties.get(pa.teleportPosition);
-      cur.position = pa.teleportPosition;
-      cur.revealedTiles.add(pa.teleportPosition);
-      let harvested = 0;
-      if (dest && dest.bananaPile > 0) { harvested = dest.bananaPile; cur.money += harvested; dest.bananaPile = 0; }
-      this._log(
-        harvested > 0
-          ? `✨ ${cur.name} teleported to ${dest ? dest.name : "a farm"} and harvested ${harvested}🍌!`
-          : `✨ ${cur.name} teleported to ${dest ? dest.name : "a farm"}!`,
-      );
-      this._processLanding(cur, false, true); // viaTeleport: skip hex pass-around + path collection
-      this.lastTeleport = { playerId: cur.id, position: pa.teleportPosition, turn: this.turn };
-      if (!this.auction) this._scheduleAutoEnd(cur, 1500, 1000);
-      return;
+    // Un-stick the turn: the walk's anim-complete signal may have arrived (and
+    // been refused) while the window was open, so re-arm a short auto-end.
+    // Skipped when an auction/win is still blocking — those re-arm on resolve.
+    if (!this.auction && !this.superBananaWin && this.state === "playing") {
+      this._scheduleAutoEnd(cur, 2500, 2000);
     }
-
-    let moveBy, megaVacuum = false;
-    if (pa.kind === "card") {
-      const value = pa.finalValue;
-      const N = pa.cardValue;
-      this.dice = [value];
-      this.diceIsD12 = false;
-      const megaRabbit = this.megaMode && !!pa.plusSix;
-      moveBy = value < 7 ? 7 - value : value;
-      if (value < 7) {
-        this.lastGrowMatchHop = { rolled: value, hop: moveBy, base: 7 };
-        this._log(
-          this.megaMode
-            ? `🐢 ${cur.name} played MEGA TURTLE (${N}) → walks 7 - ${N} = ${moveBy} and grows piles 5×!`
-            : `🐢 ${cur.name} played TURTLE (${N}) → walks 7 - ${N} = ${moveBy} and grows a matched pile.`,
-        );
-      } else {
-        this.lastGrowMatchHop = null;
-        if (megaRabbit) {
-          this.lastMegaRabbit = { playerId: cur.id, turn: this.turn };
-          this._log(`🐇 ${cur.name} played MEGA RABBIT (${N}) → leaps ${moveBy} and vacuums every banana pile on the path!`);
-        } else {
-          this._log(`🐇 ${cur.name} played RABBIT (${N}) → leaps ${moveBy}.`);
-        }
-      }
-      this._processRolledGrow(cur, value, this.megaMode ? 5 : 1);
-      megaVacuum = megaRabbit;
-    } else {
-      // plain / switch / steady — roll-like: 1× grow + below-7 inversion.
-      if (pa.kind === "plain") {
-        this.dice = pa.rolledDice;
-        this.diceIsD12 = pa.rolledIsD12;
-      } else {
-        // switch / steady commit a single chosen value (shown as one cube).
-        this.dice = [pa.finalValue];
-        this.diceIsD12 = false;
-        if (pa.kind === "switch") this._log(`🔀 ${cur.name} used Switch Pets!`);
-        else this._log(`🎯 ${cur.name} used Steady Walk (${pa.finalValue})!`);
-      }
-      moveBy = this._growMatchMove(cur, pa.finalValue);
-    }
-
-    cur.position = (cur.position + moveBy) % this.boardSize;
-    cur.revealedTiles.add(cur.position);
-    // A TURTLE move (value < 7, walked 7-value): no opponent steal, and no OWN-pile
-    // collection by crossing (only by landing). Passed as the isTurtle flag.
-    // (megaVacuum is a +6/rabbit play, never turtle.)
-    this._collectBananasOnPath(cur, oldPos, cur.position, megaVacuum, pa.finalValue < 7);
-    this._processLanding(cur, pa.kind !== "card"); // roll-like → viaNormalRoll (hex pass-around); card → not
-    this._resolveSuperBananaCross(cur, oldPos);
-
-    const dmMs = this.diceMatchTiles && this.diceMatchTiles.length > 0 ? 1200 : 0;
-    const epMs = this.diceMatchEarlyPickup != null ? 1000 : 0;
-    const walkAnimMs = 550 + dmMs + epMs + moveBy * 150 + 500;
-    if (!this.auction) this._scheduleAutoEnd(cur, walkAnimMs + 3000, 2000);
-  }
-
-  // -- Spell Cards --------------------------------------
-  // Each player holds cards (ints 1..6). Playing a card is now a POST-ROLL action:
-  // you ROLL first (a plain pendingAction), then tap a card to play it. The card
-  // OVERRIDES your move to its own value (turtle: walks 7-N + grows a matched grow;
-  // rabbit/+6: walks N+6) and is CONSUMED (never refunded). REDRAW REWARD: if the
-  // card's face value EQUALS the value you rolled ("matches their roll") AND nobody
-  // correctly predicts it, you draw a fresh random card afterward (the used card is
-  // still gone — net-neutral). A card whose value differs from the roll earns no
-  // redraw. Like the abilities, playing a card opens the Predict window.
-  useRollCard(socketId, index) {
-    if (this.state !== "playing") return false;
-    const cur = this.getCurrentPlayer();
-    if (!cur || cur.id !== socketId) return false;
-    const pa = this.pendingAction;
-    if (!pa || pa.playerId !== cur.id || pa.kind !== "plain") return false; // must have ROLLED first
-    if (this.turnPhase !== "ability") return false;
-    if (this.auction) return false;
-    if (cur.bankrupt || cur.ghost) return false;
-    if (cur.startPickPending) return false;
-    if (cur.pendingCancelDiscard > 0) return false;
-    const collection = cur.rollCards;
-    if (
-      !Number.isInteger(index) ||
-      !Array.isArray(collection) ||
-      index < 0 ||
-      index >= collection.length
-    ) {
-      return false;
-    }
-
-    // The value the player actually ROLLED (the plain pending's move value) — used
-    // for the "card matches the roll" redraw check below.
-    const rolledValue = pa.finalValue;
-    // Remove the chosen card (its value overrides the move). CONSUMED immediately
-    // and never refunded. Playing resolves any standing pre-selection.
-    const N = collection.splice(index, 1)[0];
-    cur.armedRoll = null;
-
-    pa.kind = "card";
-    pa.cardValue = N;
-    pa.plusSix = !!cur.plusSixRolls;
-    pa.finalValue = cur.plusSixRolls ? N + 6 : N; // card's move (turtle 7-N / rabbit N+6)
-    // Redraw reward (resolve): only if the card's FACE value matched the roll.
-    pa.cardMatchedRoll = N === rolledValue;
-    this._commitRoller(); // card locked; resolve when every opponent has voted
-    return true;
-  }
-
-  // -- Teleport ------------------------------------------------
-  // Teleport is now a POST-ROLL ability: after rolling, the player may warp to a
-  // FARM they own (ignoring the rolled walk), STAKING 2 spell cards. The stake is
-  // escrowed and — unless an opponent correctly predicts it — refunded MINUS one
-  // (the teleport always costs 1 card as a balance nerf). Cancellation is now the
-  // "Predict Ability" bluff (usePostRollAbility → _resolvePredictionAndCommit),
-  // not the old armed cancel. This thin wrapper keeps the old call signature.
-  teleportToFarm(socketId, position, discardIndices) {
-    return this.usePostRollAbility(socketId, "teleport", { position, discardIndices });
-  }
-
-  // Arm (queue) a spell card. A private selection (owner-only) that AUTO-
-  // ACTIVATES at the start of the owner's turn: the matching card auto-plays after
-  // the turn's roll-delay window UNLESS the owner DISARMS it first (frontend
-  // armed auto-activation). It PERSISTS across turn-ends, so a roll armed AFTER
-  // this turn's move fires on the NEXT turn. Allowed ANY time for a live player
-  // who actually HOLDS a card of that value. Re-arming replaces the prior
-  // selection; it's cleared by playing (useRollCard), a normal roll (rollDice),
-  // disarmRollCard, and every reset. Served owner-only.
-  armRollCard(socketId, value) {
-    if (this.state !== "playing") return false;
-    const p = this.players.find((pl) => pl.id === socketId);
-    if (!p || p.bankrupt || p.ghost || p.startPickPending) return false;
-    if (p.pendingCancelDiscard > 0) return false; // resolve owed missed-cancel discard first
-    const v = Number(value);
-    if (!Number.isInteger(v) || v < 1 || v > 6) return false;
-    if (!Array.isArray(p.rollCards) || !p.rollCards.includes(v)) return false;
-    p.armedRoll = { value: v };
-    return true;
-  }
-
-  // Disarm: clear any standing pre-selection. Allowed any time.
-  disarmRollCard(socketId) {
-    if (this.state !== "playing") return false;
-    const p = this.players.find((pl) => pl.id === socketId);
-    if (!p || !p.armedRoll) return false;
-    p.armedRoll = null;
-    return true;
-  }
-
-  // Toggle "+6" mode for a player. While ON, playing a card of value N rolls
-  // N + 6 (7..12) — full move, no 7-N inversion, no grow-match. A private,
-  // owner-only toggle; allowed any time for a live player.
-  setPlusSixRolls(socketId, on) {
-    if (this.state !== "playing") return false;
-    const p = this.players.find((pl) => pl.id === socketId);
-    if (!p || p.bankrupt || p.ghost) return false;
-    p.plusSixRolls = !!on;
-    return true;
-  }
-
-  // Keep the armed pre-selection honest. A player may have a rune ARMED (a value
-  // 1..6 they held at arm time), but several NON-play paths can remove that value
-  // from their hand without going through play/roll/disarm — a missed-cancel
-  // PENALTY, a ghost rune swipe. A stale arm would paint a phantom armed-path on
-  // the board AND suppress auto-roll while never auto-activating. Clear it
-  // whenever the value is no longer held (a kept DUPLICATE of the same value
-  // still counts as held, so the arm survives).
-  _reconcileArmedRoll(player) {
-    if (
-      player &&
-      player.armedRoll &&
-      (!Array.isArray(player.rollCards) ||
-        !player.rollCards.includes(player.armedRoll.value))
-    ) {
-      player.armedRoll = null;
-    }
-  }
-
-  // The old "arm a secret cancel" ability was REPLACED by the post-roll Predict
-  // Ability bluff (see usePostRollAbility / _openPrediction / submitPrediction /
-  // _resolvePredictionAndCommit). Its discard plumbing lives on: a WRONG "yes"
-  // prediction owes the same 2-card chosen discard, resolved below via
-  // resolveCancelMissDiscard + the frontend discard picker.
-
-  // Resolve a CHOSEN missed-cancel discard: the caster picked which cards to lose
-  // (indices into their hand). Validates the caster actually owes a pick, removes
-  // exactly the owed count (capped at hand size) in descending order, reconciles
-  // any armed pre-selection against the smaller hand, clears the debt, and emits a
-  // private (caster-only) confirmation toast. Returns true so the caller broadcasts.
-  resolveCancelMissDiscard(socketId, indices) {
-    if (this.state !== "playing") return false;
-    const player = this.players.find((p) => p.id === socketId);
-    if (!player || !player.pendingCancelDiscard) return false;
-    const hand = Array.isArray(player.rollCards) ? player.rollCards.length : 0;
-    const need = Math.min(player.pendingCancelDiscard, hand);
-    // Must pick exactly the owed number of DISTINCT, in-range cards.
-    if (
-      !Array.isArray(indices) ||
-      new Set(indices).size !== need ||
-      !indices.every((i) => Number.isInteger(i) && i >= 0 && i < hand)
-    ) {
-      return false;
-    }
-    const removed = this._removeChosenRunes(player, indices);
-    player.pendingCancelDiscard = 0;
-    this._reconcileArmedRoll(player);
-    this._cancelEventSeq = (this._cancelEventSeq || 0) + 1;
-    this.lastCancelResult = {
-      casterId: player.id,
-      casterName: player.name,
-      landed: false,
-      runesLost: removed,
-      seq: this._cancelEventSeq,
-    };
-    return true;
   }
 
   debugMove(socketId, targetPos) {
@@ -2014,6 +1571,8 @@ class MonkeyBusinessGame {
     const pos = Math.max(0, Math.min(Math.floor(targetPos), this.boardSize - 1));
     this.dice = [0, 0];
     this.diceIsD12 = false;
+    this.diceHidden = false; // a debug jump has no cup
+    this.diceOwnerId = null;
     this.diceRolled = true;
     const oldPos = cur.position;
     cur.position = pos;
@@ -2021,6 +1580,7 @@ class MonkeyBusinessGame {
     this._collectBananasOnPath(cur, oldPos, cur.position);
     this._processLanding(cur);
     this._resolveSuperBananaCross(cur, oldPos);
+    this._checkSuperBananaAutoWin(); // a (debug) move is still a move
     const debugSteps =
       (((pos - oldPos) % this.boardSize) + this.boardSize) % this.boardSize || 1;
     const debugWalkMs = 550 + debugSteps * 150 + 500;
@@ -2032,11 +1592,10 @@ class MonkeyBusinessGame {
     return { dice: this.dice, moved: true };
   }
 
-  // viaNormalRoll: true only when the landing came from a NORMAL 2d6 roll (or a
-  // cancel-HIT, which also rolls 2d6). A rune-play landing or a start-pick is NOT
-  // a normal roll. (The flag is retained for future landing mechanics that only
-  // trigger on a normal roll.)
-  _processLanding(player, viaNormalRoll = false, viaTeleport = false) {
+  // viaNormalRoll: true only when the landing came from a claimed WALK (a real
+  // dice turn). A start-pick or a debug jump is NOT a normal roll. (The flag is
+  // retained for future landing mechanics that only trigger on a normal roll.)
+  _processLanding(player, viaNormalRoll = false) {
     const space = this.board[player.position];
     if (!space) return;
 
@@ -2052,15 +1611,16 @@ class MonkeyBusinessGame {
       this._fireGrowAt(player, player.position, "land");
     }
 
-    // SUPER BANANA (ruling 2026-06-18): you must LAND to buy it (in EVERY mode
-    // now). Landing always REVEALS it. If you can afford it (and aren't a ghost)
-    // you buy it and WIN. Otherwise a non-ghost who can't afford it grabs a
-    // ONE-TIME consolation +200 bananas (minted) and opens the mystery rune
-    // auction. The +200 is the SAME one-time consolation paid for CROSSING the SB
-    // (sbBonusTaken) — a player who grabbed it by landing won't get it again when
-    // they later walk off / across it, and vice-versa. A ghost gets nothing and
-    // can never win. Either way the tile is revealed and we fall through to the
-    // visit/auction block. The SB stays put -- never relocates.
+    // SUPER BANANA (Credit Score redesign): no auction, no ownership, no
+    // purchase. Landing always REVEALS it. EVERY non-ghost lander grabs +200
+    // bananas (minted, every landing — not latched). A RICH lander (money >= the
+    // SB price BEFORE the +200) must PROVE the landing (rule 2026-07-03): their
+    // cup ALWAYS lifts (real roll revealed to everyone) and the accuse window is
+    // SKIPPED. Legitimately rolled (claim == roll, or the free 7→1) → they WIN —
+    // no credit requirement. An alternative/bluffed walk → NO win, +1 Credit
+    // consolation, play continues. A ghost gets nothing and can never win.
+    // Broke landers just pocket the +200 (cup stays DOWN, normal accuse window)
+    // and play continues. The SB stays put, never relocates.
     {
       const sbProp = this.properties.get(player.position);
       if (sbProp && sbProp.group === "superBanana" && !sbProp.owner) {
@@ -2074,36 +1634,69 @@ class MonkeyBusinessGame {
           this._log(`🎲 ${player.name} landed on the unrevealed Super Banana and has been HEXED — their 2d6 is now a single d12!`);
           this._setHexNotice(player, null);
         }
-        if (!player.ghost && player.money >= sbProp.price) {
-          this._awardSuperBananaWin(player, true, player.position);
-          return;
-        }
-        // Can't afford it (non-ghost): grab a ONE-TIME consolation +200 bananas —
-        // the LANDING counterpart to the +200 for crossing the SB. Gated on
-        // sbBonusTaken so a player who already grabbed it (landing OR a prior
-        // cross) doesn't get it again when they later walk off / across the SB.
-        // Freshly minted, so pair it onto the banana ledger to keep conservation
-        // (money/piles/pot == baseline + minted - burned). Then the Super Banana
-        // rolls a HIDDEN number 0-2 (1/3 each) = how many random Spell Card
-        // draws the auction WINNER will earn. The lander names a price; opponents
-        // bid BLIND (the number is owner-only). The first opponent to accept pays
-        // (burned) and earns N deferred card draws — the lander never wins or
-        // draws. A ghost gets nothing. (See _createSuperBananaRuneAuction.)
         if (!player.ghost) {
-          if (!player.sbBonusTaken) {
-            player.money += 200;
-            if (this.bananaLedger) this.bananaLedger.minted += 200;
-            player.sbBonusTaken = true;
-            // Marker so the frontend rains the +200 floater AT THE SB TILE on a
-            // LANDING too (same as a cross). pos = the SB tile = the landing tile.
-            // Landing already revealed the SB to everyone above, so getState ships
-            // this to all viewers (no fog leak).
-            this.lastSuperBananaCross = { playerId: player.id, pos: player.position, amount: 200, turn: this.turn };
-            this._log(`⭐ ${player.name} landed on the Super Banana but couldn't afford it — grabbed 200🍌!`);
+          // RICH check uses the money AS OF landing (before the +200 grab).
+          const rich = player.money >= sbProp.price;
+          player.money += 200;
+          if (this.bananaLedger) this.bananaLedger.minted += 200;
+          // Marker so the frontend rains the +200 floater AT THE SB TILE. Landing
+          // already revealed the SB to everyone above, so getState ships this to
+          // all viewers (no fog leak).
+          this.lastSuperBananaCross = { playerId: player.id, pos: player.position, amount: 200, turn: this.turn };
+          this._log(`⭐ ${player.name} landed on the Super Banana — grabbed 200🍌!`);
+          if (rich) {
+            // PROVE THE LANDING: a rich lander's cup ALWAYS lifts. When the
+            // landing came from a live claim, the win needs a LEGIT roll
+            // (claim == real roll, or the free 7→1); a bluffed walk gets the
+            // +1 Credit consolation instead. No claim context (debug moves,
+            // start picks) counts as legit. The accuse window is skipped
+            // either way — submitClaim checks pa.sbRichLandingResolved.
+            const pa =
+              this.pendingAction && this.pendingAction.playerId === player.id
+                ? this.pendingAction
+                : null;
+            const legit =
+              !pa ||
+              pa.claim == null ||
+              pa.claim === pa.rolledTotal ||
+              (pa.claim === 1 && pa.rolledTotal === 7);
+            if (pa) {
+              pa.sbRichLandingResolved = true;
+              // Lift the cup for EVERYONE (a public-tier roll already was).
+              this.diceHidden = false;
+              this._accuseSeq = (this._accuseSeq || 0) + 1;
+              this.lastAccuseResult = {
+                seq: this._accuseSeq,
+                playerId: player.id,
+                claim: pa.claim,
+                mode: pa.mode,
+                truthful: legit,
+                actualTotal: pa.rolledTotal,
+                accusers: [],
+                deltas: {},
+                sbLanding: true, // no accusation — the SB landing forced the reveal
+                turn: this.turn,
+              };
+            }
+            if (legit) {
+              if (pa) this._log(`⭐ ${player.name} lifts the cup: ${pa.rolledTotal}. A LEGITIMATE landing!`);
+              this._awardSuperBananaWin(player, player.position, "landing");
+              return;
+            }
+            const applied = this._adjustCredit(player, 1);
+            if (this.lastAccuseResult && this.lastAccuseResult.sbLanding) {
+              this.lastAccuseResult.deltas[player.id] = applied;
+            }
+            this._log(
+              `⭐ ${player.name} lifts the cup: ${pa.rolledTotal}, not the claimed ${pa.claim} — no win! +1 Credit consolation.`,
+            );
+          } else if ((player.credit || 0) < 1) {
+            // MERCY CREDIT (rule 2026-07-03): a BROKE lander at STRICTLY ZERO
+            // Credit gets +1 mercy Credit on top of the +200 — their next roll
+            // goes back under the cup. Broke landers holding >=1 credit don't.
+            this._adjustCredit(player, 1);
+            this._log(`🥤 ${player.name} landed on the Super Banana broke with 0 Credit — +1 mercy Credit!`);
           }
-          this._createSuperBananaRuneAuction(player);
-          // The lander STAYS on the Super Banana — the auto-teleport-back-to-a-farm
-          // feature was removed.
         }
       }
     }
@@ -2113,11 +1706,7 @@ class MonkeyBusinessGame {
     // player; if a NON-owner lands on the OWNER → they TAKE it. Keyed on the owner
     // AS OF entry so a fresh first-SB grant above doesn't immediately give it away.
     // Bankrupt players are skipped (out of play); ghosts can hold/keep rolling it.
-    // SKIPPED for a TELEPORT jump (viaTeleport): the hex is a DICE-rolling curse,
-    // so warping onto your own farm where an opponent happens to stand must NOT
-    // hand the hex away (or let you grab it for 2 runes). A cancel-HIT teleport
-    // rolls/walks normally (viaTeleport=false) so it still participates.
-    if (this.dodecahedron && d12OwnerAtEntry && !viaTeleport) {
+    if (this.dodecahedron && d12OwnerAtEntry) {
       const here = this.players.filter(
         (p) => p.position === player.position && p.id !== player.id && !p.bankrupt,
       );
@@ -2167,7 +1756,7 @@ class MonkeyBusinessGame {
 
   // Transient PUBLIC toast: someone just became HEXED (single-d12 curse) — on the
   // first Super Banana landing or when it passes to them. Seq-deduped like
-  // lastCancelResult; the frontend toasts "You have been hexed!" to the hexee.
+  // lastAccuseResult; the frontend toasts "You have been hexed!" to the hexee.
   _setHexNotice(player, fromName) {
     this._hexEventSeq = (this._hexEventSeq || 0) + 1;
     this.lastHexResult = {
@@ -2183,40 +1772,30 @@ class MonkeyBusinessGame {
   // doesn't trigger auctions or super banana swaps.
 
   // Award the Super Banana win to `player` and run the found → won → finished
-  // animation. paid=true deducts the winning price (the only path now — you must
-  // LAND on and afford the Super Banana to win). The paid=false branch is kept
-  // for safety but is no longer reached.
-  _awardSuperBananaWin(player, paid, pos) {
-    // `pos` defaults to where the player is standing (a normal landing win).
+  // celebration. No purchase, no ownership — the win itself is the prize. Two
+  // paths: how="landing" (a RICH lander stopped on the SB) and how="auto" (the
+  // within-12 auto-win: rich + >=1 credit + the revealed SB 1..12 steps ahead).
+  _awardSuperBananaWin(player, pos, how) {
+    // `pos` defaults to where the player is standing (a landing win).
     if (typeof pos !== "number") pos = player.position;
-    const prop = this.properties.get(pos);
-    if (!prop) return;
-    if (paid) {
-      player.money -= prop.price;
-      player.totalSpent = (player.totalSpent || 0) + prop.price;
-      if (this.bananaLedger) this.bananaLedger.burned += prop.price;
-    }
-    prop.owner = player.id;
-    player.properties.push(pos);
     for (const p of this.players) p.revealedTiles.add(pos);
+    this.superBananaWinnerId = player.id;
 
     // Phase 1: "Found the Super Banana!" (4s)
-    this.superBananaWin = { phase: "found", playerId: player.id, free: !paid };
-    this._log(`⭐ ${player.name} found the Super Banana!`);
+    this.superBananaWin = { phase: "found", playerId: player.id, how: how || "landing" };
+    this._log(
+      how === "auto"
+        ? `⭐ ${player.name} has the Super Banana within reach — nothing can stop them!`
+        : `⭐ ${player.name} found the Super Banana!`,
+    );
     if (this.onUpdate) this.onUpdate();
 
     this._deferredSetTimeout(() => {
       // Phase 2: claimed (3s)
-      this.superBananaWin = { phase: "bought", playerId: player.id, free: !paid };
-      if (paid) {
-        this._log(
-          `⭐ ${player.name} bought the Super Banana for ${prop.price}🍌 and became Monkey God! 👑`,
-        );
-      } else {
-        this._log(
-          `⭐ ${player.name} grabbed the FREE Super Banana and became Monkey God! 👑`,
-        );
-      }
+      this.superBananaWin = { phase: "bought", playerId: player.id, how: how || "landing" };
+      this._log(
+        `⭐ ${player.name} claimed the Super Banana and became Monkey God! 👑`,
+      );
       if (this.onUpdate) this.onUpdate();
 
       this._deferredSetTimeout(() => {
@@ -2245,6 +1824,36 @@ class MonkeyBusinessGame {
         if (this.onUpdate) this.onUpdate();
       }, 3000);
     }, 4000);
+  }
+
+  // AUTO-WIN sweep — run after EVERY move and EVERY credit change: any player
+  // who is RICH (money >= the SB price), holds >=1 credit, and has the REVEALED
+  // Super Banana 1..12 forward steps ahead of them wins instantly. Nothing fires
+  // off a fogged SB (same global reveal state the hex origination keys off).
+  // Ghosts can never win; players still off-board (start pick pending) don't
+  // have a real position yet. Returns true if a win fired.
+  _checkSuperBananaAutoWin() {
+    if (this.state !== "playing" || this.superBananaWin) return false;
+    let sbPos = -1;
+    for (const [pos, prop] of this.properties) {
+      if (prop && prop.group === "superBanana") { sbPos = pos; break; }
+    }
+    if (sbPos < 0) return false;
+    if (!this._isGenuinelyRevealed(sbPos)) return false;
+    for (const p of this.players) {
+      if (p.bankrupt || p.ghost || p.startPickPending) continue;
+      if ((p.money || 0) < this.superBananaPrice) continue;
+      if ((p.credit || 0) < 1) continue;
+      const dist = (sbPos - p.position + this.boardSize) % this.boardSize;
+      if (dist >= 1 && dist <= 12) {
+        this._log(
+          `⭐ ${p.name} is RICH, has Credit to spare, and the Super Banana is ${dist} step${dist === 1 ? "" : "s"} ahead — INSTANT WIN!`,
+        );
+        this._awardSuperBananaWin(p, sbPos, "auto");
+        return true;
+      }
+    }
+    return false;
   }
 
   // -- Auction System ---------------------------------------------
@@ -2360,15 +1969,12 @@ class MonkeyBusinessGame {
   }
 
   // Crossing the Super Banana (passing OVER it without LANDING) does something
-  // ONLY when the tile is already REVEALED (a prior landing exposed it) — you
-  // can't react to a Super Banana you haven't found yet. Crossing a still-hidden
-  // SB does NOTHING (rich or broke), and crossing NEVER reveals it (you must
-  // still LAND to expose/buy it). Once it's revealed:
-  //   - CAN afford the SB price -> opens the MYSTERY rune auction (the crosser
-  //     pitches a price; an opponent wins the hidden 0-2 draw), same as a
-  //     can't-afford LANDING — unless the landing already opened a blocking
-  //     interaction (only one at a time).
-  //   - CAN'T afford it -> a consolation +200 bananas.
+  // ONLY when the tile is already REVEALED (a prior landing exposed it — the
+  // same global reveal state the hex origination and the auto-win key off).
+  // Crossing a still-hidden SB does NOTHING (rich or broke), and crossing NEVER
+  // reveals it (you must still LAND to expose it). Once it's revealed:
+  //   - RICH (money >= the SB price) -> +1 Credit — EVERY cross, repeatable.
+  //   - BROKE -> the existing ONE-TIME consolation +200 bananas (sbBonusTaken).
   // Ghosts and bankrupt players do nothing. Called right after _processLanding at
   // every move site.
   _resolveSuperBananaCross(player, oldPos) {
@@ -2382,31 +1988,24 @@ class MonkeyBusinessGame {
     for (let s = 1; s < steps; s++) {
       const pos = (oldPos + s) % this.boardSize;
       const prop = this.properties.get(pos);
-      if (prop && prop.group === "superBanana" && !prop.owner) { sbPos = pos; break; }
+      if (prop && prop.group === "superBanana") { sbPos = pos; break; }
     }
-    if (sbPos < 0) return; // didn't cross the (unowned) Super Banana
+    if (sbPos < 0) return; // didn't cross the Super Banana
     // Crossing matters ONLY once the SB is revealed — a hidden SB crossed does
     // nothing (for rich and broke alike) and is never revealed by the cross.
-    if (!player.revealedTiles.has(sbPos)) return;
+    if (!this._isGenuinelyRevealed(sbPos)) return;
     if (player.money >= this.properties.get(sbPos).price) {
-      // CAN afford -> open the mystery rune auction (the crosser pitches; an
-      // opponent wins the hidden 0-2 draw), exactly like a can't-afford landing.
-      // Skipped if the landing already opened a blocking interaction.
-      this._createSuperBananaRuneAuction(player, {
-        position: sbPos,
-        logMsg: `⭐ ${player.name} crossed the Super Banana — name a price for a MYSTERY Spell Card draw! 🔮`,
-        noBidLog: `⭐ ${player.name} crossed the Super Banana — but nobody can bid on the mystery draw.`,
-      });
-      // The crosser stays where they walked to — the auto-teleport-back-to-a-farm
-      // feature was removed.
+      // RICH crosser: +1 Credit per cross (every lap, repeatable). The credit
+      // bump re-runs the auto-win check via _adjustCredit.
+      this._adjustCredit(player, 1);
+      this._log(`⭐ ${player.name} crossed the Super Banana — +1 Credit! 🪙`);
       return;
     }
-    // CAN'T afford -> a ONE-TIME consolation +200 bananas. Gated on sbBonusTaken:
-    // a player who already grabbed the +200 (by LANDING on the SB, or a prior
-    // cross) doesn't get it again when they walk off / across it. PASSIVE (fires
-    // regardless of what the landing tile did). Freshly minted, so pair it onto
-    // the banana ledger to keep conservation (money/piles/pot == baseline +
-    // minted - burned).
+    // BROKE -> the ONE-TIME consolation +200 bananas. Gated on sbBonusTaken: a
+    // player who already grabbed the cross consolation doesn't get it again.
+    // PASSIVE (fires regardless of what the landing tile did). Freshly minted,
+    // so pair it onto the banana ledger to keep conservation (money/piles/pot
+    // == baseline + minted - burned).
     if (player.sbBonusTaken) return;
     player.money += 200;
     if (this.bananaLedger) this.bananaLedger.minted += 200;
@@ -2416,64 +2015,6 @@ class MonkeyBusinessGame {
     // Carries the SB position, so getState fog-redacts it to non-revealers.
     this.lastSuperBananaCross = { playerId: player.id, pos: sbPos, amount: 200, turn: this.turn };
     this._log(`⭐ ${player.name} couldn't afford the Super Banana but grabbed 200🍌 crossing it!`);
-  }
-
-  // ── SUPER BANANA RUNE AUCTION ────────────────────────────────────────
-  // A non-ghost who LANDS on the Super Banana but can't afford to win it (or a
-  // rich crosser of a revealed SB) puts a HIDDEN number 0-2 of Spell Card draws
-  // up for auction — using the SAME pipeline + rules as a farm auction: FFA
-  // pitch / sealed-when-broke / 2v2 team negotiation / 0-or-1-eligible free
-  // award, and the lander participates and can win. The ONLY differences: the
-  // prize is rune DRAWS (not a tile — granted in _resolveRuneDrawAuction) and the
-  // count stays owner-only/blind. opts: { position, logMsg } for the cross path.
-  _createSuperBananaRuneAuction(lander, opts = {}) {
-    if (this.auction || this.redraw || this.superBananaWin) return false;
-    if (!lander || lander.bankrupt || lander.ghost) return false;
-    // The lander draws TWO hidden 0/1 "cards" (each a coin flip). Their SUM is how
-    // many Spell Cards the auction WINNER draws: two 0s → 0, a 0 and a 1 → 1, two
-    // 1s → 2 (so odds 1/4, 1/2, 1/4). Only the lander sees the cards until resolve.
-    const runeCards = [Math.random() < 0.5 ? 0 : 1, Math.random() < 0.5 ? 0 : 1];
-    const runeCount = runeCards[0] + runeCards[1];
-    const pos = opts.position != null ? opts.position : lander.position;
-    // Synthetic prize "prop" so the shared pitch/sealed/2v2/free-award machinery
-    // runs unchanged; sbRune + runeCount drive the rune-draw award at resolve.
-    const prize = { name: "the Super Banana mystery draw", price: 0, group: "sbRune", owner: null };
-    const eligibleIds = this._eligibleBidderIds();
-    this._log(opts.logMsg || `⭐ ${lander.name} couldn't afford the Super Banana — a MYSTERY Spell Card draw goes to auction! 🔮`);
-
-    // Farm free-award rule: 0 eligible payers → the lander takes the draws free;
-    // exactly 1 eligible → that player takes them free.
-    if (eligibleIds.length === 0) {
-      this._awardRuneDrawFree(lander, runeCount, `Everyone is broke! ${lander.name} takes the mystery draw for free! 🔮`);
-      return false;
-    }
-    if (eligibleIds.length === 1) {
-      const w = this.players.find((p) => p.id === eligibleIds[0]);
-      const msg = w.id === lander.id
-        ? `All opponents are broke! ${w.name} takes the mystery draw for free! 🔮`
-        : `${lander.name} is broke! ${w.name} takes the mystery draw for free! 🔮`;
-      this._awardRuneDrawFree(w, runeCount, msg);
-      return false;
-    }
-
-    // 2+ eligible → run the shared auction (team negotiation in 2v2/3v3, else a
-    // normal pitch, or a sealed bid when the lander is broke), then tag it as a
-    // rune-draw prize so _resolveAuction routes to _resolveRuneDrawAuction.
-    if (this._isTeams() && this.teams) {
-      const opened = this._create2v2Auction(lander, prize, pos);
-      if (this.auction) { this.auction.sbRune = true; this.auction.runeCount = runeCount; this.auction.runeCards = runeCards; this.auction.sbLand = opts.position == null; }
-      return opened;
-    }
-    if (lander.money > 0) this._startPitchAuction(prize, pos, lander.id, eligibleIds);
-    else this._startSealedAuction(prize, pos, eligibleIds, lander.id);
-    if (this.auction) { this.auction.sbRune = true; this.auction.runeCount = runeCount; this.auction.runeCards = runeCards; this.auction.sbLand = opts.position == null; }
-    return true;
-  }
-
-  // Grant a free rune-draw prize (the 0/1-eligible farm free-award rule).
-  _awardRuneDrawFree(winner, count, msg) {
-    for (let i = 0; i < count; i++) this._grantMagicDieDraw(winner);
-    this._log(msg);
   }
 
   // Decide what happens to an unowned tile the lander stopped on, honoring the
@@ -2850,44 +2391,8 @@ class MonkeyBusinessGame {
     this._resolveAuction();
   }
 
-  // Settle a Super-Banana rune-draw auction (winner determined by the shared
-  // pitch/sealed/2v2 flow). Winner pays their bid (BURNED) and earns runeCount
-  // DEFERRED spell-card draws; no tile is assigned. The lander/crosser does NOT
-  // move afterward (the Super-Banana auto-teleport was removed — they stay put).
-  _resolveRuneDrawAuction() {
-    const a = this.auction;
-    if (this._auctionTimer) { clearTimeout(this._auctionTimer); this._auctionTimer = null; }
-    const N = a.runeCount || 0;
-    // The two hidden 0/1 cards (and their sum, the draw count) are REVEALED to
-    // everyone now that the auction is resolved.
-    const cards = Array.isArray(a.runeCards) ? a.runeCards : [];
-    const cardStr = cards.length === 2 ? `cards [${cards.join(" + ")}] = ${N}` : `${N}`;
-    const lander = this.players.find((p) => p.id === a.landingPlayer);
-    if (a.highBidder) {
-      const winner = this.players.find((p) => p.id === a.highBidder);
-      if (winner) {
-        const price = a.highBid || 0;
-        winner.money -= price;
-        winner.totalSpent = (winner.totalSpent || 0) + price;
-        if (this.bananaLedger) this.bananaLedger.burned += price;
-        for (let i = 0; i < N; i++) this._grantMagicDieDraw(winner);
-        this._log(`🔨 ${winner.name} won the Super Banana mystery for ${price}🍌 — ${cardStr} card draw${N === 1 ? "" : "s"}! 🔮`);
-      }
-    } else {
-      this._log(`💨 Nobody took ${lander ? lander.name + "'s" : "the"} Super Banana mystery draw — ${cardStr}.`);
-    }
-    const turnPlayer = this.getCurrentPlayer();
-    this.auction = null;
-    // (The lander/crosser stays put — the Super-Banana auto-teleport was removed.)
-    if (turnPlayer) this._scheduleAutoEnd(turnPlayer, 2000);
-  }
-
   _resolveAuction() {
     const a = this.auction;
-    // Super-Banana rune-draw auctions share the whole bidding pipeline (pitch /
-    // sealed / 2v2 / free-award) but award DRAWS, not the tile — split off here so
-    // the farm path below is byte-for-byte unchanged.
-    if (a.sbRune) return this._resolveRuneDrawAuction();
     const prop = this.properties.get(a.position);
 
     if (a.highBidder) {
@@ -3380,8 +2885,11 @@ class MonkeyBusinessGame {
 
     // Treat the chosen tile as a landing — same flow as a regular roll.
     this._processLanding(cur);
+    // A start-pick is a move too: it may have revealed the SB (or landed rich
+    // players near it) — run the auto-win sweep.
+    this._checkSuperBananaAutoWin();
 
-    if (!this.auction) {
+    if (!this.auction && !this.superBananaWin) {
       this._scheduleAutoEnd(cur, 1000);
     }
     return true;
@@ -3495,7 +3003,7 @@ class MonkeyBusinessGame {
   // "between revealed grows" range, sends bananas to opponent squatters,
   // logs results. Logs are tagged (`source: "roll" | "land"`) so messages
   // read sensibly.
-  _fireGrowAt(player, growPos, source, mult = 1) {
+  _fireGrowAt(player, growPos, source) {
     // The glow is recorded at the END of this method, and ONLY if the grow
     // actually produced bananas — see lastGrowFired below. Firing on an empty
     // range (no farms in range) grows nothing and must not glow.
@@ -3547,7 +3055,7 @@ class MonkeyBusinessGame {
     const grownAmounts = {};
     for (const propId of farmsInRange) {
       const prop = this.properties.get(propId);
-      const amount = prop.price * mult; // = 100% × mult (mult=5 for a spell-card grow-match)
+      const amount = prop.price; // = 100% of the farm's yield (grows are always 1× now)
       if (amount <= 0) continue;
       if (this.bananaLedger) this.bananaLedger.minted += amount;
       grownTiles.push(propId);
@@ -3593,7 +3101,7 @@ class MonkeyBusinessGame {
     }
 
     const verb =
-      source === "roll" ? `rolled ${label} — GROW ${label} fired` : `landed on GROW ${label}`;
+      source === "roll" ? `walked ${label} — GROW ${label} fired` : `landed on GROW ${label}`;
     if (totalEarlyPicked > 0) {
       this._log(
         `${player.name} ${verb} — early-picked ${totalEarlyPicked}🍌 from the farm under them! 🌱🐒`,
@@ -3618,49 +3126,19 @@ class MonkeyBusinessGame {
     return { totalGrown, totalEarlyPicked };
   }
 
-  // A die face in 1..6 fires the matching GROW tile's effect (grow tiles are
-  // labelled 1..6), but ONLY if that grow tile has already been revealed
-  // (landed on). A still-hidden grow stays
-  // dormant. Values outside 1..6 (e.g. a 2d6 dice SUM of 7..12) match no grow
-  // and are ignored; the player still walks normally afterwards.
-  // Returns true if a grow actually FIRED — value is 1..6, a grow with that
-  // label exists, AND it is revealed. _growMatchMove uses this to swap in the
-  // 7 - value hop on a match.
-  _processRolledGrow(player, value, mult = 1) {
-    if (!this._wouldRolledGrowFire(value)) return false;
-    const growPos = this._findGrowByLabel(value);
-    this._fireGrowAt(player, growPos, "roll", mult);
-    return true;
-  }
-
-  // Pure predicate (no side effects): would a roll/rune of `value` FIRE a grow?
-  // True when value is 1..6, a grow tile with that label exists, AND it is
-  // genuinely revealed. Lets the sorcery gamble decide whether it applies WITHOUT
-  // firing the grow (a hidden grow stays dormant — it must be revealed by landing).
-  _wouldRolledGrowFire(value) {
+  // A WALKED number in 1..6 (a TURTLE move) fires the matching GROW tile's
+  // effect (grow tiles are labelled 1..6) — always 1× — but ONLY if that grow
+  // tile has already been revealed (landed on). A still-hidden grow stays
+  // dormant. Values outside 1..6 (a RABBIT walk of 7..12) match no grow and are
+  // ignored. Grows key off the CLAIMED/walked steps, never the hidden roll.
+  // Returns true if a grow actually FIRED.
+  _processRolledGrow(player, value) {
     if (value < 1 || value > 6) return false;
     const growPos = this._findGrowByLabel(value);
     if (growPos == null) return false;
-    return this._isGenuinelyRevealed(growPos);
-  }
-
-  // LOW-ROLL INVERSION (movement): EVERY roll below 7 walks 7 - value instead of
-  // value (a 6 → 1, a 2 → 5, a rune 1 → 6). Applies to ALL move types — the 2d6
-  // sum, the d12, and a played spell card — with NO grow-match required. A value
-  // of 7+ (only a dice sum or a d12 of 7..12) walks its full value unchanged.
-  // SEPARATELY, a value of 1..6 that matches a REVEALED grow still fires it FIRST;
-  // that grow effect is now INDEPENDENT of the move below. Returns the walk dist.
-  _growMatchMove(player, value) {
-    // Fire the matching GROW (only when value is 1..6, a grow with that label
-    // exists, AND it is revealed) — the GREEN trigger. It no longer gates the
-    // inversion below; a sub-7 roll inverts whether or not a grow fired.
-    this._processRolledGrow(player, value);
-    const steps = value < 7 ? 7 - value : value;
-    if (steps !== value) {
-      this.lastGrowMatchHop = { rolled: value, hop: steps, base: 7 };
-      this._log(`🎯 ${player.name} rolled ${value} → walks 7 - ${value} = ${steps}!`);
-    }
-    return steps;
+    if (!this._isGenuinelyRevealed(growPos)) return false;
+    this._fireGrowAt(player, growPos, "roll");
+    return true;
   }
 
   // -- Banana Pile Collection -------------------------------------
@@ -3680,14 +3158,12 @@ class MonkeyBusinessGame {
     return stolen;
   }
 
-  _collectBananasOnPath(player, oldPos, newPos, megaVacuum = false, isTurtle = false) {
+  _collectBananasOnPath(player, oldPos, newPos, isTurtle = false) {
     // Walk every tile from oldPos+1 to newPos (wrapping around the board).
-    // megaVacuum (a MEGA RABBIT +6 play): sweep EVERY pile on the path — own,
-    // unclaimed, AND opponents' — whether crossed OR landed on (opponents' are
-    // STOLEN, owner loses them). Normally only own piles sweep on a cross, and
-    // unclaimed/opponents' are taken only on LANDING.
-    // isTurtle (a value-<7 move, walked 7-value): you do NOT collect OWN piles by
-    // CROSSING (only by LANDING), and you do NOT steal opponents' piles at all.
+    // isTurtle (a walked-<=6 move): the ONLY mode difference — you do NOT collect
+    // OWN piles by CROSSING (only by LANDING). Everything else is identical for
+    // turtle and rabbit: unclaimed piles are collected on LANDING only, and an
+    // opponent's pile is STOLEN on LANDING only (BOTH modes land-steal).
     const steps = (newPos - oldPos + this.boardSize) % this.boardSize;
     if (steps === 0) return;
     let collected = 0; // own + unclaimed piles — logged as a harvest
@@ -3701,29 +3177,23 @@ class MonkeyBusinessGame {
       const isLanding = pos === newPos;
 
       if (prop.owner === player.id) {
-        // Your OWN farm — collect the WHOLE pile (every stack). Normally on CROSS
-        // or LAND, but in TURTLE mode (isTurtle) only on LANDING: walking PAST your
-        // own pile in turtle mode collects nothing. (A MEGA RABBIT sweep is a
-        // +6/rabbit play, so isTurtle is false there and it still sweeps on cross.)
-        if (isLanding || !isTurtle || megaVacuum) {
+        // Your OWN farm — collect the WHOLE pile (every stack). RABBIT on CROSS
+        // or LAND; TURTLE only on LANDING: walking PAST your own pile in turtle
+        // mode collects nothing.
+        if (isLanding || !isTurtle) {
           collected += prop.bananaPile;
           prop.bananaPile = 0;
         }
-      } else if (!prop.owner && (isLanding || megaVacuum)) {
-        // Unclaimed pile — collected on LANDING, or ANYWHERE crossed on a MEGA
-        // RABBIT sweep.
+      } else if (!prop.owner && isLanding) {
+        // Unclaimed pile — collected on LANDING only (both modes).
         collected += prop.bananaPile;
         prop.bananaPile = 0;
-      } else if (prop.owner && prop.owner !== player.id && (isLanding || megaVacuum)) {
-        // STEAL an opponent's pile: on LANDING normally, or on ANY crossed tile
-        // during a MEGA RABBIT sweep (the +6 vacuum grabs every pile on its path,
-        // any owner). Kept OUT of `collected` so the frontend shows a per-tile
-        // "Stolen" floater (pile-decrement detector), not the harvest log.
-        // EXCEPTION: a TURTLE move (isTurtle — value < 7) does NOT steal on landing;
-        // the pile stays with its owner. (mega-rabbit is rabbit, so it still sweeps.)
-        if (!isTurtle || megaVacuum) {
-          this._stealPileOnLand(player, pos);
-        }
+      } else if (prop.owner && prop.owner !== player.id && isLanding) {
+        // STEAL an opponent's pile on LANDING — BOTH modes (the old turtle
+        // no-land-steal rule is repealed). Kept OUT of `collected` so the
+        // frontend shows a per-tile "Stolen" floater (pile-decrement detector),
+        // not the harvest log.
+        this._stealPileOnLand(player, pos);
       }
     }
 
@@ -3828,24 +3298,19 @@ class MonkeyBusinessGame {
     // out-of-band/internal caller could cross a turn boundary mid-auction
     // (skewing turn order).
     if (this.auction) return false;
-    // The ACTIVE player must resolve their OWN open rune session (e.g. the
-    // immediate Super-Banana pick/draw) before the turn advances. A session owned
-    // by someone else (a cancel HIT-draw / MISS-penalty) is caster-scoped and
-    // doesn't block.
-    if (this.redraw && this.redraw.playerId === cur.id) return false;
+    // The claim/accuse window must fully resolve before the turn can advance
+    // (the walk happens at claim time, so diceRolled is true mid-window).
+    if (this.pendingAction || this.accuse) return false;
     this._cancelAutoEnd();
     this.itemMoveThisTurn = false;
     this.diceMatchTiles = null;
     this.diceMatchGrownAmounts = null;
     this.diceMatchEarlyPickup = null;
-    this.lastGrowMatchHop = null;
     this.lastGrowFired = null;
     this.lastGrowActivated = null;
     this.lastSuperBananaCross = null;
-    this.lastMegaRabbit = null;
     this.lastStartPick = null;
-    this.lastTeleport = null;
-    this.lastCancelResult = null;
+    this.lastMove = null;
     this.lastHexResult = null;
     this.lastTileSwap = null;
 
@@ -3879,52 +3344,18 @@ class MonkeyBusinessGame {
 
     this.turn++;
     this.diceRolled = false;
-    // Clear the post-roll/predict window for the new turn (the just-ended turn's
-    // pendingAction/prediction were consumed at commit; this is a defensive reset
+    // Clear the claim/accuse window for the new turn (the just-ended turn's
+    // pendingAction/accuse were consumed at resolve; this is a defensive reset
     // so a half-open window can never leak into the next player's turn).
     this.turnPhase = null;
     this.pendingAction = null;
-    this.prediction = null;
-    if (this._predictionTimer) { clearTimeout(this._predictionTimer); this._predictionTimer = null; }
-    if (this._abilityTimer) { clearTimeout(this._abilityTimer); this._abilityTimer = null; }
-    // NOTE: an armed pre-selection is intentionally NOT cleared at turn end — it
-    // PERSISTS so a roll armed after this turn's move auto-activates on the
-    // player's NEXT turn (cleared only by playing it, rolling, disarming, or a
-    // reset). See armRollCard / the frontend armed auto-activation.
+    this.accuse = null;
+    if (this._accuseTimer) { clearTimeout(this._accuseTimer); this._accuseTimer = null; }
+    if (this._claimTimer) { clearTimeout(this._claimTimer); this._claimTimer = null; }
 
-    // Win check — only Super Banana purchase wins
-    if (this._isTeams() && this.teams) {
-      // Team mode: check if any player bought the Super Banana
-      for (const teamKey of ["A", "B"]) {
-        const teamWon = this.teams[teamKey].some((id) => {
-          const p = this.players.find((pl) => pl.id === id);
-          return (
-            p &&
-            p.properties.some((pos) => {
-              const prop = this.properties.get(pos);
-              return prop && prop.group === "superBanana";
-            })
-          );
-        });
-        if (teamWon && this.state !== "finished") {
-          this.state = "finished";
-          const names = this.teams[teamKey]
-            .map((id) => this.players.find((p) => p.id === id)?.name || "?")
-            .join(" & ");
-          this._log(
-            `\ud83c\udfc6 Team ${teamKey} (${names}) bought the Super Banana and won! \u2b50\ud83d\udc51`,
-          );
-          this._log(
-            `\u2728 ${names} found the Super Banana, they now have good luck for all eternity! \u2728`,
-          );
-          this._revealAllTiles();
-          break;
-        }
-      }
-    } else {
-      // FFA: only Super Banana purchase wins (no bankruptcy)
-    }
-
+    // (Wins fire IMMEDIATELY now — the rich Super Banana landing and the
+    // within-12 auto-win both run _awardSuperBananaWin on the spot — so there
+    // is no end-of-turn win sweep anymore.)
     // If the new current player is a ghost, the server takes their turn.
     this._maybeDriveGhost();
 
@@ -4128,7 +3559,6 @@ class MonkeyBusinessGame {
     // could leak a relocated hidden Super Banana's position.
     const _redactedPlayers = this.players.map((p) => {
       const isViewer = p.id === viewerId;
-      const rollCards = Array.isArray(p.rollCards) ? p.rollCards : [];
       // Total banana YIELD of every farm this player owns across the WHOLE map
       // (sum of each owned farm's yield = prop.price). Computed from the
       // authoritative property map, so it is the TRUE total regardless of fog,
@@ -4146,44 +3576,15 @@ class MonkeyBusinessGame {
         revealedTiles: isViewer ? [...p.revealedTiles] : [],
         // clientId is a private reconnect token — never broadcast it.
         clientId: undefined,
-        // Spell Cards: everyone sees the COUNT; only the viewer sees the
-        // actual card values (their own hand). Others' arrays are [].
-        rollCardCount: rollCards.length,
-        rollCards: isViewer ? [...rollCards] : [],
         // Map-wide farm-yield total (see computation above) — PUBLIC to all viewers.
         totalYield,
-        // Cumulative bananas spent (auctions + Super Banana) — PUBLIC to all
-        // viewers. Already carried by ...p, but defaulted here so a pre-field
-        // player object never ships undefined.
+        // Cumulative bananas spent (auction wins) — PUBLIC to all viewers.
+        // Already carried by ...p, but defaulted here so a pre-field player
+        // object never ships undefined.
         totalSpent: p.totalSpent || 0,
-        // Cancels are unlimited (no charge to ship). The queued/active cancel
-        // flags are server-only so a target never learns their turn is cancelled
-        // until they actually play a spell card.
-        cancelQueued: undefined,
-        cancelActive: undefined,
-        cancelQueuedBy: undefined,
-        cancelActiveBy: undefined,
-        // ARMED roll pre-selection is PRIVATE: only its owner sees it (the `...p`
-        // spread above would otherwise leak the value to every player).
-        // Backstop: never SHIP a stale arm (a value the player no longer holds) —
-        // it would paint a phantom armed-path and suppress the viewer's auto-roll.
-        // Read-only: this maps a {...p} shallow copy, so it never mutates the live
-        // player (the source sites above keep the raw field reconciled too).
-        armedRoll: isViewer
-          ? p.armedRoll &&
-            Array.isArray(p.rollCards) &&
-            p.rollCards.includes(p.armedRoll.value)
-            ? p.armedRoll
-            : null
-          : undefined,
-        // "+6" mode toggle is PRIVATE (only the owner's hand display needs it).
-        plusSixRolls: isViewer ? !!p.plusSixRolls : undefined,
-        // Owed missed-cancel discard count — OWNER-ONLY (secret from the target,
-        // who must never learn their roll just missed a cancel). Drives the
-        // caster's "choose which cards to discard" popup.
-        pendingCancelDiscard: isViewer ? p.pendingCancelDiscard || 0 : undefined,
-        // SB discovery pick owed (public count).
-        pendingPick: p.pendingPick || 0,
+        // CREDIT SCORE — PUBLIC: everyone sees everyone's credit (the UI draws
+        // it as blank tokens). Integer, floor 0, no cap.
+        credit: p.credit || 0,
       };
     });
     const _cur = this.getCurrentPlayer();
@@ -4195,11 +3596,15 @@ class MonkeyBusinessGame {
       isPublic: this.isPublic,
       maxPlayers: this.maxPlayers,
       startingMoney: this.startingMoney,
+      // Credit Score lobby knob — like startingMoney; every player starts a
+      // game with this many credits.
+      creditStart: this.creditStart,
       noAuctionTimer: this.noAuctionTimer,
+      // The RICH threshold: the SB landing win, the within-12 auto-win, and the
+      // rich-cross +1 credit all key off money >= this price.
       superBananaPrice: this.superBananaPrice,
       farmAuctionTimer: this.farmAuctionTimer,
       dodecahedron: this.dodecahedron,
-      megaMode: !!this.megaMode,
       d12OwnerId: this.d12OwnerId,
       diceIsD12: this.diceIsD12,
       lastHexResult: this.lastHexResult,
@@ -4208,36 +3613,57 @@ class MonkeyBusinessGame {
         ? _redactedPlayers.find((rp) => rp.id === _cur.id) || null
         : null,
       players: _redactedPlayers,
-      dice: this.dice,
+      // THE CUP (liar's dice redaction): a cup-tier roll's dice are visible ONLY
+      // to the roller. Every other viewer gets dice: [] + diceHidden: true — no
+      // field anywhere leaks the total. The redaction PERSISTS after resolution
+      // (an unaccused roll stays under the cup forever); an accusation flips
+      // diceHidden off for everyone (see _resolveAccuse). Public-tier rolls ship
+      // normally to all.
+      dice: this.diceHidden && this.diceOwnerId !== viewerId ? [] : this.dice,
+      diceHidden: !!(this.diceHidden && this.diceOwnerId !== viewerId),
       diceRolled: this.diceRolled,
-      // Post-roll/predict window. turnPhase drives the client walk-hold + the
-      // ability/predict UI. The active player's CHOICE is the bluff secret: ship
-      // the full pendingAction ONLY to its owner; everyone else sees just the
-      // public roll display (rolledDice/rolledIsD12). The prediction ships each
-      // viewer ONLY their own vote (never peers' guesses, during the window).
+      // The claim/accuse window. turnPhase: "claiming" (roller picking steps) →
+      // "accusing" (walk done, opponents voting) → "resolved"/null. The
+      // pendingAction ships its roll fields ONLY to the roller (or to everyone
+      // when the roll is public-tier); the claim itself is public once made.
+      // cupPublic is PUBLIC so viewers know whether to draw a cup. The accuse
+      // window ships each viewer ONLY their own vote.
       turnPhase: this.turnPhase || null,
       pendingAction: this.pendingAction
-        ? (this.pendingAction.playerId === viewerId
+        ? (this.pendingAction.playerId === viewerId ||
+           this.pendingAction.cupPublic
             ? { ...this.pendingAction }
             : {
                 playerId: this.pendingAction.playerId,
                 turn: this.pendingAction.turn,
-                rolledDice: this.pendingAction.rolledDice,
+                // NOT a cup leak: the die TYPE is public-derivable anyway (the
+                // hexed player — d12OwnerId — always rolls the d12). Only the
+                // VALUES (rolledDice/rolledTotal) are stripped below.
                 rolledIsD12: this.pendingAction.rolledIsD12,
+                cupPublic: !!this.pendingAction.cupPublic,
+                claim: this.pendingAction.claim,
+                mode: this.pendingAction.mode || null,
+                committed: !!this.pendingAction.committed,
+                claimStartTime: this.pendingAction.claimStartTime || null,
+                claimDeadline: this.pendingAction.claimDeadline || null,
               })
         : null,
-      prediction: this.prediction
+      accuse: this.accuse
         ? {
-            turn: this.prediction.turn,
-            respondDeadline: this.prediction.respondDeadline || null,
-            respondStartTime: this.prediction.respondStartTime || null,
-            myVote: this.prediction.votes[viewerId] || null,
-            answeredCount: Object.values(this.prediction.votes).filter((v) => v.answered).length,
-            total: Object.keys(this.prediction.votes).length,
+            turn: this.accuse.turn,
+            respondDeadline: this.accuse.respondDeadline || null,
+            respondStartTime: this.accuse.respondStartTime || null,
+            myVote: this.accuse.votes[viewerId] || null,
+            answeredCount: Object.values(this.accuse.votes).filter((v) => v.answered).length,
+            total: Object.keys(this.accuse.votes).length,
           }
         : null,
-      lastPredictionResult: this.lastPredictionResult || null,
-      lastGrowMatchHop: this.lastGrowMatchHop,
+      // PUBLIC move record — {playerId, steps, mode, turn}; the frontend cup
+      // label + walk + pile animations key off this, never off the hidden dice.
+      lastMove: this.lastMove || null,
+      // PUBLIC accusation reveal — set ONLY when at least one player accused
+      // (an unaccused roll's actualTotal is never shipped, ever).
+      lastAccuseResult: this.lastAccuseResult || null,
       properties,
       boardLayout,
       boardComposition,
@@ -4301,12 +3727,6 @@ class MonkeyBusinessGame {
               hideFarm,
               phase: a.phase,
               sealedBid: !!a.sealedBid,
-              // Super Banana mystery rune auction: the two 0/1 cards (and their
-              // sum, the draw count) are OWNER-ONLY until resolution; opponents
-              // bid blind.
-              sbRune: !!a.sbRune,
-              runeCount: a.sbRune && viewerId === a.landingPlayer ? a.runeCount : null,
-              runeCards: a.sbRune && viewerId === a.landingPlayer ? a.runeCards : null,
               // Buy Now price for the richest lander (null for everyone else).
               buyNowPrice: this._buyNowPrice(viewerId),
               landingPlayer: a.landingPlayer,
@@ -4334,17 +3754,6 @@ class MonkeyBusinessGame {
       autoEndDelay: this.autoEndDelay || false,
       autoEndDelayMs: this.autoEndDelayMs || 0,
       itemMoveThisTurn: this.itemMoveThisTurn || false,
-      // A cancel HIT is public (the target's wasted rune is visible). A MISS is
-      // private — the caster simply loses two random runes — so it ships ONLY to
-      // the caster, keeping the target unaware they were ever targeted.
-      lastCancelResult:
-        this.lastCancelResult &&
-        (this.lastCancelResult.landed || this.lastCancelResult.casterId === viewerId)
-          ? this.lastCancelResult
-          : null,
-      // Magic-rune draws and missed-cancel penalties are both IMMEDIATE now — no
-      // interactive session remains, so this is always null.
-      redraw: null,
       revealAccepted: this.revealAccepted ? [...this.revealAccepted] : [],
       log: this.log.slice(-20),
       gameMode: this.gameMode,
@@ -4363,10 +3772,6 @@ class MonkeyBusinessGame {
           ? this.lastSuperBananaCross
           : null,
       lastStartPick: this.lastStartPick || null,
-      // PUBLIC (a behavior flag, no fogged position) — drives the frontend's
-      // Mega-Rabbit pile-vacuum visual on crossed tiles.
-      lastMegaRabbit: this.lastMegaRabbit || null,
-      lastTeleport: this.lastTeleport || null,
       lastTileSwap: this.lastTileSwap || null,
       pendingTileShuffles: Array.isArray(_pendingShuffles)
         ? _pendingShuffles.map((p) => ({
